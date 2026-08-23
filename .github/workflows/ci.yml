@@ -22,11 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate XML specs and schema (well-formedness, XML 1.1)
-        run: |
-          curl -fsSL --compressed -o /usr/local/bin/xml-validator \
-            "https://dl.pazer.build/xml-validator?os=linux&arch=amd64"
-          chmod +x /usr/local/bin/xml-validator
-          xml-validator mirror.example.xml
-          xml-validator mirror.schema.xsd
-          xml-validator samples/github/github.xml
+      # The schema is an XML 1.1 document like every spec, so it is validated
+      # like one. Patterns rather than names, so a file added later is covered.
+      - uses: wow-look-at-my/xml-validator@master
+        with:
+          files: '**/*.xml **/*.xsd'
