@@ -6,6 +6,9 @@ The sibling project `api-cli` turns the same kind of file into a CLI. The spec l
 
 ## File map
 
+The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry point and holds nothing else. Paths below are inside `internal/mirror` unless stated.
+
+- `run.go` — `Run`: flags, `--check`, the server, the signal, the drain order.
 - `config.go` — the Spec model: Resource, Key, Field, Route, QueryParam, Reveal, Events, Event, Set. Types only.
 - `validate.go` — what a spec must mean before it is served. Every check here exists because its absence is a silent runtime failure.
 - `load.go` / `load_events.go` — XML to Spec. Builders check SHAPE; `validate` checks MEANING.
@@ -20,7 +23,7 @@ The sibling project `api-cli` turns the same kind of file into a CLI. The spec l
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe.
 - `ordering.go` / `events.go` — webhook ingest: subject and clock, the reorder window, the watermark, the apply.
 - `upstream.go` — the one outbound client, reporting every request.
-- `mirror.example.xml` — a runnable small spec. `samples/github/github.xml` — the full worked example.
+- `mirror.example.xml` — a runnable small spec. `samples/github/github.xml` — the full worked example. Both at the top of the tree, reached from a test through `repoRoot`.
 
 ## Invariants
 

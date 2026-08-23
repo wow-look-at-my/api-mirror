@@ -22,8 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # The schema is an XML 1.1 document like every spec, so it is validated
-      # like one. Patterns rather than names, so a file added later is covered.
+      # The schema is an XML 1.1 document too, and a pattern covers a file added later.
       - uses: wow-look-at-my/xml-validator@master
         with:
           files: '**/*.xml **/*.xsd'
