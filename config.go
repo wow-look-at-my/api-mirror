@@ -1,10 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"strings"
-	"time"
-)
+import "time"
 
 // Spec is one mirror declaration: the whole contents of a mirror XML file.
 //
@@ -65,10 +61,16 @@ type Resource struct {
 	TTL    time.Duration
 	Keys   []Key
 	Fields []Field
-	// Drop lists document keys removed before storing, in StoreDocument mode.
-	// A URL is the canonical example: it re-points at the upstream, so serving
-	// one hands the consumer a way around the mirror.
+	// Drop lists key patterns removed from a document before it is stored, in
+	// StoreDocument mode. A URL is the canonical case: it points back at the
+	// upstream, so serving one hands the consumer a way around the mirror. A
+	// pattern is an exact name or a "*suffix" form.
 	Drop []string
+	// Keep rescues exact key names from Drop. Every entry is a claim that some
+	// consumer needs that field, so the spec states the consumer in the keep's
+	// reason attribute; an unexplained hole in the drop rule is how a URL key
+	// creeps back.
+	Keep []Keep
 	// Reveal gates every read of this resource. A resource without one cannot
 	// be served; see validate.
 	Reveal *Reveal
@@ -82,6 +84,11 @@ type Key struct {
 	// payload). Empty means the key only ever arrives from a route or an event
 	// subject.
 	From string
+	// Fold lower-cases the value before it is stored or looked up. Declare it
+	// wherever the upstream treats the component case-insensitively: without it
+	// a differently-cased request URL lands on its own row, which a webhook
+	// naming the canonical spelling then never reaches.
+	Fold bool
 }
 
 // FieldType is a stored column's type. The set is deliberately small: a mirror
@@ -107,6 +114,28 @@ type Field struct {
 	Expr string
 }
 
+// Keep rescues one document key from a resource's Drop patterns.
+type Keep struct {
+	Name   string
+	Reason string
+}
+
+// QueryParam is one query parameter a route models. A request carrying a
+// parameter the route does not declare is passed through rather than answered
+// from a row keyed on a shape the spec never described.
+type QueryParam struct {
+	Name    string
+	Type    FieldType
+	Default string
+	// Min and Max bound an int parameter. A value outside the range is a
+	// passthrough, not a clamp: a clamped page number answers a question the
+	// caller did not ask.
+	Min, Max int
+	// Key includes this parameter in the cache key. A parameter that changes
+	// the answer must be keyed, or two different answers share one row.
+	Key bool
+}
+
 // Route binds an HTTP path the consumer asks for to a resource that answers it.
 // A path the spec does not declare is a passthrough: forwarded verbatim and
 // reported as uncached. There is no third state and no "correctly uncached"
@@ -122,6 +151,19 @@ type Route struct {
 	// List marks a route whose answer is an ARRAY of the resource's rows rather
 	// than one row. The parent keys select the rows.
 	List bool
+	// Query is the modelled query shape. A parameter outside it, a repeated
+	// parameter, or a value outside a declared range makes the request a
+	// passthrough with a stated reason.
+	Query []QueryParam
+	// Accept lists the media types this route may answer. A caller asking for
+	// something else gets a passthrough, because the mirror rebuilds JSON and
+	// cannot rebuild a diff or a patch.
+	Accept []string
+	// Absorb lists the upstream statuses whose answer is stored. A 2xx is
+	// always stored; naming a 4xx here declares it an authoritative verdict
+	// worth caching. A status named nowhere relays unstored, every time,
+	// because a transient failure cached is an outage remembered.
+	Absorb []int
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
@@ -178,7 +220,12 @@ type Event struct {
 	// Unordered is the explicit opt-out for a payload that states no moment.
 	// Arrival order is then all there is, and the spec has to say so out loud.
 	Unordered bool
-	Sets      []Set
+	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
+	// fields. Declare it only where every field is an IMMUTABLE fact a newer
+	// view never restates -- a commit's own contents, not a snapshot of state.
+	// For anything else this reinstates the stale write the watermark stopped.
+	AbsorbWhenSuperseded bool
+	Sets                 []Set
 	// Invalidate is the last resort: the payload does not carry the new value
 	// and cannot derive it. Reason is required, so an invalidation always says
 	// why the payload could not answer.
@@ -186,238 +233,22 @@ type Event struct {
 }
 
 // Set writes one column from the delivery payload.
+//
+// A write touches only the columns its event names, so a payload that does not
+// carry a field can never blank it. That is the engine's answer to the whole
+// class of bugs where a partial view overwrites known state with nothing.
 type Set struct {
 	Field string
 	From  string // path into the payload
 	Expr  string // or template source
+	// AllowNull writes a null the payload actually states, instead of leaving
+	// the column alone. Declare it where absent and empty differ -- a cleared
+	// description, a disarmed setting -- and nowhere else, because everywhere
+	// else it turns a missing field into a blanked one.
+	AllowNull bool
 }
 
 // Invalidate drops the stored row for this event's subject.
 type Invalidate struct {
 	Reason string
-}
-
-// Duration parses a Go duration string, rejecting the empty and the negative.
-func parseDuration(what, s string) (time.Duration, error) {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %q is not a duration: %w", what, s, err)
-	}
-	if d <= 0 {
-		return 0, fmt.Errorf("%s: %q must be positive", what, s)
-	}
-	return d, nil
-}
-
-// validate rejects a spec the engine cannot serve honestly. Every check here
-// exists because its absence is a silent failure at runtime: a resource nobody
-// gated, a route pointing at nothing, an invalidation with no stated reason.
-func (s *Spec) validate() error {
-	if strings.TrimSpace(s.Name) == "" {
-		return fmt.Errorf("<mirror> needs a name")
-	}
-	if strings.TrimSpace(s.Upstream.Base) == "" {
-		return fmt.Errorf("<upstream> needs a base URL")
-	}
-	byName := make(map[string]*Resource, len(s.Resources))
-	for _, r := range s.Resources {
-		if err := r.validate(); err != nil {
-			return err
-		}
-		if _, dup := byName[r.Name]; dup {
-			return fmt.Errorf("resource %q declared twice", r.Name)
-		}
-		byName[r.Name] = r
-	}
-	for _, rt := range s.Routes {
-		if err := rt.validate(byName); err != nil {
-			return err
-		}
-	}
-	if s.Events != nil {
-		if err := s.Events.validate(byName); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *Resource) validate() error {
-	if strings.TrimSpace(r.Name) == "" {
-		return fmt.Errorf("<resource> needs a name")
-	}
-	if len(r.Keys) == 0 {
-		return fmt.Errorf("resource %q needs at least one <key>: a fact with no identity cannot be stored once", r.Name)
-	}
-	seen := make(map[string]bool, len(r.Keys)+len(r.Fields))
-	for _, k := range r.Keys {
-		if k.Name == "" {
-			return fmt.Errorf("resource %q: <key> needs a name", r.Name)
-		}
-		if seen[k.Name] {
-			return fmt.Errorf("resource %q: %q declared twice", r.Name, k.Name)
-		}
-		seen[k.Name] = true
-	}
-	switch r.Store {
-	case StoreColumns:
-		if len(r.Fields) == 0 {
-			return fmt.Errorf("resource %q stores columns but declares no <field>: it would serve an empty answer", r.Name)
-		}
-	case StoreDocument:
-		if len(r.Fields) > 0 {
-			return fmt.Errorf("resource %q stores a document, so its <field> declarations would never be read", r.Name)
-		}
-	default:
-		return fmt.Errorf("resource %q: unknown store mode %q", r.Name, r.Store)
-	}
-	for _, f := range r.Fields {
-		if f.Name == "" {
-			return fmt.Errorf("resource %q: <field> needs a name", r.Name)
-		}
-		if seen[f.Name] {
-			return fmt.Errorf("resource %q: %q declared twice", r.Name, f.Name)
-		}
-		seen[f.Name] = true
-		switch f.Type {
-		case FieldText, FieldInt, FieldBool, FieldTime, FieldJSON:
-		default:
-			return fmt.Errorf("resource %q field %q: unknown type %q", r.Name, f.Name, f.Type)
-		}
-		if (f.From == "") == (f.Expr == "") {
-			return fmt.Errorf("resource %q field %q: give it a source path or an expr, not both and not neither", r.Name, f.Name)
-		}
-	}
-	if r.Reveal == nil {
-		return fmt.Errorf("resource %q has no <reveal>: a stored fact with no rule about who may read it cannot be served", r.Name)
-	}
-	return r.Reveal.validate(r.Name)
-}
-
-func (rv *Reveal) validate(resource string) error {
-	if rv.Public == "" && rv.Probe == nil {
-		return fmt.Errorf("resource %q: <reveal> proves nothing -- declare a <public> predicate, a <probe>, or both", resource)
-	}
-	if rv.Probe != nil {
-		if rv.Probe.Path == "" {
-			return fmt.Errorf("resource %q: <probe> needs a path", resource)
-		}
-		if rv.GrantTTL <= 0 {
-			return fmt.Errorf("resource %q: <probe> needs a <grant ttl=>: a proof that never expires is not a proof", resource)
-		}
-		if rv.DenyTTL <= 0 {
-			return fmt.Errorf("resource %q: <probe> needs a <deny ttl=>", resource)
-		}
-	}
-	return nil
-}
-
-func (rt *Route) validate(resources map[string]*Resource) error {
-	if rt.Path == "" || !strings.HasPrefix(rt.Path, "/") {
-		return fmt.Errorf("<route> needs an absolute path, got %q", rt.Path)
-	}
-	if rt.Method == "" {
-		return fmt.Errorf("route %s needs a method", rt.Path)
-	}
-	if rt.Method != "GET" && rt.Method != "HEAD" {
-		return fmt.Errorf("route %s %s: only reads are cached; a write belongs in passthrough", rt.Method, rt.Path)
-	}
-	res, ok := resources[rt.Resource]
-	if !ok {
-		return fmt.Errorf("route %s names resource %q, which is not declared", rt.Path, rt.Resource)
-	}
-	params := pathParams(rt.Path)
-	supplied := make(map[string]bool, len(params))
-	for _, p := range params {
-		name := p
-		if mapped, ok := rt.Params[p]; ok {
-			name = mapped
-		}
-		supplied[name] = true
-	}
-	if !rt.List {
-		for _, k := range res.Keys {
-			if !supplied[k.Name] {
-				return fmt.Errorf("route %s cannot key resource %q: nothing supplies %q", rt.Path, res.Name, k.Name)
-			}
-		}
-	}
-	return nil
-}
-
-// pathParams returns the {name} placeholders of a route path, in order.
-func pathParams(path string) []string {
-	var out []string
-	for _, seg := range strings.Split(path, "/") {
-		if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
-			out = append(out, seg[1:len(seg)-1])
-		}
-	}
-	return out
-}
-
-func (e *Events) validate(resources map[string]*Resource) error {
-	if e.Path == "" {
-		return fmt.Errorf("<events> needs a path")
-	}
-	if e.Secret == "" {
-		return fmt.Errorf("<events> needs a secret: an unverified delivery is anyone's delivery")
-	}
-	if e.SignatureHeader == "" {
-		return fmt.Errorf("<events> needs a signature header")
-	}
-	if e.TypeHeader == "" {
-		return fmt.Errorf("<events> needs a type header")
-	}
-	seen := make(map[string]bool, len(e.List))
-	for _, ev := range e.List {
-		if ev.Type == "" {
-			return fmt.Errorf("<event> needs a type")
-		}
-		if seen[ev.Type] {
-			return fmt.Errorf("event %q declared twice", ev.Type)
-		}
-		seen[ev.Type] = true
-		res, ok := resources[ev.Resource]
-		if !ok {
-			return fmt.Errorf("event %q names resource %q, which is not declared", ev.Type, ev.Resource)
-		}
-		if ev.Subject == "" {
-			return fmt.Errorf("event %q needs a <subject>: without one the engine cannot tell which deliveries order against each other", ev.Type)
-		}
-		if ev.Clock == "" && !ev.Unordered {
-			return fmt.Errorf("event %q needs a <clock>, or must declare unordered=\"true\": a delivery whose moment is unknown can overwrite newer truth silently", ev.Type)
-		}
-		if ev.Clock != "" && ev.Unordered {
-			return fmt.Errorf("event %q declares both a clock and unordered", ev.Type)
-		}
-		if len(ev.Sets) == 0 && ev.Invalidate == nil {
-			return fmt.Errorf("event %q does nothing: give it <set> fields, or an <invalidate> with a reason", ev.Type)
-		}
-		if len(ev.Sets) > 0 && ev.Invalidate != nil {
-			return fmt.Errorf("event %q both writes and invalidates; the write already replaced the row", ev.Type)
-		}
-		if ev.Invalidate != nil && strings.TrimSpace(ev.Invalidate.Reason) == "" {
-			return fmt.Errorf("event %q: <invalidate> needs a reason stating why the payload cannot answer -- throwing away a value the upstream just handed us is the bug this asks you to justify", ev.Type)
-		}
-		if res.Store == StoreDocument && len(ev.Sets) > 0 {
-			return fmt.Errorf("event %q writes fields into resource %q, which stores a document", ev.Type, res.Name)
-		}
-		known := make(map[string]bool, len(res.Fields)+len(res.Keys))
-		for _, f := range res.Fields {
-			known[f.Name] = true
-		}
-		for _, k := range res.Keys {
-			known[k.Name] = true
-		}
-		for _, st := range ev.Sets {
-			if !known[st.Field] {
-				return fmt.Errorf("event %q sets %q, which resource %q does not declare", ev.Type, st.Field, res.Name)
-			}
-			if (st.From == "") == (st.Expr == "") {
-				return fmt.Errorf("event %q set %q: give it a payload path or an expr, not both and not neither", ev.Type, st.Field)
-			}
-		}
-	}
-	return nil
 }
