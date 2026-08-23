@@ -64,6 +64,12 @@ A resource declares WHAT IS STORED. Its `<key>` children are the identity: the
 primary key of the derived table and the cache key of every route that reads it.
 There is no actor column and no way to declare one.
 
+A key reads the document field of its own name; `from=` says otherwise, and
+`fold="true"` lower-cases the value so a differently cased URL cannot land on a
+row a delivery never reaches. The engine's own per-row column is
+`mirror_written_at`, prefixed so it cannot collide with a field the upstream
+has — `updated_at` is exactly the name an API uses.
+
 `<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is
 a path into the absorbed document (`owner.login`) or a template. `store="document"`
 on the resource stores the response body itself rather than columns, for a route
