@@ -6,7 +6,7 @@
 	This file is the point of the project. github-state-mirror implements the
 	same thing by hand, and every mechanism in it is generic except the
 	vocabulary below: which fields exist, which payload field carries a
-	delivery's clock, and what "public" means here. The engine holds the rest --
+	delivery's clock, and what "public" means here. The engine holds the rest -
 	the derived schema, the freshness bookkeeping, the ordering, the reveal
 	ladder, the passthrough.
 
@@ -148,7 +148,7 @@
 		pull request unless the engine can tell it is looking at the past.
 
 		The clock is always a field GITHUB sets. A commit's own timestamp is
-		user-settable -- it survives a rebase and it can be in the future --
+		user-settable - it survives a rebase and it can be in the future -
 		so it is never the clock, however tempting its name.
 	-->
 	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event" reorder-window="2s">
