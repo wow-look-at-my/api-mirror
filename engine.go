@@ -79,6 +79,11 @@ func NewEngine(spec *Spec, store *Store, observe func(Exchange)) (*Engine, error
 
 // resolveVars renders the spec's vars once, in declaration order, each seeing
 // the ones before it.
+//
+// It returns the whole template context, not just the vars, because that
+// context is what every later template is rendered against: a spec writes
+// `.var.base` and `.env.TOKEN`, so handing the bare vars map down would leave
+// both unresolvable.
 func resolveVars(spec *Spec) (map[string]any, error) {
 	vars := map[string]any{}
 	ctx := map[string]any{"env": envMap(), "var": vars}
@@ -89,7 +94,7 @@ func resolveVars(spec *Spec) (map[string]any, error) {
 		}
 		vars[v.Name] = s
 	}
-	return vars, nil
+	return ctx, nil
 }
 
 // SetIngest installs the webhook handler. The Engine keeps it whole rather than
@@ -181,7 +186,14 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	if status := e.rememberedRefusal(ctx, kind, key); status != 0 {
+	refusal := e.rememberedRefusal(ctx, kind, key)
+	if outcome == OutcomeMiss && refusal == 0 {
+		// The fetch went out with this caller's own credential and the upstream
+		// answered it. That is the same proof a probe buys, so it renews the
+		// grant here and a steady consumer never has to re-prove itself.
+		e.reveal.RenewOn2xx(ctx, principal, res, m.key, http.StatusOK)
+	}
+	if status := refusal; status != 0 {
 		// The upstream stated this refusal and the route declared it worth
 		// keeping, so it is replayed as the refusal it was.
 		w.Header().Set("X-Mirror-Cache", string(outcome))

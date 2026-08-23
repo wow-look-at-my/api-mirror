@@ -62,16 +62,15 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			return nil, PassUnrouted, fmt.Errorf("route %s names unknown resource %q", rt.Path, rt.Resource)
 		}
 		for param, value := range params {
-			name := param
-			if mapped, ok := rt.Params[param]; ok {
-				name = mapped
-			}
+			name := rt.column(param)
 			key[name] = foldFor(res, name, value)
 		}
 		for _, q := range rt.Query {
-			if q.Key {
-				key[q.Name] = foldFor(res, q.Name, query[q.Name])
+			if !q.Key {
+				continue
 			}
+			name := rt.column(q.Name)
+			key[name] = foldFor(res, name, query[q.Name])
 		}
 		return &match{route: rt, key: key, query: query}, "", nil
 	}

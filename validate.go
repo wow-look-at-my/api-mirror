@@ -157,6 +157,9 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 		supplied = append(supplied, name)
 	}
 	supplied = append(supplied, rt.queryKeys()...)
+	if rt.Complete && !rt.List {
+		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
+	}
 	if !rt.List {
 		for _, k := range res.Keys {
 			if !slices.Contains(supplied, k.Name) {
@@ -167,15 +170,25 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	return rt.validateQuery()
 }
 
-// queryKeys names the key components this route's query supplies.
+// queryKeys names the resource columns this route's query supplies.
 func (rt *Route) queryKeys() []string {
 	out := make([]string, 0, len(rt.Query))
 	for _, q := range rt.Query {
 		if q.Key {
-			out = append(out, q.Name)
+			out = append(out, rt.column(q.Name))
 		}
 	}
 	return out
+}
+
+// column resolves an incoming parameter name to the resource column it fills.
+// A <map> exists because a URL's spelling is the upstream's choice and a
+// column's is the spec's, and neither should have to bend to the other.
+func (rt *Route) column(param string) string {
+	if mapped, ok := rt.Params[param]; ok {
+		return mapped
+	}
+	return param
 }
 
 func (rt *Route) validateQuery() error {

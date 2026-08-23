@@ -18,10 +18,15 @@ import (
 func absorb(r *Resource, doc any) (Row, error) {
 	row := make(Row, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
-		if k.From == "" {
-			continue
+		// A key with no stated path reads the field of its own name. That is
+		// what <key name="id"/> plainly means, and requiring `from="id"` to say
+		// it would be ceremony -- one a spec author only discovers when a list
+		// route stores nothing.
+		from := k.From
+		if from == "" {
+			from = k.Name
 		}
-		v := lookupPath(doc, k.From)
+		v := lookupPath(doc, from)
 		if v == nil {
 			continue
 		}

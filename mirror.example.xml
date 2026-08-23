@@ -55,9 +55,15 @@
 		</reveal>
 	</resource>
 
+	<!--
+		A post is identified by its id alone, so that is the whole key. The
+		author is an attribute, and a list route may still select on it: a
+		filter narrows which rows an answer holds without becoming part of what
+		identifies one.
+	-->
 	<resource name="post" ttl="1h">
 		<key name="id"/>
-		<key name="user_id" from="userId"/>
+		<field name="user_id" type="int">userId</field>
 		<field name="title" type="text">title</field>
 		<field name="body" type="text">body</field>
 		<reveal>
@@ -91,9 +97,17 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/posts" resource="post" list="true">
+	<!--
+		complete="true" says this answer is the WHOLE set of posts for that
+		user, so a post missing from it has been deleted and its row goes with
+		it. Without it a list only ever adds, and a deleted post is served for
+		good. The /users route above does NOT say it, because its _limit makes
+		the answer a slice rather than the set.
+	-->
+	<route method="GET" path="/posts" resource="post" list="true" complete="true">
 		<accept>application/json</accept>
 		<param name="userId" type="int" key="true" min="1" max="1000"/>
+		<map param="userId" key="user_id"/>
 	</route>
 
 </mirror>

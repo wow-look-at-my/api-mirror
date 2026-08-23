@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -49,8 +50,12 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe func(Exchange)) (*Up
 		return nil, fmt.Errorf("upstream base: %w", err)
 	}
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	if base == "" {
-		return nil, fmt.Errorf("upstream base resolved to nothing")
+	// A template over a value the spec never set renders to something that is
+	// not a URL rather than to nothing, so emptiness is not the only shape this
+	// failure takes. Requiring a scheme and a host catches both, at boot,
+	// instead of sending every request to a relative address.
+	if u, err := url.Parse(base); base == "" || err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("upstream base resolved to nothing usable: %q is not an absolute URL", base)
 	}
 	if observe == nil {
 		observe = func(Exchange) {}

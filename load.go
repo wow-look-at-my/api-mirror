@@ -290,7 +290,7 @@ func ttlAttr(n *node, what string) (time.Duration, error) {
 }
 
 func buildRoute(n *node) (*Route, error) {
-	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list"); err != nil {
+	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list", "complete"); err != nil {
 		return nil, err
 	}
 	rt := &Route{
@@ -298,6 +298,7 @@ func buildRoute(n *node) (*Route, error) {
 		Path:     n.Attr("path"),
 		Resource: n.Attr("resource"),
 		List:     n.Attr("list") == "true",
+		Complete: n.Attr("complete") == "true",
 	}
 	if rt.Method == "" {
 		rt.Method = "GET"

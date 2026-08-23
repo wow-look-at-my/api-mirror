@@ -156,6 +156,11 @@ func (e *Engine) absorbAnswer(ctx context.Context, plan *fetchPlan, doc any) err
 		}
 		rows = append(rows, row)
 	}
+	if plan.route.Complete {
+		// The route says this answer is the whole set, so an item missing from
+		// it is an item the upstream deleted.
+		return e.store.ReplaceMany(ctx, plan.res, plan.key, rows, now)
+	}
 	return e.store.PutMany(ctx, plan.res, rows, now)
 }
 

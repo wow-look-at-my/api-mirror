@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 )
@@ -299,9 +301,25 @@ func refuse(status int) Verdict {
 // and are escaped, which keeps an absent component and a component containing
 // the separator distinguishable: two different keys cannot render one string.
 func keyString(res *Resource, key map[string]string) string {
-	parts := make([]string, 0, len(res.Keys))
+	parts := make([]string, 0, len(key)+len(res.Keys))
+	named := make([]string, 0, len(res.Keys))
 	for _, k := range res.Keys {
 		parts = append(parts, url.PathEscape(key[k.Name]))
+		named = append(named, k.Name)
+	}
+	// A list route may also select by a stored FIELD -- every post by an
+	// author. That filter changes which rows the answer holds, so it belongs in
+	// the string: without it two different lists share one freshness marker and
+	// the second is served the first one's rows.
+	extra := make([]string, 0, len(key))
+	for name := range key {
+		if !slices.Contains(named, name) {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	for _, name := range extra {
+		parts = append(parts, url.PathEscape(name)+"="+url.PathEscape(key[name]))
 	}
 	return strings.Join(parts, "/")
 }

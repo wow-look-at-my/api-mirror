@@ -61,10 +61,14 @@ type Resource struct {
 	TTL    time.Duration
 	Keys   []Key
 	Fields []Field
-	// Drop lists key patterns removed from a document before it is stored, in
-	// StoreDocument mode. A URL is the canonical case: it points back at the
-	// upstream, so serving one hands the consumer a way around the mirror. A
-	// pattern is an exact name or a "*suffix" form.
+	// Drop lists key patterns removed from an absorbed document. A URL is the
+	// canonical case: it points back at the upstream, so serving one hands the
+	// consumer a way around the mirror. A pattern is an exact name or a
+	// "*suffix" form.
+	//
+	// It carries the weight in StoreDocument mode. In StoreColumns mode the
+	// projection already drops everything undeclared, so a pattern there only
+	// documents the intent.
 	Drop []string
 	// Keep rescues exact key names from Drop. Every entry is a claim that some
 	// consumer needs that field, so the spec states the consumer in the keep's
@@ -151,6 +155,14 @@ type Route struct {
 	// List marks a route whose answer is an ARRAY of the resource's rows rather
 	// than one row. The parent keys select the rows.
 	List bool
+	// Complete says this answer is the WHOLE set under its parent key, so an
+	// item missing from it has been deleted upstream and its row goes with it.
+	//
+	// Without it a list only ever adds, and an item that vanished upstream is
+	// served for good. It is declared rather than inferred because only the
+	// spec author knows whether a page is the whole set: replace-syncing one
+	// page of a paginated list would throw away every other page.
+	Complete bool
 	// Query is the modelled query shape. A parameter outside it, a repeated
 	// parameter, or a value outside a declared range makes the request a
 	// passthrough with a stated reason.

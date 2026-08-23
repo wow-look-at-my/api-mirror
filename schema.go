@@ -46,7 +46,10 @@ func resourceDDL(r *Resource) string {
 			fmt.Fprintf(&b, "\t%s %s,\n", f.Name, sqlType(f.Type))
 		}
 	}
-	b.WriteString("\tupdated_at INTEGER NOT NULL,\n")
+	// The engine's own column carries a mirror_ prefix so it cannot collide
+	// with a field the upstream has. "updated_at" is exactly the name an API
+	// uses, and reserving it would make a common field undeclarable.
+	b.WriteString("\tmirror_written_at INTEGER NOT NULL,\n")
 	names := make([]string, 0, len(r.Keys))
 	for _, k := range r.Keys {
 		names = append(names, k.Name)
@@ -98,7 +101,7 @@ func columnsOf(r *Resource) []string {
 }
 
 // reservedColumns are the names the engine owns inside a resource table.
-var reservedColumns = []string{"updated_at", "document", "rowid"}
+var reservedColumns = []string{"mirror_written_at", "document", "rowid"}
 
 // validateNames rejects a spec whose names would collide with the engine's own,
 // or with SQL. It runs before any DDL is derived, because a collision surfaces

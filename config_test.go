@@ -217,3 +217,229 @@ func TestParseDuration(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not a duration")
 }
+
+func TestValidateRejectsSpecWithoutAName(t *testing.T) {
+	s := goodSpec()
+	s.Name = "   "
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "needs a name")
+}
+
+func TestValidateRejectsUpstreamWithoutABase(t *testing.T) {
+	s := goodSpec()
+	s.Upstream.Base = ""
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "needs a base URL")
+}
+
+func TestValidateRejectsAResourceDeclaredTwice(t *testing.T) {
+	s := goodSpec()
+	s.Resources = append(s.Resources, s.Resources[0])
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "declared twice",
+		"two resources of one name would derive two tables of one name")
+}
+
+func TestValidateRejectsAnUnnamedResource(t *testing.T) {
+	s := goodSpec()
+	s.Resources[0].Name = " "
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "<resource> needs a name")
+}
+
+func TestValidateRejectsAnUnnamedKeyAndADuplicateOne(t *testing.T) {
+	s := goodSpec()
+	s.Resources[0].Keys = []Key{{Name: ""}}
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "<key> needs a name")
+
+	s = goodSpec()
+	s.Resources[0].Keys = []Key{{Name: "owner"}, {Name: "owner"}}
+	err = s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "declared twice",
+		"one column cannot be two key components; the primary key would name it twice")
+}
+
+func TestValidateRejectsAnUnknownStoreMode(t *testing.T) {
+	s := goodSpec()
+	s.Resources[0].Store = StoreMode("blob")
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown store mode")
+}
+
+func TestValidateRejectsFieldMistakes(t *testing.T) {
+	cases := []struct {
+		name  string
+		field Field
+		want  string
+	}{
+		{name: "no name", field: Field{Type: FieldText, From: "a"}, want: "<field> needs a name"},
+		{
+			name:  "a name a key already took",
+			field: Field{Name: "owner", Type: FieldText, From: "a"},
+			want:  "declared twice",
+		},
+		{name: "an unknown type", field: Field{Name: "x", Type: "colour", From: "a"}, want: "unknown type"},
+		{
+			name:  "neither a path nor an expr",
+			field: Field{Name: "x", Type: FieldText},
+			want:  "not both and not neither",
+		},
+		{
+			name:  "both a path and an expr",
+			field: Field{Name: "x", Type: FieldText, From: "a", Expr: "{{ .a }}"},
+			want:  "not both and not neither",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := goodSpec()
+			s.Resources[0].Fields = append(s.Resources[0].Fields, tc.field)
+			err := s.validate()
+			require.Error(t, err, "a field with %s cannot be turned into a column that reads back", tc.name)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// A keep is a claim that some consumer needs a field the drop rule would take.
+// Without the consumer named, the hole in the rule has no owner and no expiry.
+func TestValidateRejectsAKeepThatExplainsNothing(t *testing.T) {
+	s := goodSpec()
+	s.Resources[0].Drop = []string{"*url"}
+	s.Resources[0].Keep = []Keep{{Name: "html_url"}}
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "needs a reason")
+
+	s.Resources[0].Keep = []Keep{{Name: "", Reason: "because"}}
+	err = s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "<keep> needs a name")
+}
+
+func TestValidateRejectsAKeepWithNoDropToRescueFrom(t *testing.T) {
+	s := goodSpec()
+	s.Resources[0].Keep = []Keep{{Name: "html_url", Reason: "the viewer links back to the page"}}
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a <drop> it does not have",
+		"a keep with no drop reads as protection and provides none")
+}
+
+func TestValidateRejectsAProbeWithoutAPathOrADenyTTL(t *testing.T) {
+	s := goodSpec()
+	s.Resources[0].Reveal = &Reveal{Probe: &Probe{Method: "GET"}, GrantTTL: time.Hour, DenyTTL: time.Minute}
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "<probe> needs a path")
+
+	s.Resources[0].Reveal = &Reveal{
+		Probe:    &Probe{Method: "GET", Path: "/repos/{{ .key.owner }}"},
+		GrantTTL: time.Hour,
+	}
+	err = s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "<deny ttl=>",
+		"with no deny TTL every refused caller re-asks the upstream on every request")
+}
+
+func TestValidateRejectsARelativeRoutePath(t *testing.T) {
+	s := goodSpec()
+	s.Routes[0].Path = "repos/{owner}/{name}"
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "absolute path")
+}
+
+func TestValidateAcceptsAListRouteThatSuppliesNoKey(t *testing.T) {
+	s := goodSpec()
+	s.Routes[0].Path = "/repos"
+	s.Routes[0].List = true
+	require.NoError(t, s.validate(),
+		"a list route's parent keys select rows; it does not have to name every key component")
+}
+
+func TestValidateAcceptsAKeyedQueryParamAsAKeySource(t *testing.T) {
+	s := goodSpec()
+	s.Routes[0].Path = "/repos/{owner}"
+	s.Routes[0].Query = []QueryParam{{Name: "name", Type: FieldText, Key: true}}
+	require.NoError(t, s.validate(), "a keyed query parameter supplies a key component just as a path segment does")
+}
+
+func TestValidateRejectsQueryMistakes(t *testing.T) {
+	cases := []struct {
+		name  string
+		query []QueryParam
+		want  string
+	}{
+		{name: "no name", query: []QueryParam{{Type: FieldText, Key: true}}, want: "<param> needs a name"},
+		{
+			name:  "declared twice",
+			query: []QueryParam{{Name: "page", Type: FieldInt, Key: true}, {Name: "page", Type: FieldInt, Key: true}},
+			want:  "declared twice",
+		},
+		{name: "no type", query: []QueryParam{{Name: "page", Key: true}}, want: "needs a type"},
+		{
+			name:  "a type a query value cannot carry",
+			query: []QueryParam{{Name: "page", Type: FieldJSON, Key: true}},
+			want:  "text, int or bool",
+		},
+		{
+			name:  "a max below its min",
+			query: []QueryParam{{Name: "page", Type: FieldInt, Key: true, Min: 10, Max: 1}},
+			want:  "is below min",
+		},
+		{
+			name:  "unkeyed with no default",
+			query: []QueryParam{{Name: "page", Type: FieldInt}},
+			want:  "share one cached answer",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := goodSpec()
+			s.Routes[0].Query = tc.query
+			err := s.validate()
+			require.Error(t, err, "a param that is %s describes a cache key nobody can reason about", tc.name)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestValidateRejectsAnAcceptThatIsNotAMediaType(t *testing.T) {
+	s := goodSpec()
+	s.Routes[0].Accept = []string{"json"}
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not a media type")
+}
+
+// A transient failure stored is an outage remembered long after it ended, so the
+// spec is not allowed to declare one authoritative.
+func TestValidateRejectsAbsorbingATransientStatus(t *testing.T) {
+	for _, code := range []int{429, 500, 503} {
+		s := goodSpec()
+		s.Routes[0].Absorb = []int{code}
+		err := s.validate()
+		require.Errorf(t, err, "absorbing %d would cache an outage", code)
+		assert.Contains(t, err.Error(), "refusing to absorb")
+	}
+
+	s := goodSpec()
+	s.Routes[0].Absorb = []int{700}
+	err := s.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not an HTTP status")
+
+	s = goodSpec()
+	s.Routes[0].Absorb = []int{404, 410}
+	require.NoError(t, s.validate(), "a 4xx is the upstream stating a fact, and a route may name it")
+}

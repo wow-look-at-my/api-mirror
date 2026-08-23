@@ -40,14 +40,16 @@ a resource with no reveal rule.
 	<upstream base="{{ .var.upstream }}"/>
 
 	<resource name="repo" ttl="6h">
-		<key name="owner"/>
-		<key name="name"/>
+		<key name="owner" from="owner.login" fold="true"/>
+		<key name="name" from="name" fold="true"/>
 		<field name="visibility" type="text">visibility</field>
 		<field name="default_branch" type="text">default_branch</field>
+		<reveal>...</reveal>
 	</resource>
 
-	<route method="GET" path="/repos/{owner}/{repo}" resource="repo">
-		<reveal .../>
+	<route method="GET" path="/repos/{owner}/{name}" resource="repo">
+		<accept>application/json</accept>
+		<absorb status="404"/>
 	</route>
 
 	<events>
@@ -74,6 +76,21 @@ become the key. A cached route serves stored state; on a miss or a stale row it
 fetches upstream, absorbs, and REBUILDS the answer from what it stored — a route
 never replays bytes it did not parse.
 
+`<param>` declares the query shape: a name, a type, a default, and a range. A
+parameter the route does not declare, a repeated one, or a value outside its
+range makes the request a passthrough rather than an answer keyed on a shape the
+spec never described. `<accept>` does the same for media types. `<absorb
+status="404"/>` names an upstream refusal worth remembering, and a status named
+nowhere relays without being stored.
+
+`list="true"` marks a route whose answer is an array of the resource's rows.
+`complete="true"` adds that the answer is the WHOLE set under its parent key, so
+an item missing from it has been deleted and its row goes too. It is declared
+rather than inferred, because only the author knows whether a page is the whole
+set — replace-syncing one page of a paginated list would throw away the others.
+A list without it only ever adds, and an item that vanished upstream is served
+until its row is evicted some other way.
+
 A route the spec does not declare is a passthrough: forwarded verbatim,
 uncached, and reported as uncached. There is no third state.
 
@@ -92,10 +109,13 @@ there is no "does anyone have this cached?" gate to write.
 
 ### `<reveal>` — who may be told
 
+A `<reveal>` sits on the resource, not the route: it governs the FACT, so every
+route that reads that fact is gated the same way.
+
 ```xml
 <reveal>
 	<public>{{ eq .row.visibility "public" }}</public>
-	<probe method="GET" path="/repos/{owner}/{repo}"/>
+	<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.name }}"/>
 	<grant ttl="24h"/>
 	<deny ttl="5m"/>
 </reveal>

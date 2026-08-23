@@ -50,6 +50,42 @@ func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Ti
 	return tx.Commit()
 }
 
+// ReplaceMany makes the rows under one partial key exactly the rows given, in
+// one transaction.
+//
+// An upsert alone cannot express a DELETION. A list answer that no longer
+// mentions an item is the upstream saying the item is gone, and a store that
+// only ever adds keeps serving it for good. Both halves have to land together:
+// a delete that commits without its insert empties the list instead of
+// correcting it.
+func (s *Store) ReplaceMany(ctx context.Context, r *Resource, key map[string]string, rows []Row, at time.Time) error {
+	where, args := keyPredicate(r, key)
+	if where == "" {
+		return fmt.Errorf("replace %s: no key supplied, which would empty the table", r.Name)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store %s: %w", r.Name, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, deleteStmt(r, where), args...); err != nil {
+		return fmt.Errorf("store %s: %w", r.Name, err)
+	}
+	stmt, err := tx.PrepareContext(ctx, insertStmt(r))
+	if err != nil {
+		return fmt.Errorf("store %s: %w", r.Name, err)
+	}
+	defer stmt.Close()
+
+	for _, row := range rows {
+		if _, err := stmt.ExecContext(ctx, rowArgs(r, row, at)...); err != nil {
+			return fmt.Errorf("store %s: %w", r.Name, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // Get reads one row by its full key. A missing row is (nil, nil): absent is an
 // answer here, not an error.
 func (s *Store) Get(ctx context.Context, r *Resource, key map[string]string) (Row, error) {
@@ -116,7 +152,7 @@ func (s *Store) Delete(ctx context.Context, r *Resource, key map[string]string) 
 // insertStmt builds the one write statement every resource write uses.
 func insertStmt(r *Resource) string {
 	cols := columnsOf(r)
-	return fmt.Sprintf(`INSERT OR REPLACE INTO %s (%s, updated_at) VALUES (%s)`,
+	return fmt.Sprintf(`INSERT OR REPLACE INTO %s (%s, mirror_written_at) VALUES (%s)`,
 		resourceTable(r.Name), strings.Join(cols, ", "), placeholders(len(cols)+1))
 }
 
@@ -151,18 +187,29 @@ func rowArgs(r *Resource, row Row, at time.Time) []any {
 	return append(args, at.Unix())
 }
 
-// keyPredicate builds a WHERE clause over the key columns present in key. Only
-// declared key columns are used, so a caller cannot smuggle a predicate in.
+// keyPredicate builds a WHERE clause over the columns present in key.
+//
+// A key column is the usual case. A FIELD is allowed too, because a list route
+// often selects by an attribute rather than by identity -- every post by an
+// author, where the post's identity is its own id. Only declared columns are
+// used, in the resource's own order, so a caller cannot smuggle a predicate in
+// and the same request always builds the same statement.
 func keyPredicate(r *Resource, key map[string]string) (string, []any) {
 	var terms []string
 	var args []any
-	for _, k := range r.Keys {
-		v, ok := key[k.Name]
+	add := func(name string) {
+		v, ok := key[name]
 		if !ok {
-			continue
+			return
 		}
-		terms = append(terms, k.Name+" = ?")
+		terms = append(terms, name+" = ?")
 		args = append(args, v)
+	}
+	for _, k := range r.Keys {
+		add(k.Name)
+	}
+	for _, f := range r.Fields {
+		add(f.Name)
 	}
 	return strings.Join(terms, " AND "), args
 }

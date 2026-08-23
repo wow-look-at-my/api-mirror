@@ -374,7 +374,7 @@ func TestFreshnessLifecycle(t *testing.T) {
 func TestOpenRejectsUnusableNames(t *testing.T) {
 	cases := map[string]func(*Spec){
 		"engine prefix": func(s *Spec) { s.Resources[0].Name = "mirror_repo" },
-		"engine column": func(s *Spec) { s.Resources[0].Fields[0].Name = "updated_at" },
+		"engine column": func(s *Spec) { s.Resources[0].Fields[0].Name = "mirror_written_at" },
 		"sql keyword":   func(s *Spec) { s.Resources[0].Fields[0].Name = "order" },
 		"leading digit": func(s *Spec) { s.Resources[0].Fields[0].Name = "1st" },
 		"punctuation":   func(s *Spec) { s.Resources[0].Fields[0].Name = "we-ird" },
