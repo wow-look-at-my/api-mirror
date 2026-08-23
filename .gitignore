@@ -5,6 +5,7 @@
 /mirror.xml
 
 # Runtime state
+*.pid
 *.db
 *.db-shm
 *.db-wal
