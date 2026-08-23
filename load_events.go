@@ -27,7 +27,7 @@ func buildEvents(n *node) (*Events, error) {
 		e.ReorderWindow = d
 	}
 	for _, child := range n.Children() {
-		switch child.Name {
+		switch child.Name() {
 		case "secret":
 			s, err := compileContent(child)
 			if err != nil {
@@ -41,7 +41,7 @@ func buildEvents(n *node) (*Events, error) {
 			}
 			e.List = append(e.List, ev)
 		default:
-			return nil, fmt.Errorf("<events>: unexpected child element <%s>", child.Name)
+			return nil, fmt.Errorf("<events>: unexpected child element <%s>", child.Name())
 		}
 	}
 	return e, nil
@@ -82,7 +82,7 @@ func buildEvent(n *node) (*Event, error) {
 		AbsorbWhenSuperseded: n.Attr("absorb-when-superseded") == "true",
 	}
 	for _, child := range n.Children() {
-		switch child.Name {
+		switch child.Name() {
 		case "subject":
 			s, err := compileContent(child)
 			if err != nil {
@@ -101,7 +101,7 @@ func buildEvent(n *node) (*Event, error) {
 			}
 			ev.Invalidate = &Invalidate{Reason: child.Attr("reason")}
 		default:
-			return nil, fmt.Errorf("<event type=%q>: unexpected child element <%s>", ev.Type, child.Name)
+			return nil, fmt.Errorf("<event type=%q>: unexpected child element <%s>", ev.Type, child.Name())
 		}
 	}
 	return ev, nil
@@ -113,8 +113,8 @@ func buildSets(n *node, eventType string) ([]Set, error) {
 	}
 	var out []Set
 	for _, child := range n.Children() {
-		if child.Name != "set" {
-			return nil, fmt.Errorf("event %q: <apply> holds <set> elements, not <%s>", eventType, child.Name)
+		if child.Name() != "set" {
+			return nil, fmt.Errorf("event %q: <apply> holds <set> elements, not <%s>", eventType, child.Name())
 		}
 		if err := checkAttrs(child, "field", "expr", "null"); err != nil {
 			return nil, err

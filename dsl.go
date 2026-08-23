@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/wow-look-at-my/api-dsl"
+	apidsl "github.com/wow-look-at-my/api-dsl"
 )
 
 // The spec language lives in api-dsl, shared with api-cli. These wrappers keep

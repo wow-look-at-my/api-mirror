@@ -1,0 +1,223 @@
+<?xml version="1.1" encoding="UTF-8"?>
+
+<!--
+	Reference schema for an api-mirror spec.
+
+	The loader is authoritative: it rejects things this file cannot express,
+	and its messages say why. This exists for editor completion and for
+	reading, and CI checks that both shipped specs still match it.
+-->
+
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+	<!-- Placeholders, shared with api-cli through api-dsl. -->
+	<xs:complexType name="value">
+		<xs:attribute name="name" type="xs:string"/>
+		<xs:attribute name="expr" type="xs:string"/>
+		<xs:attribute name="default" type="xs:string"/>
+		<xs:attribute name="as" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="ifType" mixed="true">
+		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
+		<xs:attribute name="test" type="xs:string" use="required"/>
+		<xs:attribute name="eq" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="forType" mixed="true">
+		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
+		<xs:attribute name="each" type="xs:string" use="required"/>
+	</xs:complexType>
+
+	<xs:group name="placeholders">
+		<xs:choice>
+			<xs:element name="value" type="value"/>
+			<xs:element name="if" type="ifType"/>
+			<xs:element name="for" type="forType"/>
+			<xs:element name="else"/>
+		</xs:choice>
+	</xs:group>
+
+	<xs:complexType name="content" mixed="true">
+		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
+	</xs:complexType>
+
+	<xs:simpleType name="fieldType">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="text"/>
+			<xs:enumeration value="int"/>
+			<xs:enumeration value="bool"/>
+			<xs:enumeration value="time"/>
+			<xs:enumeration value="json"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!-- The spec. -->
+	<xs:element name="mirror">
+		<xs:complexType>
+			<xs:choice minOccurs="0" maxOccurs="unbounded">
+				<xs:element name="description" type="xs:string"/>
+				<xs:element name="vars" type="vars"/>
+				<xs:element name="upstream" type="upstream"/>
+				<xs:element name="resource" type="resource"/>
+				<xs:element name="route" type="route"/>
+				<xs:element name="events" type="events"/>
+			</xs:choice>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+			<xs:attribute name="schema" type="xs:string"/>
+		</xs:complexType>
+	</xs:element>
+
+	<xs:complexType name="vars">
+		<xs:sequence>
+			<xs:element name="var" minOccurs="0" maxOccurs="unbounded">
+				<xs:complexType mixed="true">
+					<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
+					<xs:attribute name="name" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="upstream">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="header" type="headerType"/>
+			<xs:element name="forward">
+				<xs:complexType>
+					<xs:attribute name="name" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:choice>
+		<xs:attribute name="base" type="xs:string" use="required"/>
+	</xs:complexType>
+
+	<xs:complexType name="headerType" mixed="true">
+		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
+		<xs:attribute name="name" type="xs:string" use="required"/>
+	</xs:complexType>
+
+	<xs:complexType name="resource">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="key">
+				<xs:complexType>
+					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="from" type="xs:string"/>
+					<xs:attribute name="fold" type="xs:boolean"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="field">
+				<xs:complexType mixed="true">
+					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="type" type="fieldType"/>
+					<xs:attribute name="expr" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="drop">
+				<xs:complexType>
+					<xs:attribute name="key" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="keep">
+				<xs:complexType>
+					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="reason" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="reveal" type="reveal"/>
+		</xs:choice>
+		<xs:attribute name="name" type="xs:string" use="required"/>
+		<xs:attribute name="ttl" type="xs:string"/>
+		<xs:attribute name="store" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="reveal">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="public" type="content"/>
+			<xs:element name="probe">
+				<xs:complexType>
+					<xs:attribute name="method" type="xs:string"/>
+					<xs:attribute name="path" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="grant" type="ttlType"/>
+			<xs:element name="deny" type="ttlType"/>
+		</xs:choice>
+	</xs:complexType>
+
+	<xs:complexType name="ttlType">
+		<xs:attribute name="ttl" type="xs:string" use="required"/>
+	</xs:complexType>
+
+	<xs:complexType name="route">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="accept" type="xs:string"/>
+			<xs:element name="param">
+				<xs:complexType>
+					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="type" type="fieldType"/>
+					<xs:attribute name="default" type="xs:string"/>
+					<xs:attribute name="min" type="xs:integer"/>
+					<xs:attribute name="max" type="xs:integer"/>
+					<xs:attribute name="key" type="xs:boolean"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="absorb">
+				<xs:complexType>
+					<xs:attribute name="status" type="xs:integer" use="required"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="map">
+				<xs:complexType>
+					<xs:attribute name="param" type="xs:string" use="required"/>
+					<xs:attribute name="key" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:choice>
+		<xs:attribute name="method" type="xs:string"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="resource" type="xs:string" use="required"/>
+		<xs:attribute name="ttl" type="xs:string"/>
+		<xs:attribute name="list" type="xs:boolean"/>
+	</xs:complexType>
+
+	<xs:complexType name="events">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="secret" type="content"/>
+			<xs:element name="event" type="event"/>
+		</xs:choice>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="signature-header" type="xs:string" use="required"/>
+		<xs:attribute name="type-header" type="xs:string" use="required"/>
+		<xs:attribute name="reorder-window" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="event">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="subject" type="content"/>
+			<xs:element name="apply">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="set" minOccurs="0" maxOccurs="unbounded">
+							<xs:complexType mixed="true">
+								<xs:attribute name="field" type="xs:string" use="required"/>
+								<xs:attribute name="expr" type="xs:string"/>
+								<xs:attribute name="null" type="xs:string"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="invalidate">
+				<xs:complexType>
+					<xs:attribute name="reason" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:choice>
+		<xs:attribute name="type" type="xs:string" use="required"/>
+		<xs:attribute name="resource" type="xs:string" use="required"/>
+		<xs:attribute name="clock" type="xs:string"/>
+		<xs:attribute name="unordered" type="xs:boolean"/>
+		<xs:attribute name="absorb-when-superseded" type="xs:boolean"/>
+	</xs:complexType>
+
+</xs:schema>

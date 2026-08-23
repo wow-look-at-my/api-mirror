@@ -32,12 +32,12 @@ func Load(path string) (*Spec, error) {
 
 // ParseSpec builds a Spec from XML source.
 func ParseSpec(raw []byte) (*Spec, error) {
-	root, err := parseDOM(raw, "mirror")
+	root, err := parseDOM(raw)
 	if err != nil {
 		return nil, err
 	}
-	if root.Name != "mirror" {
-		return nil, fmt.Errorf("root element is <%s>, expected <mirror>", root.Name)
+	if root.Name() != "mirror" {
+		return nil, fmt.Errorf("root element is <%s>, expected <mirror>", root.Name())
 	}
 	return buildSpec(root)
 }
@@ -48,7 +48,7 @@ func buildSpec(n *node) (*Spec, error) {
 	}
 	spec := &Spec{Name: n.Attr("name")}
 	for _, child := range n.Children() {
-		switch child.Name {
+		switch child.Name() {
 		case "description":
 			// Prose for a human reading the file. It is not used at run time.
 		case "vars":
@@ -82,7 +82,7 @@ func buildSpec(n *node) (*Spec, error) {
 			}
 			spec.Events = ev
 		default:
-			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name)
+			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}
 	}
 	return spec, nil
@@ -94,8 +94,8 @@ func buildVars(n *node) ([]Var, error) {
 	}
 	var out []Var
 	for _, child := range n.Children() {
-		if child.Name != "var" {
-			return nil, fmt.Errorf("<vars>: unexpected child element <%s>", child.Name)
+		if child.Name() != "var" {
+			return nil, fmt.Errorf("<vars>: unexpected child element <%s>", child.Name())
 		}
 		if err := checkAttrs(child, "name"); err != nil {
 			return nil, err
@@ -119,7 +119,7 @@ func buildUpstream(n *node) (Upstream, error) {
 	}
 	up := Upstream{Base: n.Attr("base")}
 	for _, child := range n.Children() {
-		switch child.Name {
+		switch child.Name() {
 		case "header":
 			h, err := buildHeader(child)
 			if err != nil {
@@ -136,7 +136,7 @@ func buildUpstream(n *node) (Upstream, error) {
 			}
 			up.Forward = append(up.Forward, name)
 		default:
-			return Upstream{}, fmt.Errorf("<upstream>: unexpected child element <%s>", child.Name)
+			return Upstream{}, fmt.Errorf("<upstream>: unexpected child element <%s>", child.Name())
 		}
 	}
 	return up, nil
@@ -181,7 +181,7 @@ func buildResource(n *node) (*Resource, error) {
 }
 
 func addResourceChild(r *Resource, child *node) error {
-	switch child.Name {
+	switch child.Name() {
 	case "key":
 		if err := checkAttrs(child, "name", "from", "fold"); err != nil {
 			return err
@@ -214,7 +214,7 @@ func addResourceChild(r *Resource, child *node) error {
 		}
 		r.Reveal = rv
 	default:
-		return fmt.Errorf("<resource name=%q>: unexpected child element <%s>", r.Name, child.Name)
+		return fmt.Errorf("<resource name=%q>: unexpected child element <%s>", r.Name, child.Name())
 	}
 	return nil
 }
@@ -243,7 +243,7 @@ func buildReveal(n *node) (*Reveal, error) {
 	}
 	rv := &Reveal{}
 	for _, child := range n.Children() {
-		switch child.Name {
+		switch child.Name() {
 		case "public":
 			p, err := compileContent(child)
 			if err != nil {
@@ -272,7 +272,7 @@ func buildReveal(n *node) (*Reveal, error) {
 			}
 			rv.DenyTTL = d
 		default:
-			return nil, fmt.Errorf("<reveal>: unexpected child element <%s>", child.Name)
+			return nil, fmt.Errorf("<reveal>: unexpected child element <%s>", child.Name())
 		}
 	}
 	return rv, nil
@@ -318,7 +318,7 @@ func buildRoute(n *node) (*Route, error) {
 }
 
 func addRouteChild(rt *Route, child *node) error {
-	switch child.Name {
+	switch child.Name() {
 	case "param":
 		p, err := buildQueryParam(child)
 		if err != nil {
@@ -352,7 +352,7 @@ func addRouteChild(rt *Route, child *node) error {
 		}
 		rt.Params[child.Attr("param")] = child.Attr("key")
 	default:
-		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name)
+		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}
 	return nil
 }

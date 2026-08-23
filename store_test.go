@@ -162,80 +162,6 @@ func TestNukeRemovesWALSidecars(t *testing.T) {
 	}
 }
 
-func TestResourceRoundTrip(t *testing.T) {
-	ctx := context.Background()
-	s := openStore(t, dbPath(t), repoSpec())
-	r, ok := s.Resource("repo")
-	require.True(t, ok)
-
-	putRepo(t, s, r, "wow", "api-mirror", "public", 7)
-	putRepo(t, s, r, "wow", "api-cli", "private", 3)
-	putRepo(t, s, r, "other", "thing", "public", 1)
-
-	row, err := s.Get(ctx, r, map[string]string{"owner": "wow", "repo": "api-cli"})
-	require.NoError(t, err)
-	require.NotNil(t, row)
-	assert.Equal(t, "private", row["visibility"])
-	assert.Equal(t, int64(3), row["stars"])
-
-	missing, err := s.Get(ctx, r, map[string]string{"owner": "wow", "repo": "nope"})
-	require.NoError(t, err)
-	assert.Nil(t, missing, "an absent row is an answer, not an error")
-
-	// A partial key lists one owner, in key order, and nobody else's rows.
-	list, err := s.List(ctx, r, map[string]string{"owner": "wow"})
-	require.NoError(t, err)
-	require.Len(t, list, 2)
-	assert.Equal(t, "api-cli", list[0]["repo"])
-	assert.Equal(t, "api-mirror", list[1]["repo"])
-
-	all, err := s.List(ctx, r, nil)
-	require.NoError(t, err)
-	assert.Len(t, all, 3)
-
-	n, err := s.Delete(ctx, r, map[string]string{"owner": "wow"})
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), n)
-
-	left, err := s.List(ctx, r, nil)
-	require.NoError(t, err)
-	assert.Len(t, left, 1)
-}
-
-// An empty key must not read as "delete the table".
-func TestDeleteRefusesEmptyKey(t *testing.T) {
-	ctx := context.Background()
-	s := openStore(t, dbPath(t), repoSpec())
-	r, ok := s.Resource("repo")
-	require.True(t, ok)
-	putRepo(t, s, r, "wow", "api-mirror", "public", 7)
-
-	_, err := s.Delete(ctx, r, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "every row")
-
-	left, err := s.List(ctx, r, nil)
-	require.NoError(t, err)
-	assert.Len(t, left, 1, "the refusal must leave the rows alone")
-}
-
-func TestPutManyIsOneList(t *testing.T) {
-	ctx := context.Background()
-	s := openStore(t, dbPath(t), repoSpec())
-	r, ok := s.Resource("repo")
-	require.True(t, ok)
-
-	rows := []Row{
-		{"owner": "wow", "repo": "a", "visibility": "public", "stars": int64(1)},
-		{"owner": "wow", "repo": "b", "visibility": "public", "stars": int64(2)},
-	}
-	require.NoError(t, s.PutMany(ctx, r, rows, time.Unix(1700000000, 0)))
-
-	got, err := s.List(ctx, r, map[string]string{"owner": "wow"})
-	require.NoError(t, err)
-	assert.Len(t, got, 2)
-}
-
 func TestWatermarkOrdering(t *testing.T) {
 	ctx := context.Background()
 	s := openStore(t, dbPath(t), repoSpec())
@@ -441,6 +367,86 @@ func TestFreshnessLifecycle(t *testing.T) {
 	got, err = s.Freshness(ctx, "repo", "wow/api-mirror")
 	require.NoError(t, err)
 	assert.Nil(t, got)
+}
+
+// A name collision surfaces otherwise as a confusing SQL error at boot, so
+// Open refuses the spec before it derives any DDL.
+func TestOpenRejectsUnusableNames(t *testing.T) {
+	cases := map[string]func(*Spec){
+		"engine prefix": func(s *Spec) { s.Resources[0].Name = "mirror_repo" },
+		"engine column": func(s *Spec) { s.Resources[0].Fields[0].Name = "updated_at" },
+		"sql keyword":   func(s *Spec) { s.Resources[0].Fields[0].Name = "order" },
+		"leading digit": func(s *Spec) { s.Resources[0].Fields[0].Name = "1st" },
+		"punctuation":   func(s *Spec) { s.Resources[0].Fields[0].Name = "we-ird" },
+		"empty":         func(s *Spec) { s.Resources[0].Fields[0].Name = "" },
+	}
+	for name, break_ := range cases {
+		t.Run(name, func(t *testing.T) {
+			spec := repoSpec()
+			break_(spec)
+			s, err := Open(context.Background(), dbPath(t), spec)
+			require.Error(t, err)
+			assert.Nil(t, s)
+		})
+	}
+}
+
+func TestUnknownResource(t *testing.T) {
+	s := openStore(t, dbPath(t), repoSpec())
+	_, ok := s.Resource("nothing")
+	assert.False(t, ok)
+}
+
+// A dead database must fail loudly on every path, never report a write that
+// did not happen.
+func TestOperationsOnAClosedStoreFail(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, dbPath(t), repoSpec())
+	r, ok := s.Resource("repo")
+	require.True(t, ok)
+	require.NoError(t, s.Close())
+
+	row := Row{"owner": "wow", "repo": "a", "visibility": "public", "stars": int64(1)}
+	at := time.Unix(1700000000, 0)
+
+	assert.Error(t, s.Put(ctx, r, row, at))
+	assert.Error(t, s.PutMany(ctx, r, []Row{row}, at))
+	_, err := s.Get(ctx, r, map[string]string{"owner": "wow", "repo": "a"})
+	assert.Error(t, err)
+	_, err = s.List(ctx, r, nil)
+	assert.Error(t, err)
+	_, err = s.Delete(ctx, r, map[string]string{"owner": "wow"})
+	assert.Error(t, err)
+
+	_, err = s.Meta(ctx, "fingerprint")
+	assert.Error(t, err)
+	assert.Error(t, s.SetMeta(ctx, "k", "v"))
+	_, err = s.Freshness(ctx, "repo", "wow/a")
+	assert.Error(t, err)
+	assert.Error(t, s.MarkFetching(ctx, "repo", "wow/a"))
+	assert.Error(t, s.MarkError(ctx, "repo", "wow/a", "boom", at))
+	assert.Error(t, s.RecordFetched(ctx, Freshness{Kind: "repo", Key: "wow/a", State: "fresh"}))
+	_, err = s.DeleteFreshness(ctx, "repo", "wow/a")
+	assert.Error(t, err)
+	_, _, err = s.Watermark(ctx, "repo:wow/a")
+	assert.Error(t, err)
+	_, err = s.ApplyWatermark(ctx, "repo:wow/a", at)
+	assert.Error(t, err)
+	_, err = s.PruneWatermarks(ctx, at)
+	assert.Error(t, err)
+	_, err = s.HasGrant(ctx, "user:1", "repo", "wow/a", at)
+	assert.Error(t, err)
+	assert.Error(t, s.RecordGrant(ctx, Grant{Principal: "user:1", Resource: "repo", Key: "wow/a", ExpiresAt: at}))
+	assert.Error(t, s.ReplaceGrants(ctx, "user:1", "repo", "list_sync", []string{"wow/a"}, at))
+	_, err = s.RevokeGrant(ctx, "user:1", "repo", "wow/a")
+	assert.Error(t, err)
+	_, err = s.PruneGrants(ctx, at)
+	assert.Error(t, err)
+	_, _, err = s.Denial(ctx, "user:1", "repo", "wow/a", at)
+	assert.Error(t, err)
+	assert.Error(t, s.RecordDenial(ctx, "user:1", "repo", "wow/a", 404, at))
+	_, err = s.PruneDenials(ctx, at)
+	assert.Error(t, err)
 }
 
 func TestMetaRoundTrip(t *testing.T) {

@@ -477,4 +477,3 @@ func unixTime(n sql.NullInt64) time.Time {
 	}
 	return time.Unix(n.Int64, 0).UTC()
 }
-
