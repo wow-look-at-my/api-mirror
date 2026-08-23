@@ -57,13 +57,13 @@ type Ingest struct {
 	lastPrune atomic.Int64
 }
 
-// NewIngest builds the ingest endpoint a spec declares. vars supplies the
-// template context the secret resolves against.
+// NewIngest builds the ingest endpoint a spec declares. vars is the spec's
+// resolved vars, which the secret sees as `.var` beside the environment.
 func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 	if spec.Events == nil {
 		return nil, fmt.Errorf("mirror %q declares no <events>", spec.Name)
 	}
-	secret, err := renderString(spec.Events.Secret, vars)
+	secret, err := renderString(spec.Events.Secret, map[string]any{"env": envMap(), "var": vars})
 	if err != nil {
 		return nil, fmt.Errorf("<events> secret: %w", err)
 	}
@@ -94,6 +94,10 @@ func (i *Ingest) Path() string { return i.events.Path }
 
 // Handler serves that path.
 func (i *Ingest) Handler() http.Handler { return i }
+
+// Reorderer is the window behind the handler. A shutdown waits on it, so it is
+// reachable rather than private.
+func (i *Ingest) Reorderer() *Reorderer { return i.reorder }
 
 // Drain waits for held and in-flight deliveries at shutdown. A provider sends a
 // delivery once, so one must not die with the process.

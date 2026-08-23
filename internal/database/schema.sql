@@ -28,6 +28,10 @@ CREATE TABLE mirror_freshness (
 	state       TEXT NOT NULL DEFAULT 'unknown',
 	error       TEXT NOT NULL DEFAULT '',
 	retry_after INTEGER,
+	-- The status the upstream answered with, when a route declared that answer
+	-- worth keeping. A refusal is a fact too, and it has to be replayed as the
+	-- refusal: stored as a bare row it would read as an empty success.
+	status      INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (kind, key)
 );
 

@@ -105,18 +105,21 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 	if res.Reveal.Public == "" {
 		return false, nil
 	}
-	if !completeKey(res, key) {
+	var row Row
+	if completeKey(res, key) {
 		// A partial key names many rows, and one row's visibility is not the
-		// set's. A list read proves nothing here and falls to the ladder.
-		return false, nil
+		// set's, so a list read is judged on the predicate alone.
+		var err error
+		if row, err = rv.store.Get(ctx, res, key); err != nil {
+			return false, fmt.Errorf("reveal: read %s: %w", res.Name, err)
+		}
 	}
-	row, err := rv.store.Get(ctx, res, key)
-	if err != nil {
-		return false, fmt.Errorf("reveal: read %s: %w", res.Name, err)
-	}
-	if row == nil {
-		return false, nil
-	}
+	// A missing row is not a refusal here, it is an empty row. The distinction
+	// is what lets a cold cache warm up at all: a predicate that reads a stored
+	// field renders empty and stays closed, while one that does not depend on
+	// the row -- a resource whose every fact is public -- still says yes. The
+	// alternative is a deadlock, where nothing may be fetched until it is
+	// stored and nothing is stored until it is fetched.
 	out, err := renderString(res.Reveal.Public, rv.context(key, row))
 	if err != nil {
 		// A predicate that cannot render decides nothing. It is a spec bug, so
@@ -288,6 +291,21 @@ func refuse(status int) Verdict {
 	return Verdict{Status: status}
 }
 
+// keyString renders a resource key as the one string every path names it by:
+// the grant, the denial and the freshness marker.
+//
+// A key becomes text here and nowhere else, so a grant recorded by a probe and
+// a grant looked up by a read agree. Components hold their DECLARED position
+// and are escaped, which keeps an absent component and a component containing
+// the separator distinguishable: two different keys cannot render one string.
+func keyString(res *Resource, key map[string]string) string {
+	parts := make([]string, 0, len(res.Keys))
+	for _, k := range res.Keys {
+		parts = append(parts, url.PathEscape(key[k.Name]))
+	}
+	return strings.Join(parts, "/")
+}
+
 // completeKey reports whether every declared key component is supplied.
 func completeKey(res *Resource, key map[string]string) bool {
 	for _, k := range res.Keys {
@@ -296,19 +314,4 @@ func completeKey(res *Resource, key map[string]string) bool {
 		}
 	}
 	return true
-}
-
-// keyString renders a resource key as the one string every path names it by:
-// the grant, the denial and the freshness marker.
-//
-// One helper, so a grant recorded by one path is found by another. Components
-// hold their DECLARED position and are escaped, so an absent component and a
-// component containing a separator both stay distinguishable -- two different
-// keys can never render the same string.
-func keyString(res *Resource, key map[string]string) string {
-	parts := make([]string, 0, len(res.Keys))
-	for _, k := range res.Keys {
-		parts = append(parts, url.PathEscape(key[k.Name]))
-	}
-	return strings.Join(parts, "/")
 }

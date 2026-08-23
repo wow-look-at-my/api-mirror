@@ -4,14 +4,15 @@ SELECT * FROM mirror_freshness WHERE kind = ? AND key = ?;
 -- A fetch that succeeded clears the error and the backoff with it. Leaving
 -- either behind holds off the next fetch on a failure that already healed.
 -- name: RecordFetched :exec
-INSERT INTO mirror_freshness (kind, key, fetched_at, changed_at, etag, expires_at, state, error, retry_after)
-VALUES (?, ?, ?, ?, ?, ?, ?, '', NULL)
+INSERT INTO mirror_freshness (kind, key, fetched_at, changed_at, etag, expires_at, state, status, error, retry_after)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', NULL)
 ON CONFLICT (kind, key) DO UPDATE SET
 	fetched_at  = excluded.fetched_at,
 	changed_at  = excluded.changed_at,
 	etag        = excluded.etag,
 	expires_at  = excluded.expires_at,
 	state       = excluded.state,
+	status      = excluded.status,
 	error       = '',
 	retry_after = NULL;
 

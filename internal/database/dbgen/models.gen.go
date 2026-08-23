@@ -26,6 +26,7 @@ type MirrorFreshness struct {
 	State      string
 	Error      string
 	RetryAfter sql.NullInt64
+	Status     int64
 }
 
 type MirrorGrant struct {

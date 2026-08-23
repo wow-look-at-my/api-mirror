@@ -22,8 +22,7 @@ type node = apidsl.Node
 var checkAttrs = apidsl.CheckAttrs
 
 var (
-	parseDOM        = apidsl.ParseDOM
-	compileContent  = apidsl.CompileContent
-	compileTextElem = apidsl.CompileTextElem
-	textOf          = apidsl.TextOf
+	parseDOM       = apidsl.ParseDOM
+	compileContent = apidsl.CompileContent
+	textOf         = apidsl.TextOf
 )

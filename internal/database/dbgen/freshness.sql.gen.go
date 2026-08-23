@@ -28,7 +28,7 @@ func (q *Queries) DeleteFreshness(ctx context.Context, arg DeleteFreshnessParams
 }
 
 const getFreshness = `-- name: GetFreshness :one
-SELECT kind, "key", fetched_at, changed_at, etag, expires_at, state, error, retry_after FROM mirror_freshness WHERE kind = ? AND key = ?
+SELECT kind, "key", fetched_at, changed_at, etag, expires_at, state, error, retry_after, status FROM mirror_freshness WHERE kind = ? AND key = ?
 `
 
 type GetFreshnessParams struct {
@@ -49,6 +49,7 @@ func (q *Queries) GetFreshness(ctx context.Context, arg GetFreshnessParams) (Mir
 		&i.State,
 		&i.Error,
 		&i.RetryAfter,
+		&i.Status,
 	)
 	return i, err
 }
@@ -97,14 +98,15 @@ func (q *Queries) MarkFetching(ctx context.Context, arg MarkFetchingParams) erro
 }
 
 const recordFetched = `-- name: RecordFetched :exec
-INSERT INTO mirror_freshness (kind, key, fetched_at, changed_at, etag, expires_at, state, error, retry_after)
-VALUES (?, ?, ?, ?, ?, ?, ?, '', NULL)
+INSERT INTO mirror_freshness (kind, key, fetched_at, changed_at, etag, expires_at, state, status, error, retry_after)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', NULL)
 ON CONFLICT (kind, key) DO UPDATE SET
 	fetched_at  = excluded.fetched_at,
 	changed_at  = excluded.changed_at,
 	etag        = excluded.etag,
 	expires_at  = excluded.expires_at,
 	state       = excluded.state,
+	status      = excluded.status,
 	error       = '',
 	retry_after = NULL
 `
@@ -117,6 +119,7 @@ type RecordFetchedParams struct {
 	Etag      string
 	ExpiresAt sql.NullInt64
 	State     string
+	Status    int64
 }
 
 // A fetch that succeeded clears the error and the backoff with it. Leaving
@@ -130,6 +133,7 @@ func (q *Queries) RecordFetched(ctx context.Context, arg RecordFetchedParams) er
 		arg.Etag,
 		arg.ExpiresAt,
 		arg.State,
+		arg.Status,
 	)
 	return err
 }

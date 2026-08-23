@@ -18,8 +18,7 @@ type Engine struct {
 	up      *Upstreamer
 	fresh   *Fresh
 	reveal  *Revealer
-	ingest  http.Handler
-	reorder *Reorderer
+	ingest  *Ingest
 	proxy   *httputil.ReverseProxy
 	vars    map[string]any
 	baseURL *url.URL
@@ -93,11 +92,11 @@ func resolveVars(spec *Spec) (map[string]any, error) {
 	return vars, nil
 }
 
-// SetIngest installs the webhook handler and the reorderer behind it, so a
-// shutdown can wait for deliveries the upstream will never send again.
-func (e *Engine) SetIngest(h http.Handler, reorder *Reorderer) {
-	e.ingest = h
-	e.reorder = reorder
+// SetIngest installs the webhook handler. The Engine keeps it whole rather than
+// just its ServeHTTP, so a shutdown can wait for deliveries already accepted --
+// an upstream never sends one twice.
+func (e *Engine) SetIngest(i *Ingest) {
+	e.ingest = i
 }
 
 // ttlFor resolves a kind's TTL. A kind is a route's identity, so a route may
@@ -182,6 +181,13 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	if status := e.rememberedRefusal(ctx, kind, key); status != 0 {
+		// The upstream stated this refusal and the route declared it worth
+		// keeping, so it is replayed as the refusal it was.
+		w.Header().Set("X-Mirror-Cache", string(outcome))
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
 
 	doc, err := e.read(ctx, m, res)
 	if err != nil {
@@ -195,6 +201,22 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 		return
 	}
 	e.write(w, http.StatusOK, doc, outcome)
+}
+
+// rememberedRefusal reports the stored non-success status for a key, or zero.
+//
+// A read error here reports no refusal: the freshness row is bookkeeping, and
+// failing to read it must not turn a servable answer into one.
+func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
+	meta, err := e.store.Freshness(ctx, kind, key)
+	if err != nil {
+		logf("read freshness %s/%s: %v", kind, key, err)
+		return 0
+	}
+	if meta == nil || meta.Status < 400 {
+		return 0
+	}
+	return meta.Status
 }
 
 // read rebuilds the answer for one request from what is stored.

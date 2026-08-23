@@ -51,7 +51,7 @@ func run() error {
 		return err
 	}
 	if spec.Events != nil {
-		ingest, err := NewIngest(spec, store)
+		ingest, err := NewIngest(spec, store, engine.vars)
 		if err != nil {
 			return err
 		}
@@ -103,7 +103,7 @@ func (e *Engine) Drain(timeout time.Duration) bool {
 	if e.fresh != nil && !e.fresh.Drain(timeout) {
 		ok = false
 	}
-	if e.reorder != nil && !e.reorder.Drain(timeout) {
+	if e.ingest != nil && !e.ingest.Drain(timeout) {
 		ok = false
 	}
 	return ok

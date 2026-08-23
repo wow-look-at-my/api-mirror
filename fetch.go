@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
-	"sort"
-	"strings"
 	"time"
 )
 
@@ -63,6 +61,13 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return FetchResult{}, fmt.Errorf("upstream %s answered more than the %d byte cap", plan.path, maxBodyBytes)
 	}
 
+	result := FetchResult{ETag: answer.Header.Get("ETag"), Changed: true, Status: answer.Status}
+	if answer.Status >= 400 {
+		// The route declared this refusal worth keeping. It is recorded on the
+		// freshness row and replayed as itself; there is no document to absorb.
+		return result, nil
+	}
+
 	doc, err := decodeJSON(answer.Body)
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("upstream %s: %w", plan.path, err)
@@ -70,7 +75,7 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if err := e.absorbAnswer(ctx, plan, doc); err != nil {
 		return FetchResult{}, err
 	}
-	return FetchResult{ETag: answer.Header.Get("ETag"), Changed: true}, nil
+	return result, nil
 }
 
 // upstreamPath rebuilds the path this plan asks the upstream for, carrying only
@@ -183,34 +188,9 @@ func requireKeys(res *Resource, row Row) error {
 	return nil
 }
 
-// keyString renders a resource key as one stable string, for the freshness and
-// reveal bookkeeping that store a key as a single column.
-//
-// Components are joined in the resource's declared key order, so the same fact
-// produces the same string wherever it is built. A grant recorded by a probe
-// and a grant looked up by a read must agree, and they only agree because this
-// is the one place a key becomes text.
-func keyString(res *Resource, key map[string]string) string {
-	parts := make([]string, 0, len(res.Keys))
-	for _, k := range res.Keys {
-		parts = append(parts, k.Name+"="+key[k.Name])
-	}
-	if len(parts) == 0 {
-		for _, name := range sortedNames(key) {
-			parts = append(parts, name+"="+key[name])
-		}
-	}
-	return strings.Join(parts, "\x1f")
-}
-
-func sortedNames(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
+// A resource key becomes text in exactly one place, keyString in reveal.go.
+// The freshness marker, a grant and a denial all name the same fact, and they
+// only agree because none of them builds that string itself.
 
 // fingerprint reduces a credential to a stable, non-reversible identifier. The
 // mirror partitions proofs by caller and never needs the credential itself.

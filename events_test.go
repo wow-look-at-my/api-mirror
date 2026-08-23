@@ -68,6 +68,14 @@ func ingestSpec() *Spec {
 
 const testSecret = "s3cret"
 
+// A payload clock is a real moment. The watermark sweep forgets a subject
+// nothing restated for watermarkRetention, so an epoch far in the past is swept
+// the moment it is written and the next delivery reads as the first one.
+var (
+	clockEarly = time.Now().Add(-time.Hour).Unix()
+	clockLate  = time.Now().Unix()
+)
+
 func newIngest(t *testing.T, spec *Spec) (*Ingest, *Store) {
 	t.Helper()
 	store := openStore(t, dbPath(t), spec)
@@ -133,7 +141,7 @@ func repoRow(t *testing.T, s *Store, owner, name string) Row {
 
 func TestBadSignatureIsRefusedAndWritesNothing(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
-	body := deliveryBody(t, repoDelivery("acme", "widget", 1000,
+	body := deliveryBody(t, repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
 	w := postDelivery(t, in, "repository", body, signBody("wrong-key", body))
@@ -144,7 +152,7 @@ func TestBadSignatureIsRefusedAndWritesNothing(t *testing.T) {
 
 func TestMissingSignatureIsRefused(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
-	body := deliveryBody(t, repoDelivery("acme", "widget", 1000, nil))
+	body := deliveryBody(t, repoDelivery("acme", "widget", clockEarly, nil))
 
 	w := postDelivery(t, in, "repository", body, "")
 
@@ -156,7 +164,7 @@ func TestUnsetSecretRefusesEveryDelivery(t *testing.T) {
 	spec := ingestSpec()
 	spec.Events.Secret = ""
 	in, store := newIngest(t, spec)
-	body := deliveryBody(t, repoDelivery("acme", "widget", 1000,
+	body := deliveryBody(t, repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
 	// Even a body signed with the empty key is refused: with no secret there is
@@ -170,7 +178,7 @@ func TestUnsetSecretRefusesEveryDelivery(t *testing.T) {
 func TestUnknownEventTypeIsIgnored(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 
-	w := deliver(t, in, "gollum", repoDelivery("acme", "widget", 1000, nil))
+	w := deliver(t, in, "gollum", repoDelivery("acme", "widget", clockEarly, nil))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
 	assert.Equal(t, string(DispIgnored), w.Header().Get(dispositionHeader))
@@ -180,7 +188,7 @@ func TestUnknownEventTypeIsIgnored(t *testing.T) {
 func TestValidDeliveryApplies(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 
-	w := deliver(t, in, "repository", repoDelivery("Acme", "Widget", 1000,
+	w := deliver(t, in, "repository", repoDelivery("Acme", "Widget", clockEarly,
 		map[string]any{"visibility": "public", "stargazers_count": 7}))
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -197,9 +205,9 @@ func TestValidDeliveryApplies(t *testing.T) {
 func TestOlderClockIsSupersededAndDoesNotOverwrite(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 2000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "private"}))
-	w := deliver(t, in, "repository", repoDelivery("acme", "widget", 1000,
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
@@ -210,11 +218,11 @@ func TestOlderClockIsSupersededAndDoesNotOverwrite(t *testing.T) {
 func TestEqualClockApplies(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 2000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "private"}))
 	// A clock is a second, and two distinct views of one subject land inside
 	// the same second often. Refusing on equality drops the second one.
-	w := deliver(t, in, "repository", repoDelivery("acme", "widget", 2000,
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "public"}))
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -227,9 +235,9 @@ func TestSupersededDeliveryStillAbsorbsWhenDeclared(t *testing.T) {
 	spec.Events.List[0].AbsorbWhenSuperseded = true
 	in, store := newIngest(t, spec)
 
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 2000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "private"}))
-	w := deliver(t, in, "repository", repoDelivery("acme", "widget", 1000,
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
 	// The verdict is still superseded: this view is not the newest one.
@@ -240,11 +248,11 @@ func TestSupersededDeliveryStillAbsorbsWhenDeclared(t *testing.T) {
 func TestOmittedFieldIsNotBlanked(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 1000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public", "stargazers_count": 42}))
 	// This view says nothing about the star count. A write that blanked it
 	// would replace known state with nothing.
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 2000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "private"}))
 
 	row := repoRow(t, store, "acme", "widget")
@@ -255,11 +263,11 @@ func TestOmittedFieldIsNotBlanked(t *testing.T) {
 func TestAllowNullWritesTheStatedNull(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 1000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public", "topic": "caching"}))
 	assert.Equal(t, "caching", repoRow(t, store, "acme", "widget")["topic"])
 
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 2000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "public", "topic": nil}))
 
 	assert.Nil(t, repoRow(t, store, "acme", "widget")["topic"])
@@ -268,11 +276,11 @@ func TestAllowNullWritesTheStatedNull(t *testing.T) {
 func TestInvalidateDeletesTheRow(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 
-	deliver(t, in, "repository", repoDelivery("acme", "widget", 1000,
+	deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 	require.NotNil(t, repoRow(t, store, "acme", "widget"))
 
-	w := deliver(t, in, "repository_deleted", repoDelivery("acme", "widget", 2000, nil))
+	w := deliver(t, in, "repository_deleted", repoDelivery("acme", "widget", clockLate, nil))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
 	assert.Equal(t, string(DispInvalidated), w.Header().Get(dispositionHeader))
@@ -286,7 +294,7 @@ func TestWatermarkFailureStillApplies(t *testing.T) {
 	_, err := store.db.Exec(`DROP TABLE mirror_watermark`)
 	require.NoError(t, err)
 
-	w := deliver(t, in, "repository", repoDelivery("acme", "widget", 1000,
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -296,7 +304,7 @@ func TestWatermarkFailureStillApplies(t *testing.T) {
 func TestPayloadWithoutTheKeyIsAnError(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 	payload := map[string]any{"repository": map[string]any{
-		"full_name": "acme/widget", "updated_at": 1000, "visibility": "public",
+		"full_name": "acme/widget", "updated_at": clockEarly, "visibility": "public",
 	}}
 
 	w := deliver(t, in, "repository", payload)
@@ -328,7 +336,7 @@ func TestWindowedDeliveryAnswersBeforeItApplies(t *testing.T) {
 	spec.Events.ReorderWindow = 20 * time.Millisecond
 	in, store := newIngest(t, spec)
 
-	w := deliver(t, in, "repository", repoDelivery("acme", "widget", 1000,
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
 	// The provider gives up in single-digit seconds, so the answer precedes the

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -58,15 +59,15 @@ func (r *Resource) validate() error {
 	if len(r.Keys) == 0 {
 		return fmt.Errorf("resource %q needs at least one <key>: a fact with no identity cannot be stored once", r.Name)
 	}
-	seen := make(map[string]bool, len(r.Keys)+len(r.Fields))
+	seen := make([]string, 0, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
 		if k.Name == "" {
 			return fmt.Errorf("resource %q: <key> needs a name", r.Name)
 		}
-		if seen[k.Name] {
+		if slices.Contains(seen, k.Name) {
 			return fmt.Errorf("resource %q: %q declared twice", r.Name, k.Name)
 		}
-		seen[k.Name] = true
+		seen = append(seen, k.Name)
 	}
 	switch r.Store {
 	case StoreColumns:
@@ -84,10 +85,10 @@ func (r *Resource) validate() error {
 		if f.Name == "" {
 			return fmt.Errorf("resource %q: <field> needs a name", r.Name)
 		}
-		if seen[f.Name] {
+		if slices.Contains(seen, f.Name) {
 			return fmt.Errorf("resource %q: %q declared twice", r.Name, f.Name)
 		}
-		seen[f.Name] = true
+		seen = append(seen, f.Name)
 		switch f.Type {
 		case FieldText, FieldInt, FieldBool, FieldTime, FieldJSON:
 		default:
@@ -147,17 +148,18 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 		return fmt.Errorf("route %s names resource %q, which is not declared", rt.Path, rt.Resource)
 	}
 	params := pathParams(rt.Path)
-	supplied := make(map[string]bool, len(params))
+	supplied := make([]string, 0, len(params))
 	for _, p := range params {
 		name := p
 		if mapped, ok := rt.Params[p]; ok {
 			name = mapped
 		}
-		supplied[name] = true
+		supplied = append(supplied, name)
 	}
+	supplied = append(supplied, rt.queryKeys()...)
 	if !rt.List {
 		for _, k := range res.Keys {
-			if !supplied[k.Name] && !rt.queryKeys()[k.Name] {
+			if !slices.Contains(supplied, k.Name) {
 				return fmt.Errorf("route %s cannot key resource %q: nothing supplies %q", rt.Path, res.Name, k.Name)
 			}
 		}
@@ -165,27 +167,27 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	return rt.validateQuery()
 }
 
-// queryKeys is the set of key components this route's query supplies.
-func (rt *Route) queryKeys() map[string]bool {
-	out := make(map[string]bool, len(rt.Query))
+// queryKeys names the key components this route's query supplies.
+func (rt *Route) queryKeys() []string {
+	out := make([]string, 0, len(rt.Query))
 	for _, q := range rt.Query {
 		if q.Key {
-			out[q.Name] = true
+			out = append(out, q.Name)
 		}
 	}
 	return out
 }
 
 func (rt *Route) validateQuery() error {
-	seen := make(map[string]bool, len(rt.Query))
+	seen := make([]string, 0, len(rt.Query))
 	for _, q := range rt.Query {
 		if q.Name == "" {
 			return fmt.Errorf("route %s: <param> needs a name", rt.Path)
 		}
-		if seen[q.Name] {
+		if slices.Contains(seen, q.Name) {
 			return fmt.Errorf("route %s: parameter %q declared twice", rt.Path, q.Name)
 		}
-		seen[q.Name] = true
+		seen = append(seen, q.Name)
 		switch q.Type {
 		case FieldText, FieldInt, FieldBool:
 		case "":
@@ -242,15 +244,15 @@ func (e *Events) validate(resources map[string]*Resource) error {
 	if e.TypeHeader == "" {
 		return fmt.Errorf("<events> needs a type header")
 	}
-	seen := make(map[string]bool, len(e.List))
+	seen := make([]string, 0, len(e.List))
 	for _, ev := range e.List {
 		if ev.Type == "" {
 			return fmt.Errorf("<event> needs a type")
 		}
-		if seen[ev.Type] {
+		if slices.Contains(seen, ev.Type) {
 			return fmt.Errorf("event %q declared twice", ev.Type)
 		}
-		seen[ev.Type] = true
+		seen = append(seen, ev.Type)
 		res, ok := resources[ev.Resource]
 		if !ok {
 			return fmt.Errorf("event %q names resource %q, which is not declared", ev.Type, ev.Resource)
@@ -276,15 +278,15 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		if res.Store == StoreDocument && len(ev.Sets) > 0 {
 			return fmt.Errorf("event %q writes fields into resource %q, which stores a document", ev.Type, res.Name)
 		}
-		known := make(map[string]bool, len(res.Fields)+len(res.Keys))
+		known := make([]string, 0, len(res.Fields)+len(res.Keys))
 		for _, f := range res.Fields {
-			known[f.Name] = true
+			known = append(known, f.Name)
 		}
 		for _, k := range res.Keys {
-			known[k.Name] = true
+			known = append(known, k.Name)
 		}
 		for _, st := range ev.Sets {
-			if !known[st.Field] {
+			if !slices.Contains(known, st.Field) {
 				return fmt.Errorf("event %q sets %q, which resource %q does not declare", ev.Type, st.Field, res.Name)
 			}
 			if (st.From == "") == (st.Expr == "") {

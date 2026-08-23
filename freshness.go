@@ -42,6 +42,10 @@ const (
 type FetchResult struct {
 	ETag    string
 	Changed bool
+	// Status is the upstream answer the route declared worth keeping. A
+	// refusal is a fact, and remembering it as a bare row would serve it as an
+	// empty success.
+	Status int
 }
 
 // Fetcher performs one refresh. The engine supplies it; this file knows nothing
@@ -203,6 +207,7 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 		ETag:      res.ETag,
 		ExpiresAt: now.Add(f.ttl(kind)),
 		State:     string(StateFresh),
+		Status:    res.Status,
 	}
 	if res.Changed {
 		record.ChangedAt = now

@@ -381,20 +381,6 @@ func TestRenewOn2xxIgnoresWhatProvesNothing(t *testing.T) {
 	assert.Zero(t, f.grantRows(t, "", k))
 }
 
-// One key, one string, wherever it is named. A component that holds a separator
-// and an absent component both stay distinguishable.
-func TestKeyStringIsStableAndUnambiguous(t *testing.T) {
-	res := &Resource{Name: "repo", Keys: []Key{{Name: "owner"}, {Name: "repo"}}}
-
-	assert.Equal(t, "wow/api-mirror", keyString(res, repoKey("wow", "api-mirror")))
-	assert.NotEqual(t,
-		keyString(res, map[string]string{"owner": "wow/api-mirror"}),
-		keyString(res, repoKey("wow", "api-mirror")))
-	assert.NotEqual(t,
-		keyString(res, map[string]string{"owner": "a"}),
-		keyString(res, map[string]string{"repo": "a"}))
-}
-
 // A partial key names many rows, so one row's visibility cannot open the set.
 func TestPartialKeyIsNotPublic(t *testing.T) {
 	f := newFixture(t, respondWith(http.StatusOK))

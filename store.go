@@ -192,6 +192,9 @@ type Freshness struct {
 	State      string
 	Error      string
 	RetryAfter time.Time
+	// Status is what the upstream answered, when the route declared that answer
+	// worth keeping. Zero means an ordinary success with nothing to replay.
+	Status int
 }
 
 // Freshness reads one key's bookkeeping. A key never fetched is (nil, nil):
@@ -214,6 +217,7 @@ func (s *Store) Freshness(ctx context.Context, kind, key string) (*Freshness, er
 		State:      row.State,
 		Error:      row.Error,
 		RetryAfter: unixTime(row.RetryAfter),
+		Status:     int(row.Status),
 	}, nil
 }
 
@@ -229,6 +233,7 @@ func (s *Store) RecordFetched(ctx context.Context, f Freshness) error {
 		Etag:      f.ETag,
 		ExpiresAt: nullUnix(f.ExpiresAt),
 		State:     f.State,
+		Status:    int64(f.Status),
 	})
 	if err != nil {
 		return fmt.Errorf("record fetch %s/%s: %w", f.Kind, f.Key, err)
