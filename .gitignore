@@ -1,0 +1,15 @@
+# Compiled binary
+/api-mirror
+
+# Runtime config (an operator's own spec stays private)
+/mirror.xml
+
+# Runtime state
+*.db
+*.db-shm
+*.db-wal
+
+# Go build/cache artifacts
+/coverage.out
+/coverage.html
+/build/

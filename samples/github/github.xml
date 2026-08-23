@@ -1,0 +1,230 @@
+<?xml version="1.1" encoding="UTF-8"?>
+
+<!--
+	A caching mirror of the GitHub REST API, declared rather than written.
+
+	This file is the point of the project. github-state-mirror implements the
+	same thing by hand, and every mechanism in it is generic except the
+	vocabulary below: which fields exist, which payload field carries a
+	delivery's clock, and what "public" means here. The engine holds the rest -
+	the derived schema, the freshness bookkeeping, the ordering, the reveal
+	ladder, the passthrough.
+
+	Read docs/design.md before editing. Whitespace: structural indentation is
+	TABS.
+-->
+
+<mirror name="github" schema="../../mirror.schema.xsd">
+
+	<description>Caching mirror of the GitHub REST API. Storage is global -- one row per fact, no actor column -- and a read is gated by proof that the caller could have read the same thing from GitHub directly. Set GITHUB_API_URL to target a GitHub Enterprise Server instance.</description>
+
+	<vars>
+		<var name="base"><value name="env.GITHUB_API_URL" default="https://api.github.com"/></var>
+	</vars>
+
+	<!--
+		The caller's own Authorization rides every request the mirror makes on
+		their behalf. That is what makes a probe prove THAT caller's access
+		rather than the mirror's, and it is why the mirror never needs a
+		credential of its own to serve a read.
+	-->
+	<upstream base="{{ .var.base }}">
+		<header name="Accept">application/vnd.github+json</header>
+		<header name="X-GitHub-Api-Version">2022-11-28</header>
+		<forward name="Authorization"/>
+	</upstream>
+
+	<!--
+		A repository. Its visibility is load-bearing twice over: it is the fast
+		path of the reveal ladder, and an UNKNOWN visibility must read as
+		private. The predicate below says "public" explicitly rather than "not
+		private", so a row the mirror has never confirmed fails closed.
+	-->
+	<resource name="repo" ttl="6h">
+		<key name="owner" from="owner.login" fold="true"/>
+		<key name="name" from="name" fold="true"/>
+		<field name="repo_id" type="int">id</field>
+		<field name="visibility" type="text">visibility</field>
+		<field name="private" type="bool">private</field>
+		<field name="default_branch" type="text">default_branch</field>
+		<field name="pushed_at" type="time">pushed_at</field>
+		<field name="archived" type="bool">archived</field>
+		<field name="topics" type="json">topics</field>
+		<reveal>
+			<public>{{ eq .row.visibility "public" }}</public>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.name }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- An open pull request. -->
+	<resource name="pull" ttl="1h">
+		<key name="owner" from="base.repo.owner.login" fold="true"/>
+		<key name="repo" from="base.repo.name" fold="true"/>
+		<key name="number" from="number"/>
+		<field name="title" type="text">title</field>
+		<field name="state" type="text">state</field>
+		<field name="draft" type="bool">draft</field>
+		<field name="head_sha" type="text">head.sha</field>
+		<field name="head_ref" type="text">head.ref</field>
+		<field name="base_ref" type="text">base.ref</field>
+		<field name="base_sha" type="text">base.sha</field>
+		<field name="merged" type="bool">merged</field>
+		<field name="merge_commit_sha" type="text">merge_commit_sha</field>
+		<field name="updated_at" type="time">updated_at</field>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		A branch tip. This is the answer a lost delivery ruins worst: a stale
+		tip reads as "nothing to do", which stops the very work that would
+		refresh it. A push STATES the new tip in `after`, so the delivery is
+		the answer and no fetch is needed to learn it.
+	-->
+	<resource name="branch" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<field name="tip_sha" type="text">object.sha</field>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- One commit status, keyed by sha AND context. -->
+	<resource name="commit_status" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="sha"/>
+		<key name="context"/>
+		<field name="state" type="text">state</field>
+		<field name="description" type="text">description</field>
+		<field name="updated_at" type="time">updated_at</field>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<route method="GET" path="/repos/{owner}/{name}" resource="repo">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<!-- GitHub's 404 for a repository is an answer worth remembering. -->
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/pulls" resource="pull" list="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="state" type="text" default="open"/>
+		<param name="per_page" type="int" default="30" min="1" max="100"/>
+		<param name="page" type="int" default="1" min="1" max="100"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref}" resource="branch">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<!--
+		Every delivery states the moment its view is from, and what that view
+		is OF. Both are required: an upstream orders nothing it sends, so a
+		redelivered payload from before a merge will happily reopen a merged
+		pull request unless the engine can tell it is looking at the past.
+
+		The clock is always a field GITHUB sets. A commit's own timestamp is
+		user-settable - it survives a rebase and it can be in the future -
+		so it is never the clock, however tempting its name.
+	-->
+	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event" reorder-window="2s">
+
+		<secret><value name="env.WEBHOOK_SECRET"/></secret>
+
+		<event type="repository" resource="repo" clock="repository.updated_at">
+			<subject>repo:<value name="payload.repository.full_name"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="name">repository.name</set>
+				<set field="repo_id">repository.id</set>
+				<set field="visibility">repository.visibility</set>
+				<set field="private">repository.private</set>
+				<set field="default_branch">repository.default_branch</set>
+				<set field="archived">repository.archived</set>
+			</apply>
+		</event>
+
+		<!--
+			A push carries the branch's exact new tip. Writing it is the whole
+			handler: there is nothing here to fetch, and flushing the row so
+			the next reader refetches would buy back a fact GitHub just handed
+			over.
+
+			The subject is the REF, not the repository: two branches pushed at
+			once are two independent views, and ordering them against each
+			other would discard one.
+		-->
+		<event type="push" resource="branch" clock="repository.pushed_at">
+			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="repo">repository.name</set>
+				<set field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
+				<set field="tip_sha">after</set>
+			</apply>
+		</event>
+
+		<event type="pull_request" resource="pull" clock="pull_request.updated_at">
+			<subject>pr:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="repo">repository.name</set>
+				<set field="number">number</set>
+				<set field="title">pull_request.title</set>
+				<set field="state">pull_request.state</set>
+				<set field="draft">pull_request.draft</set>
+				<set field="head_sha">pull_request.head.sha</set>
+				<set field="head_ref">pull_request.head.ref</set>
+				<set field="base_ref">pull_request.base.ref</set>
+				<set field="base_sha">pull_request.base.sha</set>
+				<set field="merged">pull_request.merged</set>
+				<set field="merge_commit_sha">pull_request.merge_commit_sha</set>
+				<set field="updated_at">pull_request.updated_at</set>
+			</apply>
+		</event>
+
+		<!--
+			The subject keys the sha AND the context. Keyed on the sha alone,
+			a slow check reporting second would discard a fast check's result
+			that was posted first.
+		-->
+		<event type="status" resource="commit_status" clock="updated_at">
+			<subject>status:<value name="payload.repository.full_name"/>:<value name="payload.sha"/>:<value name="payload.context"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="repo">repository.name</set>
+				<set field="sha">sha</set>
+				<set field="context">context</set>
+				<set field="state">state</set>
+				<set field="description" null="allow">description</set>
+				<set field="updated_at">updated_at</set>
+			</apply>
+		</event>
+
+	</events>
+
+</mirror>

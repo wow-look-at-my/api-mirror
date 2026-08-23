@@ -1,0 +1,113 @@
+<?xml version="1.1" encoding="UTF-8"?>
+
+<!--
+	Example api-mirror spec. It mirrors https://jsonplaceholder.typicode.com, a
+	public fake REST API, so the whole file can be run against something real.
+
+	A mirror declares three things and the engine derives the rest:
+
+	  <resource>  what is stored: one table, one row per key, no actor column.
+	  <route>     what a consumer asks for, and which resource answers it.
+	  <events>    how the upstream's webhooks become stored rows.
+
+	The SQLite schema, the HTTP handlers, the freshness bookkeeping and the
+	authorization gate are all derived from this file. Editing a resource
+	changes the derived schema, which changes its fingerprint, which nukes and
+	rebuilds the cache on the next start.
+
+	Whitespace: structural indentation is TABS.
+-->
+
+<mirror name="placeholder" schema="./mirror.schema.xsd">
+
+	<description>Caching mirror of https://jsonplaceholder.typicode.com. Everything it serves is public, so its reveal rules are the simplest possible: a stored row may be shown to anyone.</description>
+
+	<vars>
+		<var name="base"><value name="env.UPSTREAM_URL" default="https://jsonplaceholder.typicode.com"/></var>
+	</vars>
+
+	<!--
+		The upstream, and which of the caller's own headers ride along with a
+		request the mirror makes on their behalf. Forwarding the caller's
+		credential is what makes a probe prove THAT caller's access rather than
+		the mirror's.
+	-->
+	<upstream base="{{ .var.base }}">
+		<header name="Accept">application/json</header>
+		<forward name="Authorization"/>
+	</upstream>
+
+	<!--
+		One stored fact per user. Every field the mirror serves is named here:
+		a field nobody declares is a field nobody stores, and so a field the
+		rebuilt answer does not carry.
+	-->
+	<resource name="user" ttl="6h">
+		<key name="id"/>
+		<field name="name" type="text">name</field>
+		<field name="username" type="text">username</field>
+		<field name="email" type="text">email</field>
+		<field name="phone" type="text">phone</field>
+		<field name="website" type="text">website</field>
+		<field name="company" type="json">company</field>
+		<reveal>
+			<public>true</public>
+		</reveal>
+	</resource>
+
+	<!--
+		A post is identified by its id alone, so that is the whole key. The
+		author is an attribute, and a list route may still select on it: a
+		filter narrows which rows an answer holds without becoming part of what
+		identifies one.
+	-->
+	<resource name="post" ttl="1h">
+		<key name="id"/>
+		<field name="user_id" type="int">userId</field>
+		<field name="title" type="text">title</field>
+		<field name="body" type="text">body</field>
+		<reveal>
+			<public>true</public>
+		</reveal>
+	</resource>
+
+	<!--
+		A route binds a path a consumer asks for to the resource that answers
+		it. The path parameters supply the key. A path this file does not
+		declare is forwarded verbatim and reported as uncached; there is no
+		third state.
+	-->
+	<route method="GET" path="/users/{id}" resource="user">
+		<accept>application/json</accept>
+	</route>
+
+	<route method="GET" path="/users" resource="user" list="true">
+		<accept>application/json</accept>
+		<param name="_limit" type="int" default="10" min="1" max="100"/>
+	</route>
+
+	<route method="GET" path="/posts/{id}" resource="post">
+		<accept>application/json</accept>
+		<!--
+			A 404 here is the upstream stating that no such post exists, so it
+			is worth remembering. A 500 is not named, and an unnamed status
+			relays without being stored: a transient failure cached is an
+			outage remembered long after it ended.
+		-->
+		<absorb status="404"/>
+	</route>
+
+	<!--
+		complete="true" says this answer is the WHOLE set of posts for that
+		user, so a post missing from it has been deleted and its row goes with
+		it. Without it a list only ever adds, and a deleted post is served for
+		good. The /users route above does NOT say it, because its _limit makes
+		the answer a slice rather than the set.
+	-->
+	<route method="GET" path="/posts" resource="post" list="true" complete="true">
+		<accept>application/json</accept>
+		<param name="userId" type="int" key="true" min="1" max="1000"/>
+		<map param="userId" key="user_id"/>
+	</route>
+
+</mirror>
