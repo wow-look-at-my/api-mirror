@@ -61,6 +61,10 @@ api-mirror --spec mirror.xml --check     # print the derived schema and routes, 
 - **Authorization at the read.** Storage is global — one row per fact. Whether a caller may see it is proven per request, against the upstream, with that caller's own credential.
 - **Honest passthrough.** A path the spec does not declare is forwarded and labelled with why. There is no "correctly uncached".
 
+## Not yet
+
+Absent, and worth knowing before you rely on this: no delivery-gap replay (asking the provider to re-send what never arrived), no read-time contradiction detection, no periodic background refresh, no passthrough debouncing, no subscriber notifications, and no dashboard. The outbound client reports every request it makes and nothing consumes those reports yet.
+
 ## Docs
 
 - `docs/design.md` — the grammar and the split between engine and spec.
