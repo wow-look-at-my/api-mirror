@@ -629,10 +629,15 @@
 		token (its installation coverage, its own rate-limit standing, its own
 		profile), so <reveal><credential/></reveal> replaces the probe/grant
 		ladder: the key already proves access, and no other caller can ever
-		address the row. Still passthrough: POST
-		/app/installations/{id}/access_tokens (a write) and PATCH/DELETE on
-		any read path here, since this spec's Route has no
-		write-then-invalidate concept.
+		address the row.
+
+		PATCH/DELETE on hooks, labels and code-quality/setup are declared
+		below as <purge>: forwarded verbatim, and the row they changed is
+		dropped once the upstream confirms the write happened.
+
+		POST /app/installations/{id}/access_tokens stays passthrough: it
+		mints a new secret rather than changing an existing fact, so there is
+		no row for a purge to drop.
 	-->
 	<resource name="identity" store="document">
 		<key name="token_fp" credential="true"/>
@@ -754,6 +759,20 @@
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
+
+	<!--
+		A write is never cached itself, so it is forwarded and the row it
+		changed is dropped on success instead: the next read refetches rather
+		than replaying what the write just made stale.
+	-->
+	<purge method="PATCH" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hook"/>
+	<purge method="DELETE" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hook"/>
+	<purge method="PATCH" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook"/>
+	<purge method="DELETE" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook"/>
+	<purge method="PATCH" path="/repos/{owner}/{repo}/labels/{name}" resource="label"/>
+	<purge method="DELETE" path="/repos/{owner}/{repo}/labels/{name}" resource="label"/>
+	<purge method="PUT" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
+	<purge method="DELETE" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
 
 	<!--
 		GitHub filters hits to what the caller's token can see, so the query

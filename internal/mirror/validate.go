@@ -44,6 +44,11 @@ func (s *Spec) validate() error {
 			return err
 		}
 	}
+	for _, p := range s.Purges {
+		if err := p.validate(byName); err != nil {
+			return err
+		}
+	}
 	if s.Events != nil {
 		if err := s.Events.validate(byName); err != nil {
 			return err
@@ -246,6 +251,33 @@ func (rt *Route) validateQuery() error {
 		}
 		if code >= 500 || code == 429 {
 			return fmt.Errorf("route %s: refusing to absorb %d -- a transient failure stored is an outage remembered long after it ended", rt.Path, code)
+		}
+	}
+	return nil
+}
+
+// validate checks a <purge>: a write with somewhere real to land and a key
+// the path can actually supply.
+func (p *Purge) validate(resources map[string]*Resource) error {
+	if p.Path == "" || !strings.HasPrefix(p.Path, "/") {
+		return fmt.Errorf("<purge> needs an absolute path, got %q", p.Path)
+	}
+	switch p.Method {
+	case "POST", "PUT", "PATCH", "DELETE":
+	default:
+		return fmt.Errorf("purge %s: method must be POST, PUT, PATCH or DELETE, not %q", p.Path, p.Method)
+	}
+	res, ok := resources[p.Resource]
+	if !ok {
+		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
+	}
+	params := pathParams(p.Path)
+	for _, k := range res.Keys {
+		if k.Credential {
+			continue
+		}
+		if !slices.Contains(params, k.Name) {
+			return fmt.Errorf("purge %s cannot key resource %q: nothing supplies %q", p.Path, res.Name, k.Name)
 		}
 	}
 	return nil

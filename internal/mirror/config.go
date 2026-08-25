@@ -9,6 +9,7 @@ type Spec struct {
 	Upstream  Upstream
 	Resources []*Resource
 	Routes    []*Route
+	Purges    []*Purge
 	Events    *Events
 }
 
@@ -154,6 +155,13 @@ type Reveal struct {
 type Probe struct {
 	Method string
 	Path   string // template source over the resource's keys
+}
+
+// Purge forwards a write and, on a 2xx, deletes the cached row it changed.
+type Purge struct {
+	Method   string
+	Path     string
+	Resource string
 }
 
 // Events is the webhook ingest declaration.

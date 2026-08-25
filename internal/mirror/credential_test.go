@@ -135,6 +135,87 @@ func TestValidateRoute_CredentialKeyNeedsNoParam(t *testing.T) {
 	assert.NoError(t, rt.validate(resources))
 }
 
+// TestPurge_SuccessfulWriteDropsTheCachedRow proves a write is forwarded
+// verbatim to the upstream, and that only a confirmed 2xx clears the row it
+// changed -- a rejected write must not blow away a still-correct cache entry.
+func TestPurge_SuccessfulWriteDropsTheCachedRow(t *testing.T) {
+	var method atomic.Value
+	nextStatus := atomic.Int32{}
+	nextStatus.Store(http.StatusOK)
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method.Store(r.Method)
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"id":"7","title":"hello","count":3,"live":true,"seen":"2024-01-01T00:00:00Z"}`))
+			return
+		}
+		w.WriteHeader(int(nextStatus.Load()))
+	}), func(s *Spec) {
+		s.Purges = append(s.Purges, &Purge{Method: "DELETE", Path: "/widgets/{id}", Resource: "widget"})
+	})
+
+	// Warm the cache.
+	rec := get(t, e, "/widgets/7")
+	require.Equal(t, http.StatusOK, rec.Code)
+	row, err := e.store.Get(context.Background(), mustResource(t, e, "widget"), map[string]string{"id": "7"})
+	require.NoError(t, err)
+	require.NotNil(t, row)
+
+	// A rejected delete must not touch the cached row.
+	nextStatus.Store(http.StatusForbidden)
+	del := httptest.NewRecorder()
+	e.ServeHTTP(del, httptest.NewRequest(http.MethodDelete, "/widgets/7", nil))
+	assert.Equal(t, http.StatusForbidden, del.Code)
+	row, err = e.store.Get(context.Background(), mustResource(t, e, "widget"), map[string]string{"id": "7"})
+	require.NoError(t, err)
+	assert.NotNil(t, row)
+
+	// A confirmed delete drops it.
+	nextStatus.Store(http.StatusNoContent)
+	del = httptest.NewRecorder()
+	e.ServeHTTP(del, httptest.NewRequest(http.MethodDelete, "/widgets/7", nil))
+	assert.Equal(t, http.StatusNoContent, del.Code)
+	assert.Equal(t, http.MethodDelete, method.Load())
+	row, err = e.store.Get(context.Background(), mustResource(t, e, "widget"), map[string]string{"id": "7"})
+	require.NoError(t, err)
+	assert.Nil(t, row)
+}
+
+func mustResource(t *testing.T, e *Engine, name string) *Resource {
+	t.Helper()
+	res, ok := e.store.Resource(name)
+	require.True(t, ok)
+	return res
+}
+
+func TestValidatePurge(t *testing.T) {
+	resources := map[string]*Resource{"widget": {
+		Name: "widget", Store: StoreColumns, Keys: []Key{{Name: "id"}},
+		Fields: []Field{{Name: "title", Type: FieldText, From: "title"}},
+		Reveal: &Reveal{Public: "true"},
+	}}
+
+	t.Run("read method rejected", func(t *testing.T) {
+		p := &Purge{Method: "GET", Path: "/widgets/{id}", Resource: "widget"}
+		require.Error(t, p.validate(resources))
+	})
+
+	t.Run("unknown resource rejected", func(t *testing.T) {
+		p := &Purge{Method: "DELETE", Path: "/widgets/{id}", Resource: "nope"}
+		require.Error(t, p.validate(resources))
+	})
+
+	t.Run("missing key param rejected", func(t *testing.T) {
+		p := &Purge{Method: "DELETE", Path: "/widgets", Resource: "widget"}
+		require.Error(t, p.validate(resources))
+	})
+
+	t.Run("valid purge passes", func(t *testing.T) {
+		p := &Purge{Method: "DELETE", Path: "/widgets/{id}", Resource: "widget"}
+		require.NoError(t, p.validate(resources))
+	})
+}
+
 func TestLoad_CredentialXML(t *testing.T) {
 	xml := `<mirror name="cred-test">
 	<upstream base="https://api.example.com"/>

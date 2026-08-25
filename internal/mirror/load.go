@@ -73,6 +73,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Routes = append(spec.Routes, rt)
+		case "purge":
+			p, err := buildPurge(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Purges = append(spec.Purges, p)
 		case "events":
 			ev, err := buildEvents(child)
 			if err != nil {
@@ -360,6 +366,21 @@ func addRouteChild(rt *Route, child *node) error {
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}
 	return nil
+}
+
+func buildPurge(n *node) (*Purge, error) {
+	if err := checkAttrs(n, "method", "path", "resource"); err != nil {
+		return nil, err
+	}
+	p := &Purge{
+		Method:   strings.ToUpper(n.Attr("method")),
+		Path:     n.Attr("path"),
+		Resource: n.Attr("resource"),
+	}
+	for _, child := range n.Children() {
+		return nil, fmt.Errorf("<purge path=%q>: unexpected child element <%s>", p.Path, child.Name())
+	}
+	return p, nil
 }
 
 func buildQueryParam(n *node) (QueryParam, error) {

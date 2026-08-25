@@ -127,6 +127,10 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		e.ingest.ServeHTTP(w, r)
 		return
 	}
+	if p, params, ok := e.matchPurge(r); ok {
+		e.forwardAndPurge(w, r, p, params)
+		return
+	}
 	m, reason, err := e.resolve(r)
 	if m == nil {
 		if err != nil {
@@ -136,6 +140,73 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e.serve(w, r, m)
+}
+
+// matchPurge finds the declared write, if any, this request names.
+func (e *Engine) matchPurge(r *http.Request) (*Purge, map[string]string, bool) {
+	for _, p := range e.spec.Purges {
+		if p.Method != r.Method {
+			continue
+		}
+		params, ok := matchPath(p.Path, r.URL.EscapedPath())
+		if !ok {
+			continue
+		}
+		return p, params, true
+	}
+	return nil, nil, false
+}
+
+// forwardAndPurge forwards a write verbatim, then drops the row it changed
+// once the upstream confirms the write actually happened. A write is never
+// cached itself; this only clears what it made stale.
+func (e *Engine) forwardAndPurge(w http.ResponseWriter, r *http.Request, p *Purge, params map[string]string) {
+	res, ok := e.store.Resource(p.Resource)
+	if !ok {
+		e.passthrough(w, r, PassUnrouted)
+		return
+	}
+	key := make(map[string]string, len(params)+1)
+	for param, value := range params {
+		key[param] = foldFor(res, param, value)
+	}
+	for _, k := range res.Keys {
+		if !k.Credential {
+			continue
+		}
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			e.passthrough(w, r, PassNoIdentity)
+			return
+		}
+		key[k.Name] = fingerprint(auth)
+	}
+
+	w.Header().Set("X-Mirror-Cache", "purge")
+	rec := &statusRecorder{ResponseWriter: w}
+	e.proxy.ServeHTTP(rec, r)
+
+	status := rec.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	if status < 200 || status >= 300 {
+		return
+	}
+	if _, err := e.store.Delete(r.Context(), res, key); err != nil {
+		logf("purge %s: %v", p.Path, err)
+	}
+}
+
+// statusRecorder captures the status a proxied write actually answered with.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
 }
 
 // serve answers one declared route.
