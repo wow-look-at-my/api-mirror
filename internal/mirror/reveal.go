@@ -12,27 +12,16 @@ import (
 )
 
 // The reveal layer: who may be TOLD a stored fact.
-//
-// Storage here is global -- one row per fact, no actor column -- so the
-// security boundary is the read. Revealing a row to a caller needs proof that
-// the caller could have read it from the upstream themselves. The upstream is
-// the only oracle: the mirror never invents an authorization model, it caches
-// the upstream's own answers.
-//
-// see docs/design.md, the <reveal> section.
 
 // grantSourceProbe labels a grant a probe earned. The source is what keeps a
-// list sync's replace-sync from deleting a probe's proof, and the reverse.
 const grantSourceProbe = "probe"
 
 // Verdict is the reveal decision for one read.
 type Verdict struct {
 	Allowed bool
 	// Status is the answer when the read is refused. It is the upstream's own
-	// status, so a caller sees what the upstream would have told them.
 	Status int
 	// Cached reports a refusal replayed from the deny cache rather than one a
-	// fresh probe just proved.
 	Cached bool
 }
 
@@ -59,7 +48,6 @@ func NewRevealer(store *Store, up *Upstreamer, vars map[string]any) *Revealer {
 func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, key map[string]string, forward http.Header) (Verdict, error) {
 	if res.Reveal == nil {
 		// Load-time validation rejects this. The runtime still refuses rather
-		// than assuming it: an ungated resource is every row served to anyone.
 		return refuse(http.StatusNotFound), fmt.Errorf("resource %q has no reveal rule", res.Name)
 	}
 
@@ -110,23 +98,15 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 	var row Row
 	if completeKey(res, key) {
 		// A partial key names many rows, and one row's visibility is not the
-		// set's, so a list read is judged on the predicate alone.
 		var err error
 		if row, err = rv.store.Get(ctx, res, key); err != nil {
 			return false, fmt.Errorf("reveal: read %s: %w", res.Name, err)
 		}
 	}
 	// A missing row is not a refusal here, it is an empty row. The distinction
-	// is what lets a cold cache warm up at all: a predicate that reads a stored
-	// field renders empty and stays closed, while one that does not depend on
-	// the row -- a resource whose every fact is public -- still says yes. The
-	// alternative is a deadlock, where nothing may be fetched until it is
-	// stored and nothing is stored until it is fetched.
 	out, err := renderString(res.Reveal.Public, rv.context(key, row))
 	if err != nil {
 		// A predicate that cannot render decides nothing. It is a spec bug, so
-		// it is loud, and the read falls through to a rung that can prove
-		// something instead of opening on a broken template.
 		logf("reveal: %s <public> did not render: %v", res.Name, err)
 		return false, nil
 	}
@@ -146,8 +126,6 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 	rule := res.Reveal
 	if rule.Probe == nil {
 		// The predicate said no and there is nothing left to ask. The refusal
-		// is a 404 rather than a 403: a refusal that confirms the resource
-		// exists tells the caller something the upstream would not have.
 		return refuse(http.StatusNotFound), nil
 	}
 	path, err := rv.probePath(res, key)
@@ -288,7 +266,6 @@ func (rv *Revealer) context(key map[string]string, row Row) map[string]any {
 }
 
 // refuse builds a not-allowed verdict. Every failure path goes through it, so
-// no path can return a zero Verdict that reads as allowed by accident.
 func refuse(status int) Verdict {
 	return Verdict{Status: status}
 }
@@ -308,9 +285,6 @@ func keyString(res *Resource, key map[string]string) string {
 		named = append(named, k.Name)
 	}
 	// A list route may also select by a stored FIELD -- every post by an
-	// author. That filter changes which rows the answer holds, so it belongs in
-	// the string: without it two different lists share one freshness marker and
-	// the second is served the first one's rows.
 	extra := make([]string, 0, len(key))
 	for name := range key {
 		if !slices.Contains(named, name) {

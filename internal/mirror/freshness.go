@@ -8,13 +8,9 @@ import (
 )
 
 // fetchSafetyTimeout bounds a detached fetch. It is a leak guard, not a
-// deadline for normal work: a fetch that takes longer than this is wedged.
 const fetchSafetyTimeout = 5 * time.Minute
 
 // defaultErrorRetry is how long a failed fetch is left alone when the spec
-// names no other interval. It is a fixed wait, deliberately: a growing backoff
-// eventually stops retrying altogether, and a resource that quietly stops
-// refreshing is worse than one that retries a little too often.
 const defaultErrorRetry = time.Minute
 
 // FetchState is where one cached key stands.
@@ -29,7 +25,6 @@ const (
 )
 
 // Outcome is what a read did to get its answer, as reported to the caller and
-// the request log.
 type Outcome string
 
 const (
@@ -43,20 +38,15 @@ type FetchResult struct {
 	ETag    string
 	Changed bool
 	// Status is the upstream answer the route declared worth keeping. A
-	// refusal is a fact, and remembering it as a bare row would serve it as an
-	// empty success.
 	Status int
 }
 
 // Fetcher performs one refresh. The engine supplies it; this file knows nothing
-// about HTTP.
 type Fetcher func(ctx context.Context, kind, key, etag string) (FetchResult, error)
 
 // Fresh keeps cached keys current.
 //
 // It holds three properties that are easy to lose and expensive to debug: a
-// fetch is not killed by the request that triggered it, two callers wanting the
-// same key make one upstream call, and a shutdown waits for what is in flight.
 type Fresh struct {
 	store *Store
 	fetch Fetcher
@@ -75,8 +65,6 @@ func NewFresh(store *Store, fetch Fetcher, ttl func(kind string) time.Duration) 
 }
 
 // Busy reports whether a fetch is in flight. It answers immediately, because
-// the caller is a readiness probe deciding whether this process may be
-// restarted, and a probe that blocks is a probe that times out.
 func (f *Fresh) Busy() bool { return f.inflight.Load() > 0 }
 
 // Drain waits for in-flight fetches, so a shutdown does not close the database
@@ -119,7 +107,6 @@ func (f *Fresh) Ensure(ctx context.Context, kind, key string) (Outcome, error) {
 
 // Refresh fetches whether or not the row is fresh, and ignores the error
 // backoff. It is what a deliberate refresh means: the caller has decided, and a
-// backoff is a guard against accidental hammering, not against a decision.
 func (f *Fresh) Refresh(ctx context.Context, kind, key string) (Outcome, error) {
 	meta, err := f.store.Freshness(ctx, kind, key)
 	if err != nil {
@@ -155,10 +142,6 @@ func (e *StoredError) Error() string {
 // doFetch runs one refresh under this key's lock.
 func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) (Outcome, error) {
 	// The fetch is detached from the caller's context. A consumer that hangs
-	// up must not cancel a refresh every other consumer is waiting on, and a
-	// caller's short deadline must not become the deadline for shared work.
-	// The metadata writes ride the same detached context, so a result is
-	// recorded even when the caller is long gone.
 	detached := context.WithoutCancel(ctx)
 	fetchCtx, cancel := context.WithTimeout(detached, fetchSafetyTimeout)
 	defer cancel()

@@ -9,9 +9,6 @@ import (
 )
 
 // PassReason says why a request was forwarded instead of answered from the
-// cache. The vocabulary is closed on purpose: an operator reading a wall of
-// passthroughs needs to know which ones are work to be done, and "unknown" is
-// never that answer.
 type PassReason string
 
 const (
@@ -27,7 +24,6 @@ const (
 type match struct {
 	route *Route
 	// key is the resource key this request addresses, path parameters and
-	// keyed query parameters together.
 	key map[string]string
 	// query is the modelled query, defaults filled in.
 	query map[string]string

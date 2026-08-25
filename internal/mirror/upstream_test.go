@@ -13,8 +13,6 @@ import (
 )
 
 // swapUpstreamClient points the one outbound client at a test's own, and puts
-// the real one back. NewUpstreamer captures the package var, so the swap has to
-// happen before the upstreamer is built.
 func swapUpstreamClient(t *testing.T, c *http.Client) {
 	t.Helper()
 	saved := upstreamClient
@@ -39,8 +37,6 @@ func upstreamSpec(base string) *Spec {
 }
 
 // callVars is the context the engine hands an upstream call: the spec's vars
-// under `.var`, beside the environment. A test that flattened it would render
-// `.var.x` to nothing and prove the opposite of what it claims.
 var callVars = map[string]any{
 	"env": map[string]string{},
 	"var": map[string]any{"version": "2026-01-01", "blank": ""},
@@ -220,8 +216,6 @@ func TestNewUpstreamer_ResolvesTheBaseOnce(t *testing.T) {
 		"the base is trimmed of space and of a trailing slash, so a path concatenated onto it has one separator")
 
 	// A template over a value the spec never set does not render to nothing; it
-	// renders to something that is not a URL. Both shapes have to be refused
-	// here, at boot, rather than at the first request.
 	_, err = NewUpstreamer(&Spec{Name: "up", Upstream: Upstream{Base: "{{ .var.missing }}"}}, hostVars, nil)
 	require.Error(t, err, "a base that resolves to nothing usable would send every request to a relative address")
 	assert.Contains(t, err.Error(), "resolved to nothing")

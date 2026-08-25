@@ -103,7 +103,6 @@ func TestServeFetchesThenServesFromCache(t *testing.T) {
 	assert.Equal(t, "2026-01-02T03:04:05Z", doc["seen"])
 
 	// A field the spec never declared is a field the mirror never serves, and
-	// a URL key would point a consumer back around the mirror.
 	assert.NotContains(t, doc, "html_url")
 
 	second := get(t, e, "/widgets/7")
@@ -127,7 +126,6 @@ func TestServeListStoresEveryRow(t *testing.T) {
 	require.Len(t, out, 2)
 	assert.Equal(t, "first", out[0]["name"])
 	// The list route's own key pins the rows it owns, so an item that does not
-	// carry it is still filed where the list will find it again.
 	assert.Equal(t, "7", out[0]["widget_id"])
 }
 
@@ -166,8 +164,6 @@ func TestTransientUpstreamFailureIsNotStored(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, first.Code)
 
 	// The failure is remembered only for its backoff window, and the window is
-	// about not hammering a failing upstream. Recording it as the ANSWER would
-	// serve an outage long after it ended, so nothing was stored.
 	require.NoError(t, clearBackoff(e, "widget", "7"))
 
 	second := get(t, e, "/widgets/7")

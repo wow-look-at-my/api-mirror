@@ -41,9 +41,10 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 
 ## Commands
 
-- `go-toolchain` — tidy, vet, test with coverage, build. Never a bare `go` command, and never pipe or redirect its output.
+- `go-toolchain` — tidy, vet, test with coverage, build, then `dats/*.dats`. Never a bare `go` command, and never pipe or redirect its output.
 - `sqlc generate` — regenerates `internal/database/dbgen` after editing `schema.sql` or `queries/*.sql`.
 - `api-mirror --spec <file> --check` — print the derived schema, routes and events, then exit.
+- `dats/api-cli-smoke.dats` — drives a real `api-mirror` with `api-cli`'s own upstream GitHub sample against `cmd/fakegithub`, a deterministic stand-in. Proves a genuine independent client gets correctly shaped data on a miss and a byte-identical, zero-upstream-call hit.
 
 ## Conventions
 

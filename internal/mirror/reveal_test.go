@@ -35,8 +35,6 @@ func revealSpec(base string) *Spec {
 }
 
 // fixture is one reveal layer wired to a fake upstream that counts what it is
-// asked. The count is the assertion in every no-network test: a rung that
-// reaches the network has stopped being that rung.
 type fixture struct {
 	rv    *Revealer
 	store *Store

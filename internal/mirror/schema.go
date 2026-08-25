@@ -9,15 +9,12 @@ import (
 )
 
 // The engine's own tables. They are the same for every spec, so they carry a
-// mirror_ prefix and a resource may not take one.
 const enginePrefix = "mirror_"
 
 // resourceTable is the derived table name for a resource.
 func resourceTable(name string) string { return "res_" + name }
 
 // sqlType maps a declared field type to its SQLite column type. A time is
-// stored as a Unix second so ordering is arithmetic, never string comparison of
-// whatever format the upstream chose that day.
 func sqlType(t FieldType) string {
 	switch t {
 	case FieldInt, FieldBool, FieldTime:
@@ -47,8 +44,6 @@ func resourceDDL(r *Resource) string {
 		}
 	}
 	// The engine's own column carries a mirror_ prefix so it cannot collide
-	// with a field the upstream has. "updated_at" is exactly the name an API
-	// uses, and reserving it would make a common field undeclarable.
 	b.WriteString("\tmirror_written_at INTEGER NOT NULL,\n")
 	names := make([]string, 0, len(r.Keys))
 	for _, k := range r.Keys {
@@ -71,14 +66,6 @@ func (s *Spec) DDL() string {
 }
 
 // Fingerprint identifies the whole schema, static tables and derived ones
-// alike. A database recording a different one is nuked and recreated on open.
-//
-// The number is computed from the DDL, so it cannot be forgotten: editing a
-// resource changes the tables, which changes this, which nukes. It replaces a
-// hand-maintained version constant, because a hand-maintained one gets deployed
-// against the tables it no longer describes.
-//
-// A cache is disposable by definition. Nuking costs a refetch, not data.
 func (s *Spec) Fingerprint() string {
 	return database.Fingerprint(s.DDL())
 }

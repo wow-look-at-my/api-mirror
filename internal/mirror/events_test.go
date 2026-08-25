@@ -52,7 +52,6 @@ func ingestSpec() *Spec {
 					{Field: "visibility", From: "repository.visibility"},
 					{Field: "stars", From: "repository.stargazers_count"},
 					// A cleared topic and an absent one are different answers
-					// here, so this one writes the null the payload states.
 					{Field: "topic", From: "repository.topic", AllowNull: true},
 				},
 			}, {
@@ -69,8 +68,6 @@ func ingestSpec() *Spec {
 const testSecret = "s3cret"
 
 // A payload clock is a real moment. The watermark sweep forgets a subject
-// nothing restated for watermarkRetention, so an epoch far in the past is swept
-// the moment it is written and the next delivery reads as the first one.
 var (
 	clockEarly = time.Now().Add(-time.Hour).Unix()
 	clockLate  = time.Now().Unix()
@@ -168,7 +165,6 @@ func TestUnsetSecretRefusesEveryDelivery(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	// Even a body signed with the empty key is refused: with no secret there is
-	// nothing to verify against.
 	w := postDelivery(t, in, "repository", body, signBody("", body))
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
@@ -195,7 +191,6 @@ func TestValidDeliveryApplies(t *testing.T) {
 	assert.Equal(t, string(DispApplied), w.Header().Get(dispositionHeader))
 
 	// The keys declare folding, so the row lands under the lower-cased spelling
-	// a differently-cased request also reaches.
 	row := repoRow(t, store, "acme", "widget")
 	require.NotNil(t, row)
 	assert.Equal(t, "public", row["visibility"])
@@ -290,7 +285,6 @@ func TestInvalidateDeletesTheRow(t *testing.T) {
 func TestWatermarkFailureStillApplies(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 	// The ordering gate is now broken. A provider sends a delivery once, so the
-	// engine writes it anyway rather than losing it.
 	_, err := store.db.Exec(`DROP TABLE mirror_watermark`)
 	require.NoError(t, err)
 
@@ -340,7 +334,6 @@ func TestWindowedDeliveryAnswersBeforeItApplies(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	// The provider gives up in single-digit seconds, so the answer precedes the
-	// write and says accepted rather than applied.
 	assert.Equal(t, http.StatusAccepted, w.Code)
 	assert.Equal(t, "accepted", w.Header().Get(dispositionHeader))
 
@@ -359,7 +352,6 @@ func TestReorderWindowAppliesOldestFirst(t *testing.T) {
 	})
 
 	// Both deliveries are about one subject and land inside the window, newest
-	// first. Arrival order is not the order they describe.
 	r.Submit(&Delivery{ID: "newer", Subject: "acme/widget", At: time.Unix(2000, 0)})
 	r.Submit(&Delivery{ID: "older", Subject: "acme/widget", At: time.Unix(1000, 0)})
 	require.True(t, r.Drain(2*time.Second))

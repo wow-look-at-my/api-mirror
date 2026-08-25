@@ -10,11 +10,6 @@ import (
 )
 
 // fetchPlan is what a detached fetch needs to know about the request that
-// triggered it: which route, which key, and what the caller asked for.
-//
-// It rides the context because a fetch outlives its request. Two callers
-// wanting the same kind and key produce equivalent plans, which is what makes
-// it safe for one caller's fetch to answer another's wait.
 type fetchPlan struct {
 	route *Route
 	res   *Resource
@@ -64,7 +59,6 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	result := FetchResult{ETag: answer.Header.Get("ETag"), Changed: true, Status: answer.Status}
 	if answer.Status >= 400 {
 		// The route declared this refusal worth keeping. It is recorded on the
-		// freshness row and replayed as itself; there is no document to absorb.
 		return result, nil
 	}
 
@@ -80,8 +74,6 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 
 // upstreamPath rebuilds the path this plan asks the upstream for, carrying only
 // the query the route models. A parameter the route never modelled cannot reach
-// the upstream through a cached route, because the answer would then not match
-// the row it is stored under.
 func (p *fetchPlan) upstreamPath() string {
 	q := url.Values{}
 	for _, decl := range p.route.Query {
@@ -98,9 +90,6 @@ func (p *fetchPlan) upstreamPath() string {
 // storable reports whether an answer is one the route said to keep.
 //
 // A 2xx is always kept. A 4xx is kept only when the route names it, which is
-// how a spec says "this refusal is the upstream stating a fact". Everything
-// else -- a 5xx, a rate-limit refusal -- is relayed and forgotten, because a
-// transient failure stored is an outage remembered long after it ended.
 func storable(rt *Route, a *Answer) bool {
 	if Transient(a) {
 		return false
@@ -158,7 +147,6 @@ func (e *Engine) absorbAnswer(ctx context.Context, plan *fetchPlan, doc any) err
 	}
 	if plan.route.Complete {
 		// The route says this answer is the whole set, so an item missing from
-		// it is an item the upstream deleted.
 		return e.store.ReplaceMany(ctx, plan.res, plan.key, rows, now)
 	}
 	return e.store.PutMany(ctx, plan.res, rows, now)
@@ -194,11 +182,8 @@ func requireKeys(res *Resource, row Row) error {
 }
 
 // A resource key becomes text in exactly one place, keyString in reveal.go.
-// The freshness marker, a grant and a denial all name the same fact, and they
-// only agree because none of them builds that string itself.
 
 // fingerprint reduces a credential to a stable, non-reversible identifier. The
-// mirror partitions proofs by caller and never needs the credential itself.
 func fingerprint(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:8])
