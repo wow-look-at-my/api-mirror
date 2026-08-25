@@ -181,13 +181,14 @@ func buildResource(n *node) (*Resource, error) {
 func addResourceChild(r *Resource, child *node) error {
 	switch child.Name() {
 	case "key":
-		if err := checkAttrs(child, "name", "from", "fold"); err != nil {
+		if err := checkAttrs(child, "name", "from", "fold", "credential"); err != nil {
 			return err
 		}
 		r.Keys = append(r.Keys, Key{
-			Name: child.Attr("name"),
-			From: child.Attr("from"),
-			Fold: child.Attr("fold") == "true",
+			Name:       child.Attr("name"),
+			From:       child.Attr("from"),
+			Fold:       child.Attr("fold") == "true",
+			Credential: child.Attr("credential") == "true",
 		})
 	case "field":
 		f, err := buildField(child)
@@ -269,6 +270,11 @@ func buildReveal(n *node) (*Reveal, error) {
 				return nil, err
 			}
 			rv.DenyTTL = d
+		case "credential":
+			if err := checkAttrs(child); err != nil {
+				return nil, err
+			}
+			rv.Credential = true
 		default:
 			return nil, fmt.Errorf("<reveal>: unexpected child element <%s>", child.Name())
 		}

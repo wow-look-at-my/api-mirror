@@ -50,6 +50,10 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 		// Load-time validation rejects this. The runtime still refuses rather
 		return refuse(http.StatusNotFound), fmt.Errorf("resource %q has no reveal rule", res.Name)
 	}
+	if res.Reveal.Credential {
+		// A row keyed by the caller's own credential proves itself.
+		return Verdict{Allowed: true}, nil
+	}
 
 	public, err := rv.public(ctx, res, key)
 	if err != nil {

@@ -60,6 +60,7 @@ func (r *Resource) validate() error {
 		return fmt.Errorf("resource %q needs at least one <key>: a fact with no identity cannot be stored once", r.Name)
 	}
 	seen := make([]string, 0, len(r.Keys)+len(r.Fields))
+	hasCredentialKey := false
 	for _, k := range r.Keys {
 		if k.Name == "" {
 			return fmt.Errorf("resource %q: <key> needs a name", r.Name)
@@ -68,6 +69,12 @@ func (r *Resource) validate() error {
 			return fmt.Errorf("resource %q: %q declared twice", r.Name, k.Name)
 		}
 		seen = append(seen, k.Name)
+		if k.Credential {
+			if k.From != "" {
+				return fmt.Errorf("resource %q: key %q is credential=\"true\" and also declares from=%q; pick one", r.Name, k.Name, k.From)
+			}
+			hasCredentialKey = true
+		}
 	}
 	switch r.Store {
 	case StoreColumns:
@@ -112,10 +119,19 @@ func (r *Resource) validate() error {
 	if r.Reveal == nil {
 		return fmt.Errorf("resource %q has no <reveal>: a stored fact with no rule about who may read it cannot be served", r.Name)
 	}
+	if r.Reveal.Credential && !hasCredentialKey {
+		return fmt.Errorf("resource %q: <reveal><credential/></reveal> needs a <key credential=\"true\">, or a different caller could read another's row", r.Name)
+	}
 	return r.Reveal.validate(r.Name)
 }
 
 func (rv *Reveal) validate(resource string) error {
+	if rv.Credential {
+		if rv.Public != "" || rv.Probe != nil {
+			return fmt.Errorf("resource %q: <credential/> already gates every read; a <public> or <probe> alongside it is dead code", resource)
+		}
+		return nil
+	}
 	if rv.Public == "" && rv.Probe == nil {
 		return fmt.Errorf("resource %q: <reveal> proves nothing -- declare a <public> predicate, a <probe>, or both", resource)
 	}
@@ -162,6 +178,10 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	}
 	if !rt.List {
 		for _, k := range res.Keys {
+			if k.Credential {
+				// The engine fills this from the request, not a route param.
+				continue
+			}
 			if !slices.Contains(supplied, k.Name) {
 				return fmt.Errorf("route %s cannot key resource %q: nothing supplies %q", rt.Path, res.Name, k.Name)
 			}

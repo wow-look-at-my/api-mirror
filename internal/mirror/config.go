@@ -67,6 +67,8 @@ type Key struct {
 	From string
 	// Fold lower-cases the value before it is stored or looked up. Declare it
 	Fold bool
+	// Credential fills this from the caller's own request, not the document.
+	Credential bool
 }
 
 // FieldType is a stored column's type. The set is deliberately small: a mirror
@@ -144,6 +146,8 @@ type Reveal struct {
 	GrantTTL time.Duration
 	// DenyTTL is how long an authoritative denial is replayed without asking.
 	DenyTTL time.Duration
+	// Credential says the resource's own key already proves access.
+	Credential bool
 }
 
 // Probe is the upstream request that proves a caller's access.
