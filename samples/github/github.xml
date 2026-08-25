@@ -141,6 +141,239 @@
 		</reveal>
 	</resource>
 
+	<resource name="contents" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="path"/>
+		<key name="ref"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- A git commit object is immutable (content-addressed by sha), so a long TTL approximates gsm's no-TTL-plus-LRU stance. -->
+	<resource name="git_commit" ttl="720h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="sha" fold="true"/>
+		<field name="message" type="text">message</field>
+		<field name="author_name" type="text">author.name</field>
+		<field name="author_email" type="text">author.email</field>
+		<field name="author_date" type="text">author.date</field>
+		<field name="committer_name" type="text">committer.name</field>
+		<field name="committer_email" type="text">committer.email</field>
+		<field name="committer_date" type="text">committer.date</field>
+		<field name="tree_sha" type="text">tree.sha</field>
+		<drop>url</drop>
+		<drop>*_url</drop>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- A git tree is content-addressed too; recursive is part of the key because GitHub answers a different entry set for the same sha depending on it. -->
+	<resource name="git_tree" store="document" ttl="720h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="sha" fold="true"/>
+		<key name="recursive"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- The general /git/ref/{ref} path (tags and other ref kinds, not just heads; see "branch" above for the heads/{ref} shortcut). -->
+	<resource name="git_ref" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="matching_refs" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="prefix"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- Simplified vs gsm's own shas-array-of-refs snapshot: this stores the rendered page directly rather than a pointer into git_commit rows. -->
+	<resource name="commits_list" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="sha"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="compare" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="basehead"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- Split from gsm's single kind-discriminated table: this spec's route has no way to supply a literal "kind" value for a resource key, so status and check-runs each get their own resource instead. -->
+	<resource name="commit_status_rollup" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="commit_check_runs" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="check_run" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="check_run_id"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- Only the per-commit-filtered listing (?head_sha=); gsm deliberately does NOT snapshot the repo-wide listing (no signal can name a run entering/leaving "queued"); same gap here. -->
+	<resource name="workflow_runs" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="head_sha" fold="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- Split from gsm's kind-discriminated table for the same reason as commit_ci above. -->
+	<resource name="workflow_run_jobs" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="run_id"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="workflow_job" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="job_id"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="code_quality_setup" store="document" ttl="1h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="label" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="name"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="branches_list" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="pull_files" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="number"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="pull_commits" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="number"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
 	<route method="GET" path="/repos/{owner}/{name}" resource="repo">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
@@ -179,6 +412,129 @@
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100"/>
 		<param name="page" type="int" default="1" min="1" max="100"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/contents/{path}" resource="contents">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="ref" type="text" default="" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/git/commits/{sha}" resource="git_commit">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/git/trees/{sha}" resource="git_tree">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="recursive" type="text" default="" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/git/ref/{ref}" resource="git_ref">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/git/matching-refs/heads/{prefix}" resource="matching_refs">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/commits" resource="commits_list" list="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="sha" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/compare/{basehead}" resource="compare">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{ref}/status" resource="commit_status_rollup">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{ref}/check-runs" resource="commit_check_runs">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/check-runs/{check_run_id}" resource="check_run">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/actions/runs" resource="workflow_runs" list="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="head_sha" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/actions/runs/{run_id}/jobs" resource="workflow_run_jobs" list="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/actions/jobs/{job_id}" resource="workflow_job">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/labels/{name}" resource="label">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/branches" resource="branches_list" list="true" complete="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/files" resource="pull_files" list="true" complete="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/commits" resource="pull_commits" list="true" complete="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<!--
@@ -266,5 +622,36 @@
 		</event>
 
 	</events>
+
+	<!--
+		Deliberately NOT declared as resources, matching gsm's own stance
+		(CLAUDE.md's global-truth model): each is keyed by the CALLER'S OWN
+		credential fingerprint, not by owner/repo, because the answer belongs
+		to that one token (its installation coverage, its own webhook config,
+		its own rate-limit standing, its own profile). This spec's reveal
+		model only has three shapes: public, a probed grant, an authoritative
+		deny; all of which share a row across every caller who can prove the
+		same repo access. Declaring one of these as an ordinary probed
+		resource would replay one caller's per-credential answer to a
+		DIFFERENT caller who merely proves read access to the same repo: a
+		security regression, not a gap in coverage. Left as passthrough:
+		POST /app/installations/{id}/access_tokens, GET /repos/{owner}/{repo}/installation,
+		GET /orgs/{org}/installation, GET /users/{username}/installation, GET /app,
+		GET /app/installations, GET /installation/repositories, GET /user, GET /user/orgs,
+		GET /user/repos, GET /rate_limit, GET /orgs/{org}/actions/runners,
+		GET/POST/PATCH/DELETE /repos/{owner}/{repo}/hooks[/{hook_id}],
+		GET/POST/PATCH/DELETE /orgs/{org}/hooks[/{hook_id}].
+
+		GET /search/issues is the same shape for a different reason: GitHub
+		filters hits to what the caller's token can see, so a row keyed on the
+		query text alone would leak one credential's results to another's
+		identical query; also left as passthrough.
+
+		PATCH/DELETE on an otherwise-cached read path (labels, hooks,
+		code-quality/setup) have no route of their own either: this spec's
+		Route has no write-then-invalidate concept, so a write is left to
+		passthrough same as an unmodeled path, and the next read past the
+		resource's TTL picks up the change.
+	-->
 
 </mirror>
