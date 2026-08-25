@@ -624,34 +624,198 @@
 	</events>
 
 	<!--
-		Deliberately NOT declared as resources, matching gsm's own stance
-		(CLAUDE.md's global-truth model): each is keyed by the CALLER'S OWN
-		credential fingerprint, not by owner/repo, because the answer belongs
-		to that one token (its installation coverage, its own webhook config,
-		its own rate-limit standing, its own profile). This spec's reveal
-		model only has three shapes: public, a probed grant, an authoritative
-		deny; all of which share a row across every caller who can prove the
-		same repo access. Declaring one of these as an ordinary probed
-		resource would replay one caller's per-credential answer to a
-		DIFFERENT caller who merely proves read access to the same repo: a
-		security regression, not a gap in coverage. Left as passthrough:
-		POST /app/installations/{id}/access_tokens, GET /repos/{owner}/{repo}/installation,
-		GET /orgs/{org}/installation, GET /users/{username}/installation, GET /app,
-		GET /app/installations, GET /installation/repositories, GET /user, GET /user/orgs,
-		GET /user/repos, GET /rate_limit, GET /orgs/{org}/actions/runners,
-		GET/POST/PATCH/DELETE /repos/{owner}/{repo}/hooks[/{hook_id}],
-		GET/POST/PATCH/DELETE /orgs/{org}/hooks[/{hook_id}].
-
-		GET /search/issues is the same shape for a different reason: GitHub
-		filters hits to what the caller's token can see, so a row keyed on the
-		query text alone would leak one credential's results to another's
-		identical query; also left as passthrough.
-
-		PATCH/DELETE on an otherwise-cached read path (labels, hooks,
-		code-quality/setup) have no route of their own either: this spec's
-		Route has no write-then-invalidate concept, so a write is left to
-		passthrough same as an unmodeled path, and the next read past the
-		resource's TTL picks up the change.
+		Each key is the CALLER'S OWN credential fingerprint (the engine's
+		credential="true" key), not owner/repo: the answer belongs to that one
+		token (its installation coverage, its own rate-limit standing, its own
+		profile), so <reveal><credential/></reveal> replaces the probe/grant
+		ladder: the key already proves access, and no other caller can ever
+		address the row. Still passthrough: POST
+		/app/installations/{id}/access_tokens (a write) and PATCH/DELETE on
+		any read path here, since this spec's Route has no
+		write-then-invalidate concept.
 	-->
+	<resource name="identity" store="document">
+		<key name="token_fp" credential="true"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/user" resource="identity">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+	</route>
+
+	<resource name="user_orgs" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/user/orgs" resource="user_orgs">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<resource name="user_repos" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/user/repos" resource="user_repos">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<resource name="rate_limit" store="document" ttl="1m">
+		<key name="token_fp" credential="true"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/rate_limit" resource="rate_limit">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+	</route>
+
+	<resource name="org_runners" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="org" fold="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/orgs/{org}/actions/runners" resource="org_runners">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<resource name="repo_hooks" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/repos/{owner}/{repo}/hooks" resource="repo_hooks">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<resource name="repo_hook" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="hook_id"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hook">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<resource name="org_hooks" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="org" fold="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/orgs/{org}/hooks" resource="org_hooks">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<resource name="org_hook" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="org" fold="true"/>
+		<key name="hook_id"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<!--
+		GitHub filters hits to what the caller's token can see, so the query
+		text alone is not a safe key: the credential is part of it here too.
+	-->
+	<resource name="search_issues" store="document" ttl="1m">
+		<key name="token_fp" credential="true"/>
+		<key name="q"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/search/issues" resource="search_issues">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="q" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<!--
+		App-JWT-authenticated: the App's own identity, its installations, and
+		one installation's repo coverage. Still credential-keyed: a JWT is
+		still a caller's own credential, so the same shape applies.
+	-->
+	<resource name="app_identity" store="document">
+		<key name="token_fp" credential="true"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/app" resource="app_identity">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+	</route>
+
+	<resource name="app_installations" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/app/installations" resource="app_installations">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<resource name="installation_repos" store="document">
+		<key name="token_fp" credential="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/installation/repositories" resource="installation_repos">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
 
 </mirror>
