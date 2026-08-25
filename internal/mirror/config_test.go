@@ -91,7 +91,7 @@ func TestValidateRejectsWriteRoute(t *testing.T) {
 	s.Routes[0].Method = "POST"
 	err := s.validate()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "only reads are cached")
+	assert.Contains(t, err.Error(), "only reads and credential-gated mints are cached")
 }
 
 func TestValidateRejectsUnknownResourceOnRoute(t *testing.T) {

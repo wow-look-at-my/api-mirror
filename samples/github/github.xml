@@ -635,10 +635,18 @@
 		below as <purge>: forwarded verbatim, and the row they changed is
 		dropped once the upstream confirms the write happened.
 
-		POST /app/installations/{id}/access_tokens stays passthrough: it
-		mints a new secret rather than changing an existing fact, so there is
-		no row for a purge to drop.
+		POST /app/installations/{id}/access_tokens is declared as a route,
+		not a <purge>: unlike a write, replaying its own cached answer is
+		correct here, since the TTL below is well under GitHub's token
+		lifetime, so a "hit" is still a live, usable token.
 	-->
+	<resource name="install_token" store="document" ttl="50m">
+		<key name="token_fp" credential="true"/>
+		<key name="id"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token"/>
 	<resource name="identity" store="document">
 		<key name="token_fp" credential="true"/>
 		<reveal><credential/></reveal>

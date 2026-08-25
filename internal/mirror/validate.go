@@ -161,12 +161,16 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if rt.Method == "" {
 		return fmt.Errorf("route %s needs a method", rt.Path)
 	}
-	if rt.Method != "GET" && rt.Method != "HEAD" {
-		return fmt.Errorf("route %s %s: only reads are cached; a write belongs in passthrough", rt.Method, rt.Path)
-	}
 	res, ok := resources[rt.Resource]
 	if !ok {
 		return fmt.Errorf("route %s names resource %q, which is not declared", rt.Path, rt.Resource)
+	}
+	if rt.Method != "GET" && rt.Method != "HEAD" {
+		// A credential-gated mint replays a still-valid answer, so it is
+		// the one write worth caching. Everything else is passthrough or <purge>.
+		if rt.Method != "POST" || !res.Reveal.Credential {
+			return fmt.Errorf("route %s %s: only reads and credential-gated mints are cached; a write belongs in passthrough or <purge>", rt.Method, rt.Path)
+		}
 	}
 	params := pathParams(rt.Path)
 	supplied := make([]string, 0, len(params))

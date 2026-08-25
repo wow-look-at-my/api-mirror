@@ -216,6 +216,43 @@ func TestValidatePurge(t *testing.T) {
 	})
 }
 
+// TestCredentialResource_PostMintIsCached proves a POST route is only ever
+// legal on a credential-gated resource, and that a mint replays its cached
+// answer instead of re-minting on every call.
+func TestCredentialResource_PostMintIsCached(t *testing.T) {
+	var calls atomic.Int32
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"token":"minted"}`))
+	}), withCredentialResource(&Route{Method: "POST", Path: "/app/installations/{id}/access_tokens", Resource: "identity"}))
+
+	post := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/app/installations/42/access_tokens", nil)
+		req.Header.Set("Authorization", "app-jwt")
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	first := post()
+	assert.Equal(t, http.StatusOK, first.Code)
+
+	second := post()
+	assert.Equal(t, first.Body.String(), second.Body.String())
+	assert.EqualValues(t, 1, calls.Load())
+}
+
+func TestValidate_PostRouteNeedsCredentialGate(t *testing.T) {
+	res := credentialResource()
+	res.Reveal = &Reveal{Public: "true"}
+	resources := map[string]*Resource{"identity": res}
+	rt := &Route{Method: "POST", Path: "/user", Resource: "identity"}
+	err := rt.validate(resources)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only reads and credential-gated mints")
+}
+
 func TestLoad_CredentialXML(t *testing.T) {
 	xml := `<mirror name="cred-test">
 	<upstream base="https://api.example.com"/>
