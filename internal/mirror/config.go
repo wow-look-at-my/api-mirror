@@ -9,6 +9,7 @@ type Spec struct {
 	Upstream  Upstream
 	Resources []*Resource
 	Routes    []*Route
+	Purges    []*Purge
 	Events    *Events
 }
 
@@ -67,6 +68,8 @@ type Key struct {
 	From string
 	// Fold lower-cases the value before it is stored or looked up. Declare it
 	Fold bool
+	// Credential fills this from the caller's own request, not the document.
+	Credential bool
 }
 
 // FieldType is a stored column's type. The set is deliberately small: a mirror
@@ -144,12 +147,21 @@ type Reveal struct {
 	GrantTTL time.Duration
 	// DenyTTL is how long an authoritative denial is replayed without asking.
 	DenyTTL time.Duration
+	// Credential says the resource's own key already proves access.
+	Credential bool
 }
 
 // Probe is the upstream request that proves a caller's access.
 type Probe struct {
 	Method string
 	Path   string // template source over the resource's keys
+}
+
+// Purge forwards a write and, on a 2xx, deletes the cached row it changed.
+type Purge struct {
+	Method   string
+	Path     string
+	Resource string
 }
 
 // Events is the webhook ingest declaration.

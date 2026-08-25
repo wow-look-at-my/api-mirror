@@ -68,6 +68,17 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			name := rt.column(q.Name)
 			key[name] = foldFor(res, name, query[q.Name])
 		}
+		for _, k := range res.Keys {
+			if !k.Credential {
+				continue
+			}
+			auth := r.Header.Get("Authorization")
+			if auth == "" {
+				// No credential to key this row by; nothing to serve.
+				return nil, PassNoIdentity, nil
+			}
+			key[k.Name] = fingerprint(auth)
+		}
 		return &match{route: rt, key: key, query: query}, "", nil
 	}
 	if pathKnown {

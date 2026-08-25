@@ -44,6 +44,11 @@ func (s *Spec) validate() error {
 			return err
 		}
 	}
+	for _, p := range s.Purges {
+		if err := p.validate(byName); err != nil {
+			return err
+		}
+	}
 	if s.Events != nil {
 		if err := s.Events.validate(byName); err != nil {
 			return err
@@ -60,6 +65,7 @@ func (r *Resource) validate() error {
 		return fmt.Errorf("resource %q needs at least one <key>: a fact with no identity cannot be stored once", r.Name)
 	}
 	seen := make([]string, 0, len(r.Keys)+len(r.Fields))
+	hasCredentialKey := false
 	for _, k := range r.Keys {
 		if k.Name == "" {
 			return fmt.Errorf("resource %q: <key> needs a name", r.Name)
@@ -68,6 +74,12 @@ func (r *Resource) validate() error {
 			return fmt.Errorf("resource %q: %q declared twice", r.Name, k.Name)
 		}
 		seen = append(seen, k.Name)
+		if k.Credential {
+			if k.From != "" {
+				return fmt.Errorf("resource %q: key %q is credential=\"true\" and also declares from=%q; pick one", r.Name, k.Name, k.From)
+			}
+			hasCredentialKey = true
+		}
 	}
 	switch r.Store {
 	case StoreColumns:
@@ -112,10 +124,19 @@ func (r *Resource) validate() error {
 	if r.Reveal == nil {
 		return fmt.Errorf("resource %q has no <reveal>: a stored fact with no rule about who may read it cannot be served", r.Name)
 	}
+	if r.Reveal.Credential && !hasCredentialKey {
+		return fmt.Errorf("resource %q: <reveal><credential/></reveal> needs a <key credential=\"true\">, or a different caller could read another's row", r.Name)
+	}
 	return r.Reveal.validate(r.Name)
 }
 
 func (rv *Reveal) validate(resource string) error {
+	if rv.Credential {
+		if rv.Public != "" || rv.Probe != nil {
+			return fmt.Errorf("resource %q: <credential/> already gates every read; a <public> or <probe> alongside it is dead code", resource)
+		}
+		return nil
+	}
 	if rv.Public == "" && rv.Probe == nil {
 		return fmt.Errorf("resource %q: <reveal> proves nothing -- declare a <public> predicate, a <probe>, or both", resource)
 	}
@@ -140,12 +161,16 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if rt.Method == "" {
 		return fmt.Errorf("route %s needs a method", rt.Path)
 	}
-	if rt.Method != "GET" && rt.Method != "HEAD" {
-		return fmt.Errorf("route %s %s: only reads are cached; a write belongs in passthrough", rt.Method, rt.Path)
-	}
 	res, ok := resources[rt.Resource]
 	if !ok {
 		return fmt.Errorf("route %s names resource %q, which is not declared", rt.Path, rt.Resource)
+	}
+	if rt.Method != "GET" && rt.Method != "HEAD" {
+		// A credential-gated mint replays a still-valid answer, so it is
+		// the one write worth caching. Everything else is passthrough or <purge>.
+		if rt.Method != "POST" || !res.Reveal.Credential {
+			return fmt.Errorf("route %s %s: only reads and credential-gated mints are cached; a write belongs in passthrough or <purge>", rt.Method, rt.Path)
+		}
 	}
 	params := pathParams(rt.Path)
 	supplied := make([]string, 0, len(params))
@@ -162,6 +187,10 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	}
 	if !rt.List {
 		for _, k := range res.Keys {
+			if k.Credential {
+				// The engine fills this from the request, not a route param.
+				continue
+			}
 			if !slices.Contains(supplied, k.Name) {
 				return fmt.Errorf("route %s cannot key resource %q: nothing supplies %q", rt.Path, res.Name, k.Name)
 			}
@@ -226,6 +255,33 @@ func (rt *Route) validateQuery() error {
 		}
 		if code >= 500 || code == 429 {
 			return fmt.Errorf("route %s: refusing to absorb %d -- a transient failure stored is an outage remembered long after it ended", rt.Path, code)
+		}
+	}
+	return nil
+}
+
+// validate checks a <purge>: a write with somewhere real to land and a key
+// the path can actually supply.
+func (p *Purge) validate(resources map[string]*Resource) error {
+	if p.Path == "" || !strings.HasPrefix(p.Path, "/") {
+		return fmt.Errorf("<purge> needs an absolute path, got %q", p.Path)
+	}
+	switch p.Method {
+	case "POST", "PUT", "PATCH", "DELETE":
+	default:
+		return fmt.Errorf("purge %s: method must be POST, PUT, PATCH or DELETE, not %q", p.Path, p.Method)
+	}
+	res, ok := resources[p.Resource]
+	if !ok {
+		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
+	}
+	params := pathParams(p.Path)
+	for _, k := range res.Keys {
+		if k.Credential {
+			continue
+		}
+		if !slices.Contains(params, k.Name) {
+			return fmt.Errorf("purge %s cannot key resource %q: nothing supplies %q", p.Path, res.Name, k.Name)
 		}
 	}
 	return nil

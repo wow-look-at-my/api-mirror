@@ -73,6 +73,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Routes = append(spec.Routes, rt)
+		case "purge":
+			p, err := buildPurge(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Purges = append(spec.Purges, p)
 		case "events":
 			ev, err := buildEvents(child)
 			if err != nil {
@@ -181,13 +187,14 @@ func buildResource(n *node) (*Resource, error) {
 func addResourceChild(r *Resource, child *node) error {
 	switch child.Name() {
 	case "key":
-		if err := checkAttrs(child, "name", "from", "fold"); err != nil {
+		if err := checkAttrs(child, "name", "from", "fold", "credential"); err != nil {
 			return err
 		}
 		r.Keys = append(r.Keys, Key{
-			Name: child.Attr("name"),
-			From: child.Attr("from"),
-			Fold: child.Attr("fold") == "true",
+			Name:       child.Attr("name"),
+			From:       child.Attr("from"),
+			Fold:       child.Attr("fold") == "true",
+			Credential: child.Attr("credential") == "true",
 		})
 	case "field":
 		f, err := buildField(child)
@@ -269,6 +276,11 @@ func buildReveal(n *node) (*Reveal, error) {
 				return nil, err
 			}
 			rv.DenyTTL = d
+		case "credential":
+			if err := checkAttrs(child); err != nil {
+				return nil, err
+			}
+			rv.Credential = true
 		default:
 			return nil, fmt.Errorf("<reveal>: unexpected child element <%s>", child.Name())
 		}
@@ -354,6 +366,21 @@ func addRouteChild(rt *Route, child *node) error {
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}
 	return nil
+}
+
+func buildPurge(n *node) (*Purge, error) {
+	if err := checkAttrs(n, "method", "path", "resource"); err != nil {
+		return nil, err
+	}
+	p := &Purge{
+		Method:   strings.ToUpper(n.Attr("method")),
+		Path:     n.Attr("path"),
+		Resource: n.Attr("resource"),
+	}
+	for _, child := range n.Children() {
+		return nil, fmt.Errorf("<purge path=%q>: unexpected child element <%s>", p.Path, child.Name())
+	}
+	return p, nil
 }
 
 func buildQueryParam(n *node) (QueryParam, error) {
