@@ -13,8 +13,6 @@ import (
 // Parsing and validation are separate steps on purpose: a builder checks the
 // SHAPE of the file (an unknown element, a missing attribute), and validate
 // checks what the shape MEANS (a route pointing at nothing, a resource nobody
-// gated). A message from the first tells an author about their typo; a message
-// from the second tells them about their design.
 func Load(path string) (*Spec, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {

@@ -9,12 +9,6 @@ import (
 )
 
 // The per-resource half of the store.
-//
-// A resource table exists because a spec declared it, so no generator can type
-// it and every statement here is assembled at run time. That makes the column
-// list the one thing worth guarding: it comes from columnsOf, through the
-// builders below, and from nowhere else. A statement written by hand somewhere
-// in the engine is how a column gets written in one order and read in another.
 
 // Row is one stored fact: column name to value, as read back from SQLite.
 type Row map[string]any
@@ -191,9 +185,6 @@ func rowArgs(r *Resource, row Row, at time.Time) []any {
 //
 // A key column is the usual case. A FIELD is allowed too, because a list route
 // often selects by an attribute rather than by identity -- every post by an
-// author, where the post's identity is its own id. Only declared columns are
-// used, in the resource's own order, so a caller cannot smuggle a predicate in
-// and the same request always builds the same statement.
 func keyPredicate(r *Resource, key map[string]string) (string, []any) {
 	var terms []string
 	var args []any

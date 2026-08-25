@@ -14,11 +14,6 @@ import (
 
 // Store is the derived SQLite database: the engine's own tables plus one table
 // per declared resource.
-//
-// The two halves are reached differently on purpose. The engine tables are
-// fixed at compile time, so they go through dbgen's generated queries. A
-// resource table exists only because a spec declared it, so its statements are
-// built at run time from columnsOf -- see store_resources.go.
 type Store struct {
 	db   *sql.DB
 	q    *dbgen.Queries
@@ -76,8 +71,6 @@ func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
 
 func openDB(path string) (*sql.DB, error) {
 	// WAL keeps a reader from blocking the writer, which matters because a
-	// detached fetch writes while requests read. busy_timeout turns the
-	// remaining contention into a wait instead of an error.
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -193,7 +186,6 @@ type Freshness struct {
 	Error      string
 	RetryAfter time.Time
 	// Status is what the upstream answered, when the route declared that answer
-	// worth keeping. Zero means an ordinary success with nothing to replay.
 	Status int
 }
 
@@ -292,8 +284,6 @@ func (s *Store) Watermark(ctx context.Context, subject string) (time.Time, bool,
 // refused.
 //
 // An EQUAL time applies. The clock is a second, and two genuinely distinct
-// views of one subject land inside the same second all the time; refusing on
-// equality drops the second one.
 func (s *Store) ApplyWatermark(ctx context.Context, subject string, at time.Time) (bool, error) {
 	n, err := s.q.ApplyWatermark(ctx, dbgen.ApplyWatermarkParams{
 		Subject:   subject,

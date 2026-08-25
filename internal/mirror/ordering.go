@@ -16,7 +16,6 @@ type Delivery struct {
 	Payload any
 	Raw     []byte
 	// Subject is what this delivery is a view of, and At is the moment that
-	// view is from. At is zero for an event declared unordered.
 	Subject string
 	At      time.Time
 }
@@ -42,8 +41,6 @@ func orderOf(ev *Event, payload any) (string, time.Time, error) {
 	raw := lookupPath(payload, ev.Clock)
 	if raw == nil {
 		// The spec named a clock field and this payload does not carry it. That
-		// is a spec error surfacing on real traffic, so it is loud: applying it
-		// unordered would be the silent stale write the clock exists to stop.
 		return subject, time.Time{}, fmt.Errorf("event %q: payload carries no %s", ev.Type, ev.Clock)
 	}
 	secs, err := toUnix(raw)
@@ -58,8 +55,6 @@ func orderOf(ev *Event, payload any) (string, time.Time, error) {
 }
 
 // Disposition is what happened to one delivery. It is reported back to the
-// provider as the response status, so their own delivery log says whether the
-// mirror took the update.
 type Disposition string
 
 const (
@@ -75,11 +70,6 @@ type applyFunc func(ctx context.Context, d *Delivery) (Disposition, error)
 
 // Reorderer sorts deliveries that land close together for the SAME subject and
 // applies them oldest-first.
-//
-// It is a window, not a delay. A uniform hold preserves arrival order exactly
-// and fixes nothing; what fixes anything is holding the first delivery of a
-// subject briefly so a sibling can arrive and be sorted with it. Batching is
-// per subject, so a busy subject never makes another subject wait.
 type Reorderer struct {
 	window time.Duration
 	apply  applyFunc
@@ -111,8 +101,6 @@ func NewReorderer(window time.Duration, apply applyFunc) *Reorderer {
 //
 // With a window it returns immediately and the delivery applies later, so the
 // caller answers the provider before the write lands. That is deliberate: a
-// provider's delivery timeout is single-digit seconds, and holding the response
-// open for the window would turn a latency knob into lost deliveries.
 func (r *Reorderer) Submit(d *Delivery) {
 	if r.window <= 0 {
 		r.wg.Add(1)
@@ -148,7 +136,6 @@ func (r *Reorderer) run(items []*Delivery) {
 	defer r.wg.Done()
 	sort.SliceStable(items, func(i, j int) bool { return items[i].At.Before(items[j].At) })
 	// The context is detached from any request: the caller has already been
-	// answered, and a hang-up must not lose a write.
 	ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
 	defer cancel()
 	for _, d := range items {
@@ -159,7 +146,6 @@ func (r *Reorderer) run(items []*Delivery) {
 }
 
 // applyTimeout bounds one batch's writes. It exists so a wedged store cannot
-// leak goroutines forever, not to bound normal work.
 const applyTimeout = 2 * time.Minute
 
 // Drain waits for held and in-flight deliveries, so a shutdown does not drop a

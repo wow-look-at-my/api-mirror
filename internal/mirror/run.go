@@ -79,7 +79,6 @@ func Run() error {
 	}
 
 	// Shut down in the order that keeps a write from reaching a closed
-	// database: stop taking requests, let in-flight work finish, then close.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

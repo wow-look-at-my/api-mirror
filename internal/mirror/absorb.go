@@ -19,9 +19,6 @@ func absorb(r *Resource, doc any) (Row, error) {
 	row := make(Row, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
 		// A key with no stated path reads the field of its own name. That is
-		// what <key name="id"/> plainly means, and requiring `from="id"` to say
-		// it would be ceremony -- one a spec author only discovers when a list
-		// route stores nothing.
 		from := k.From
 		if from == "" {
 			from = k.Name
@@ -237,10 +234,6 @@ func present(f Field, v any) any {
 
 // trim removes the declared key patterns from a document, recursively, before
 // it is stored.
-//
-// This is what keeps a mirrored answer from pointing back at the upstream. A
-// consumer handed an upstream URL follows it, and every request that leaves by
-// that door is one the mirror did not cache, did not gate, and cannot see.
 func trim(r *Resource, v any) any {
 	if len(r.Drop) == 0 {
 		return v
@@ -295,8 +288,6 @@ func dropped(key string, drop []string) bool {
 
 // marshalJSON renders a document the way every writer here renders it, so bytes
 // stored by a fetch, bytes rewritten by a delivery, and bytes served on a hit
-// are the same bytes. HTML escaping is off because an upstream does not escape,
-// and a name containing "&" must survive the round trip unchanged.
 func marshalJSON(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

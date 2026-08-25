@@ -9,8 +9,6 @@ import (
 )
 
 // jsonValue decodes a fragment the way a fetch decodes an upstream body, with
-// numbers left as json.Number. A test that hands coerce a plain Go float tests a
-// value the engine never actually receives.
 func jsonValue(t *testing.T, src string) any {
 	t.Helper()
 	v, err := decodeJSON([]byte(src))

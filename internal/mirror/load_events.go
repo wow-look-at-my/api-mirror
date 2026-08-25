@@ -48,16 +48,11 @@ func buildEvents(n *node) (*Events, error) {
 }
 
 // maxReorderWindow caps how long a delivery may be held.
-//
-// Every delivery waits the window, and a provider's own delivery timeout is
-// single-digit seconds. Past that cap a latency knob becomes lost deliveries,
-// so a fat-fingered value fails at load rather than wedging ingest.
 const maxReorderWindow = 5 * time.Second
 
 func parseWindow(v string) (time.Duration, error) {
 	if v == "0" || v == "0s" {
 		// Zero is a real choice: dispatch on arrival and leave ordering
-		// entirely to the watermark.
 		return 0, nil
 	}
 	d, err := parseDuration("<events reorder-window>", v)

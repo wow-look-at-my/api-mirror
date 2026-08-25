@@ -7,11 +7,6 @@ import (
 )
 
 // Fingerprint identifies a whole schema: this package's fixed tables plus the
-// DDL a spec derives, which the caller passes in as one string.
-//
-// The hash is the entire nuke decision. A database recording a different one
-// describes other tables, so it is deleted and rebuilt. Nothing else nukes,
-// and nobody has to remember to declare that a schema changed.
 func Fingerprint(ddl string) string {
 	sum := sha256.Sum256([]byte(Scrub(ddl)))
 	return hex.EncodeToString(sum[:])
@@ -88,15 +83,12 @@ func (s *scrubbed) write(tok string) {
 }
 
 // selfDelimiting reports whether a character separates tokens by itself, so
-// whitespace beside it carries no meaning. Only these four are unambiguous in
-// DDL: dropping a space next to any of them cannot fuse two identifiers.
 func selfDelimiting(c byte) bool {
 	return c == '(' || c == ')' || c == ',' || c == ';'
 }
 
 // endOfQuoted returns the index just past the quoted run opening at
 // sql[start]. A doubled closing quote is an escaped one. An unterminated run
-// goes to the end of the input, which is DDL that will not parse anyway.
 func endOfQuoted(sql string, start int, closer byte) int {
 	for i := start + 1; i < len(sql); i++ {
 		if sql[i] != closer {

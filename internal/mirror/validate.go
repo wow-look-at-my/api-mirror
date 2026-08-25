@@ -182,8 +182,6 @@ func (rt *Route) queryKeys() []string {
 }
 
 // column resolves an incoming parameter name to the resource column it fills.
-// A <map> exists because a URL's spelling is the upstream's choice and a
-// column's is the spec's, and neither should have to bend to the other.
 func (rt *Route) column(param string) string {
 	if mapped, ok := rt.Params[param]; ok {
 		return mapped

@@ -176,7 +176,6 @@ func TestWatermarkOrdering(t *testing.T) {
 	assert.True(t, applied, "the first view always applies")
 
 	// Equal MUST apply: the clock is a second, and two distinct views land
-	// inside one second all the time.
 	applied, err = s.ApplyWatermark(ctx, "repo:wow/api-mirror", at)
 	require.NoError(t, err)
 	assert.True(t, applied, "an equal-time view must apply")

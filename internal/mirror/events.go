@@ -14,28 +14,18 @@ import (
 )
 
 // maxDeliveryBytes caps one delivery. A body past the cap is refused rather
-// than truncated: half a payload parses as a whole one and writes half a fact.
 const maxDeliveryBytes = 8 << 20
 
 // deliverTimeout bounds the writes of one delivery answered in the request.
-// The writes are small upserts; this is a leak guard, not a deadline for
-// normal work.
 const deliverTimeout = 30 * time.Second
 
 // dispositionHeader reports what the mirror did with a delivery. The provider
-// records it beside the status, so an operator reading their own delivery list
-// sees the verdict without opening the body.
 const dispositionHeader = "X-Mirror-Disposition"
 
 // watermarkRetention is how long a subject's applied moment is kept.
-//
-// It must outlast the provider's own redelivery window. A pruned watermark lets
-// a redelivered old view apply again, which is the stale write the watermark
-// exists to refuse.
 const watermarkRetention = 30 * 24 * time.Hour
 
 // watermarkPruneInterval throttles the sweep. Pruning is housekeeping, so it
-// rides an apply that already holds the store instead of a timer of its own.
 const watermarkPruneInterval = 10 * time.Minute
 
 // Ingest is the webhook endpoint: the upstream telling the mirror what changed.
@@ -48,7 +38,6 @@ type Ingest struct {
 	store   *Store
 	reorder *Reorderer
 	// secret is the resolved HMAC key. An empty one refuses every delivery: an
-	// unverifiable delivery is anyone's delivery.
 	secret []byte
 	byType map[string]*Event
 	window time.Duration
@@ -70,8 +59,6 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		// The endpoint refuses every delivery until the secret arrives. Say so
-		// at start, because the alternative is an operator who learns it from a
-		// provider's wall of failed deliveries.
 		logf("<events>: the secret resolved to nothing -- every delivery is refused until it is set")
 	}
 	i := &Ingest{
@@ -96,11 +83,9 @@ func (i *Ingest) Path() string { return i.events.Path }
 func (i *Ingest) Handler() http.Handler { return i }
 
 // Reorderer is the window behind the handler. A shutdown waits on it, so it is
-// reachable rather than private.
 func (i *Ingest) Reorderer() *Reorderer { return i.reorder }
 
 // Drain waits for held and in-flight deliveries at shutdown. A provider sends a
-// delivery once, so one must not die with the process.
 func (i *Ingest) Drain(timeout time.Duration) bool { return i.reorder.Drain(timeout) }
 
 // ServeHTTP receives one delivery.
@@ -136,7 +121,6 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ev, ok := i.byType[typ]
 	if !ok {
 		// A type the spec does not model is a real answer, not a failure. A 4xx
-		// counts against the hook, and a provider disables a hook that fails.
 		i.answer(w, DispIgnored)
 		return
 	}
@@ -163,15 +147,11 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if i.window > 0 {
 		// The provider waits for this answer and gives up in single-digit
-		// seconds. Holding the response for the reorder window turns a latency
-		// knob into lost deliveries, so the answer says accepted and the write
-		// lands after it.
 		i.reorder.Submit(d)
 		i.reply(w, http.StatusAccepted, "accepted")
 		return
 	}
 	// With no window there is nothing to wait for, so the answer carries the
-	// real verdict and the 200/202 split means what it says.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), deliverTimeout)
 	defer cancel()
 	disp, err := i.apply(ctx, d)
@@ -196,8 +176,6 @@ func (i *Ingest) reply(w http.ResponseWriter, status int, body string) {
 // deliveryStatus maps a disposition to the status the provider records.
 //
 // Every non-error is 2xx, so a healthy hook stays enabled. The 200/202 split
-// lets an operator read their own delivery list and see whether the mirror took
-// the update or declined it.
 func deliveryStatus(d Disposition) int {
 	switch d {
 	case DispApplied:
@@ -228,10 +206,6 @@ func verifyDelivery(secret []byte, header string, body []byte) bool {
 }
 
 // deliveryID names one delivery in the log.
-//
-// The spec declares no id header, so the engine uses the body's own digest. A
-// redelivery of the same body carries the same id, which is what a reader
-// chasing a duplicate wants.
 func deliveryID(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:6])
@@ -268,7 +242,6 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (Disposition, error) {
 	i.prune(ctx)
 	if superseded {
 		// The fields still landed, because the event declares them immutable.
-		// The verdict stays superseded: this view is not the newest one.
 		return DispSuperseded, nil
 	}
 	return DispApplied, nil
@@ -278,8 +251,6 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (Disposition, error) {
 // and reports whether the watermark refused it.
 //
 // A failure APPLIES the delivery, loudly. A provider sends a delivery once, so
-// losing one to a store hiccup on the ordering gate costs more than applying a
-// view that may turn out to be stale.
 func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 	if d.Event.Unordered {
 		return false

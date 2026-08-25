@@ -25,10 +25,6 @@ type Engine struct {
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.
-//
-// A fetch triggered by one caller runs on a context that outlives their
-// request, so the headers cannot be read back off the request later. They ride
-// the context instead, and context.WithoutCancel keeps them.
 type forwardKey struct{}
 
 func withForward(ctx context.Context, h http.Header) context.Context {
@@ -70,7 +66,6 @@ func NewEngine(spec *Spec, store *Store, observe func(Exchange)) (*Engine, error
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(base)
 			// The upstream does not need the client's address, and adding it
-			// would leak one consumer's network position to another's provider.
 		},
 		ModifyResponse: stripUpstreamCORS,
 	}
@@ -81,9 +76,6 @@ func NewEngine(spec *Spec, store *Store, observe func(Exchange)) (*Engine, error
 // the ones before it.
 //
 // It returns the whole template context, not just the vars, because that
-// context is what every later template is rendered against: a spec writes
-// `.var.base` and `.env.TOKEN`, so handing the bare vars map down would leave
-// both unresolvable.
 func resolveVars(spec *Spec) (map[string]any, error) {
 	vars := map[string]any{}
 	ctx := map[string]any{"env": envMap(), "var": vars}
@@ -98,8 +90,6 @@ func resolveVars(spec *Spec) (map[string]any, error) {
 }
 
 // SetIngest installs the webhook handler. The Engine keeps it whole rather than
-// just its ServeHTTP, so a shutdown can wait for deliveries already accepted --
-// an upstream never sends one twice.
 func (e *Engine) SetIngest(i *Ingest) {
 	e.ingest = i
 }
@@ -125,8 +115,6 @@ func (e *Engine) ttlFor(kind string) time.Duration {
 const defaultTTL = time.Hour
 
 // routeKind names one route's freshness bookkeeping. A list and a single read
-// of the same resource are different questions with different answers, so they
-// are different kinds.
 func routeKind(rt *Route) string {
 	if rt.List {
 		return rt.Resource + ":list"
@@ -163,7 +151,6 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 	verdict, err := e.reveal.Allow(ctx, principal, res, m.key, r.Header)
 	if err != nil {
 		// A transient failure proving access is not a refusal. Refusing would
-		// teach a consumer they lost access they still have.
 		http.Error(w, "cannot establish access: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -189,13 +176,10 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 	refusal := e.rememberedRefusal(ctx, kind, key)
 	if outcome == OutcomeMiss && refusal == 0 {
 		// The fetch went out with this caller's own credential and the upstream
-		// answered it. That is the same proof a probe buys, so it renews the
-		// grant here and a steady consumer never has to re-prove itself.
 		e.reveal.RenewOn2xx(ctx, principal, res, m.key, http.StatusOK)
 	}
 	if status := refusal; status != 0 {
 		// The upstream stated this refusal and the route declared it worth
-		// keeping, so it is replayed as the refusal it was.
 		w.Header().Set("X-Mirror-Cache", string(outcome))
 		http.Error(w, http.StatusText(status), status)
 		return
@@ -208,7 +192,6 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 	}
 	if doc == nil {
 		// Nothing stored and nothing fetched: the upstream says this does not
-		// exist. That is an answer, and it is the upstream's answer.
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
@@ -298,8 +281,6 @@ func (e *Engine) passthrough(w http.ResponseWriter, r *http.Request, reason Pass
 
 // stripUpstreamCORS removes the upstream's CORS headers from a forwarded
 // answer. The mirror is the origin a browser talks to, and two
-// Access-Control-Allow-Origin values make a browser reject the response
-// outright.
 func stripUpstreamCORS(resp *http.Response) error {
 	for h := range resp.Header {
 		if strings.HasPrefix(strings.ToLower(h), "access-control-allow-") {
@@ -310,10 +291,6 @@ func stripUpstreamCORS(resp *http.Response) error {
 }
 
 // principalOf identifies who is asking.
-//
-// The value gates only what the mirror REVEALS, never what it stores. It is a
-// fingerprint of the caller's credential, so two callers with different access
-// never share a proof.
 func principalOf(r *http.Request) string {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {

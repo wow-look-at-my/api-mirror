@@ -15,7 +15,6 @@ import (
 )
 
 // repoRoot reaches the shipped specs from this package. A test runs in its own
-// directory, and the files a reader is told to copy live at the top of the tree.
 const repoRoot = "../.."
 
 // shippedSpecs are the worked examples, as paths a test can open.
@@ -229,7 +228,6 @@ func TestRun_ReturnsAListenFailureAfterWiringEverything(t *testing.T) {
 
 func TestRun_ReportsAStoreItCannotOpen(t *testing.T) {
 	// The listen address is one already in use, so this test cannot hang
-	// waiting on a server even if the store unexpectedly opens.
 	held, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { held.Close() })

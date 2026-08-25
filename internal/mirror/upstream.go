@@ -11,20 +11,12 @@ import (
 )
 
 // maxBodyBytes caps what the mirror will read from an upstream answer. A body
-// past the cap is relayed and not stored: the mirror declines to hold what it
-// cannot hold, out loud, rather than storing a truncated document that reads as
-// complete.
 const maxBodyBytes = 8 << 20
 
 // upstreamClient is a package var so a test can point it at an httptest server.
 var upstreamClient = &http.Client{Timeout: 60 * time.Second}
 
 // Upstreamer sends requests to the mirrored API.
-//
-// Every outbound request goes through one client, and the client reports each
-// request from its transport. Instrumenting call sites instead covers the calls
-// somebody remembered, and the ones nobody remembered are exactly the ones that
-// spend rate-limit budget invisibly.
 type Upstreamer struct {
 	spec    *Spec
 	base    string
@@ -51,9 +43,6 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe func(Exchange)) (*Up
 	}
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	// A template over a value the spec never set renders to something that is
-	// not a URL rather than to nothing, so emptiness is not the only shape this
-	// failure takes. Requiring a scheme and a host catches both, at boot,
-	// instead of sending every request to a relative address.
 	if u, err := url.Parse(base); base == "" || err != nil || u.Scheme == "" || u.Host == "" {
 		return nil, fmt.Errorf("upstream base resolved to nothing usable: %q is not an absolute URL", base)
 	}
@@ -75,7 +64,6 @@ type Answer struct {
 	Header http.Header
 	Body   []byte
 	// Overflow reports that the body exceeded maxBodyBytes. The body is then
-	// the truncated prefix and must not be stored.
 	Overflow bool
 }
 
@@ -111,7 +99,6 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 		}
 	}
 	// A buffered body must be plain bytes: the mirror parses and rebuilds it,
-	// and a compressed one would have to be decoded here for no gain.
 	req.Header.Set("Accept-Encoding", "identity")
 
 	started := time.Now()
@@ -151,10 +138,6 @@ func readCapped(r io.Reader) ([]byte, bool, error) {
 
 // RateLimited reports whether an answer is the upstream refusing for rate
 // reasons rather than for access reasons.
-//
-// The difference decides whether a denial is remembered: a rate-limited refusal
-// says nothing about what this caller may read, and caching it would lock a
-// caller out of their own data for the deny window.
 func RateLimited(a *Answer) bool {
 	if a == nil {
 		return false
@@ -169,8 +152,6 @@ func RateLimited(a *Answer) bool {
 }
 
 // Transient reports whether an answer is one that must never be stored: a
-// server-side failure or a rate-limit refusal. Everything else is the upstream
-// stating something it believes.
 func Transient(a *Answer) bool {
 	if a == nil {
 		return true
