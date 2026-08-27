@@ -61,6 +61,7 @@ api-mirror --spec mirror.xml --check     # print the derived schema and routes, 
 - **Authorization at the read.** Storage is global — one row per fact. Whether a caller may see it is proven per request, against the upstream, with that caller's own credential.
 - **Honest passthrough.** A path the spec does not declare is forwarded and labelled with why. There is no "correctly uncached".
 - **A dashboard, on by default.** Traffic, cache contents, rate budget, deliveries, principals, and the passthrough brief. It mints its own token and logs the URL that opens it.
+- **A consistency check.** Every other view reports what this process has seen. This one re-asks the upstream about each stored key of one kind and names what disagrees, which is the only way a delivery that never arrived surfaces. It reports on a GET and rewrites the drifted rows on a POST.
 
 ## Operations
 
@@ -87,7 +88,7 @@ A second half of the spec decides what runs in the background and what an operat
 
 ## Not yet
 
-Absent, and worth knowing before you rely on this. **No read-time contradiction detection**: a stored value that the mirror's own other rows disagree with is still served rather than refetched, which is the shape a lost delivery leaves behind. **No consistency check against upstream truth**: nothing re-fetches the whole cache and diffs it, so the dashboard reports what this process has seen, never what the upstream currently says.
+Absent, and worth knowing before you rely on this. **No read-time contradiction detection**: a stored value that the mirror's own other rows disagree with is still served rather than refetched, which is the shape a lost delivery leaves behind. The consistency check finds one, but only when an operator runs it.
 
 ## Docs
 

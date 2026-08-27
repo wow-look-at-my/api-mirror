@@ -28,7 +28,8 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `telemetry.go` / `timeline.go` / `requestlog.go` / `ratemeter.go` — the four in-memory stores behind the page. Bounded, lazily swept, reset on restart.
 - `recorder.go` — the inbound wrapper that records what the caller actually received.
 - `shapes.go` — a path to a route shape, and the `<route>` sketch that would stop it leaking.
-- `admin.go` / `admin_api.go` / `admin_subs.go` / `web.go` + `web/` — the operator surface and its embedded page.
+- `admin.go` / `admin_api.go` / `admin_subs.go` / `admin_check.go` / `web.go` + `web/` — the operator surface and its embedded page. The page loads scratch_ui from the org's master deploy, dark only.
+- `check.go` — the consistency check: re-ask the upstream about every stored key of one kind, and optionally write back what drifted.
 - `refresh.go` / `replay.go` / `notify.go` / `subscriptions.go` / `debounce.go` — the background half.
 - `mirror.schema.xsd` — the reference grammar. Not enforced at load; a test walks the shipped specs against it.
 - `mirror.example.xml` — a runnable small spec. `samples/github/github.xml` — the full worked example. Both at the top of the tree, reached from a test through `repoRoot`.
