@@ -8,28 +8,15 @@ import (
 	"time"
 )
 
-// What the ingest endpoint can say about itself, and who it tells after a
-// delivery lands.
-//
-// A lost delivery is the quietest failure a mirror has: every cache it would
-// have moved keeps serving its last absorbed answer for the whole TTL, and
-// nothing reports a gap. Counting what arrives is the only way an operator sees
-// the shape of that silence -- "no pushes for nine hours" only reads as wrong
-// next to what a normal hour looks like.
-
-// SetTelemetry puts every delivery on the chart, timed. A delivery is traffic
-// like any other, and the rule here is that everything the mirror exchanges is
-// visible.
+// SetTelemetry puts every delivery on the chart, timed, like any other traffic.
 func (i *Ingest) SetTelemetry(tel *Telemetry) { i.tel = tel }
 
 // SetNotifier installs the fan-out that runs after a delivery is applied.
 func (i *Ingest) SetNotifier(n *Notifier) { i.notifier = n }
 
-// ServeHTTP receives one delivery and records what it cost.
-//
-// The disposition is read back off the response rather than returned by the
-// handler, so a path that answers early is counted the same as one that runs to
-// the end. An uncounted refusal is exactly the delivery an operator needs.
+// ServeHTTP receives one delivery and records what it cost. The disposition is
+// read back off the response, so a path answering early counts the same as one
+// running to the end: an uncounted refusal is the delivery an operator needs.
 func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	probe := &dispositionProbe{ResponseWriter: w}
@@ -122,9 +109,7 @@ type DeliveryStats struct {
 	Dispositions map[DeliveryDisposition]int `json:"dispositions"`
 	Last         time.Time                   `json:"last,omitempty"`
 	Since        time.Time                   `json:"since,omitempty"`
-	// Declared is every event type the spec models, so a type that has never
-	// arrived is visible as a zero rather than as an absent row. A subscription
-	// nobody set up looks identical to a quiet week without this.
+	// Declared shows a type that never arrived as a zero, not an absent row.
 	Declared []string `json:"declared"`
 	Window   string   `json:"reorder_window"`
 }

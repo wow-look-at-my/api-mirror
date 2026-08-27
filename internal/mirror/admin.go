@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-// The operator surface.
-//
-// Everything admin hangs off ONE prefix so a deployment can put the whole thing
-// behind its own gate with a single rule, and so a spec author can see at a
-// glance what is exposed.
-
 // defaultDashboardPath is where the surface lives when a spec names nowhere.
 const defaultDashboardPath = "/_mirror"
 
@@ -21,18 +15,14 @@ type Admin struct {
 	engine *Engine
 	prefix string
 	token  string
-	// minted says the token was generated for this process rather than declared.
-	// The startup log then carries the URL that opens the page, because a token
-	// nobody was told is a dashboard nobody can open.
+	// minted means generated for this process, so the startup log carries the URL.
 	minted bool
 	mux    *http.ServeMux
 }
 
-// NewAdmin builds the operator surface.
-//
-// It is always built. A mirror whose only view of itself is optional is a
-// mirror that, in practice, nobody can see into -- so the choice a spec gets is
-// where the surface lives and what gates it, never whether it exists.
+// NewAdmin builds the operator surface, always. A spec chooses where it lives
+// and what gates it, never whether it exists: an optional view is one nobody
+// has when they need it.
 func NewAdmin(e *Engine) *Admin {
 	d := e.spec.Dashboard
 	prefix := strings.TrimSuffix(d.Path, "/")
@@ -47,9 +37,7 @@ func NewAdmin(e *Engine) *Admin {
 	}
 	a.token = strings.TrimSpace(token)
 	if a.token == "" {
-		// On by default, but never OPEN by default. A random per-process token
-		// keeps the page reachable without publishing every path, principal and
-		// timing this mirror has seen to anyone who guesses the prefix.
+		// On by default, never OPEN by default: the prefix is guessable.
 		a.token = randomHex(16)
 		a.minted = true
 	}
@@ -107,8 +95,7 @@ func (a *Admin) routes() {
 // ServeHTTP gates the surface and dispatches.
 func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !a.authorized(r) {
-		// The page is not named in the refusal. An operator who mistyped the
-		// token gets the same answer as somebody probing for the prefix.
+		// A mistyped token gets the same answer as a probe for the prefix.
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -120,10 +107,8 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
 }
 
-// authorized checks the token, in constant time.
-//
-// Three places to carry it, because the page fetches with a header, a human
-// opens a URL, and a script uses whatever it already has.
+// authorized checks the token in constant time. Three carriers: a human opens
+// a URL, the page fetches with a header, a script uses what it already has.
 func (a *Admin) authorized(r *http.Request) bool {
 	presented := r.URL.Query().Get("token")
 	if presented == "" {
@@ -157,9 +142,7 @@ type Overview struct {
 	Principals    int             `json:"principals"`
 	Denials       int64           `json:"denials"`
 	UpstreamBytes int             `json:"upstream_bytes"`
-	// Passthrough is how much traffic the spec still does not model. It is on
-	// the front page because it is the one number that says how finished this
-	// mirror is.
+	// Passthrough is what the spec still does not model: how finished this is.
 	Passthrough int `json:"passthrough"`
 	Answered    int `json:"answered"`
 }

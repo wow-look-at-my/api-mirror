@@ -83,8 +83,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 			// The upstream does not need the client's address, and adding it
 		},
 		ModifyResponse: stripUpstreamCORS,
-		// The forwarded path is the one an instrumented call site would have
-		// missed, so it reports from the same transport as every other client.
+		// The path an instrumented call site would have missed entirely.
 		Transport: observing(http.DefaultTransport, LanePassthrough, tel),
 	}
 	e.vocab = pathVocabulary(spec)
@@ -417,17 +416,13 @@ func (e *Engine) passthrough(w *recorder, r *http.Request, reason PassReason) {
 		e.proxy.ServeHTTP(w, r)
 		return
 	}
-	// An identical read in flight is one the upstream is already answering.
-	// Sharing it costs a caller a little latency and saves the budget a second
-	// identical question would have spent.
+	// A read already in flight is one the upstream is already answering.
 	e.debounce.Share(w, r, e.proxy.ServeHTTP)
 }
 
-// shapeOf reduces a passthrough path to the shape an operator can act on.
-//
-// A raw path per caller turns the uncached table into a list of one-offs. The
-// shape is what says "this family of requests is still leaving", which is the
-// thing somebody has to model next.
+// shapeOf reduces a passthrough path to something an operator can act on. A
+// raw path per caller makes the uncached table a list of one-offs; a shape
+// says "this family is still leaving", which names what to model next.
 func (e *Engine) shapeOf(r *http.Request) string {
 	for _, rt := range e.spec.Routes {
 		if _, ok := matchPath(rt.Path, r.URL.EscapedPath()); ok {

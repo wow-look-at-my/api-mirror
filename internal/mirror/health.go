@@ -4,19 +4,11 @@ import (
 	"net/http"
 )
 
-// The liveness surface.
-//
-// Registration is load-bearing in a way that is easy to miss. An unrouted path
-// here does not 404 -- it falls through to the passthrough proxy and answers
-// whatever the upstream says about it. A checker that reads any non-404 as
-// "implemented" then reports a perfectly healthy container as permanently
-// unhealthy, and the cause is a path nobody declared rather than anything
-// wrong with the mirror.
-//
-// These answer with a status and nothing else, and they sit OUTSIDE the
-// dashboard token: a checker has no credential to give.
-
 // health answers the declared liveness paths, and reports whether it did.
+//
+// An unrouted path falls through to the proxy rather than 404ing, and a
+// checker reading any non-404 as "implemented" then calls a healthy container
+// unhealthy forever. Status only, and outside the token: a checker has none.
 func (e *Engine) health(w *recorder, r *http.Request) bool {
 	rule := e.spec.Health
 	if rule == nil {
@@ -49,11 +41,8 @@ func (e *Engine) answerLive(w *recorder, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// answerPreUpdate holds while a detached fetch is in flight.
-//
-// A restart during one loses the fetch and, with it, whatever the answer was
-// about to become. The window is short; refusing inside it is the difference
-// between a redeploy that costs a refetch and one that drops the write.
+// answerPreUpdate holds while a detached fetch is in flight. A restart inside
+// that short window drops the write; refusing costs a refetch instead.
 func (e *Engine) answerPreUpdate(w *recorder, r *http.Request) {
 	w.note(DispAdmin, "health", "", "pre-update")
 	if e.fresh.Busy() {

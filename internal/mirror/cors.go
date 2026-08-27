@@ -74,9 +74,8 @@ func (e *Engine) setCORS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// defaultExposed are the headers a client needs to understand its own answer.
-// They are the mirror's own vocabulary, so the engine knows them; anything the
-// upstream adds is named by the spec.
+// defaultExposed are the headers a client needs to read its own answer. This
+// is the mirror's own vocabulary; the spec names whatever the upstream adds.
 var defaultExposed = []string{
 	"X-Mirror-Cache",
 	"X-Mirror-Passthrough-Reason",

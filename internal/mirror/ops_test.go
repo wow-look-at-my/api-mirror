@@ -33,8 +33,7 @@ func TestRefreshSweepsAKeyNobodyIsReading(t *testing.T) {
 	require.Equal(t, http.StatusOK, get(t, e, "/widgets/7").Code)
 	require.Equal(t, int32(1), calls.Load())
 
-	// Age the row out. The sweep exists precisely for the key nobody is asking
-	// for, which is when a lost delivery goes unnoticed.
+	// The sweep exists for the key nobody is asking for.
 	expire(t, e, "widget", "7")
 	e.refresh.cycle()
 
@@ -117,8 +116,7 @@ func TestReplayAsksForEachLostDeliveryOnce(t *testing.T) {
 	require.Len(t, asked, 2)
 	assert.Contains(t, asked, "/app/hook/deliveries/101/attempts")
 
-	// A second cycle over the same log must ask for nothing: asking twice turns
-	// a recovery mechanism into a source of duplicate deliveries.
+	// A second cycle asks for nothing: twice makes recovery a duplicate source.
 	e.replay.cycle()
 	assert.Len(t, asked, 2, "once per delivery, not once per cycle")
 

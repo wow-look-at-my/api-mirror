@@ -44,8 +44,7 @@ type Ingest struct {
 	now    func() time.Time
 	// lastPrune stamps the last watermark sweep, as a Unix second.
 	lastPrune atomic.Int64
-	// tel puts every delivery on the chart. Nil-safe by construction, so a test
-	// building an Ingest directly is not forced to wire telemetry.
+	// tel puts every delivery on the chart. Nil-safe, so a test can skip it.
 	tel      *Telemetry
 	notifier *Notifier
 	stats    deliveryStats

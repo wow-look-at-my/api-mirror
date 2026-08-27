@@ -11,17 +11,14 @@ import (
 	"time"
 )
 
-// The subscription store.
-//
-// It is a SEPARATE database file from the cache, and that separation is the
-// whole reason this file exists rather than two more tables in schema.sql. The
-// cache is nuked whenever a resource changes -- that is safe because every row
-// in it is a copy of something upstream still has. A consumer's registration is
-// not a copy of anything. Nuking it would silently stop telling somebody who
-// asked to be told, with nothing anywhere reporting that it happened.
+// The subscription store, in a SEPARATE database file from the cache. That
+// separation is why this file exists instead of two more tables in schema.sql:
+// the cache is nuked whenever a resource changes, which is safe only because
+// every row in it is a copy of something upstream still has. A registration is
+// a copy of nothing, and nuking one stops telling somebody who asked, silently.
 
-// subscriptionSchema is this file's own DDL. It has no fingerprint and nothing
-// nukes it: a change here has to be a change that an existing file survives.
+// subscriptionSchema has no fingerprint and nothing nukes it: a change here has
+// to be one an existing file survives.
 const subscriptionSchema = `
 CREATE TABLE IF NOT EXISTS subscription (
 	id           TEXT PRIMARY KEY,
@@ -43,8 +40,7 @@ type Subscription struct {
 	ID        string `json:"id"`
 	Principal string `json:"principal"`
 	URL       string `json:"url"`
-	// Secret is never rendered. It is returned exactly once, by Create, because
-	// that is the only moment the subscriber can still be given it.
+	// Secret is never rendered. Create returns it once, the only chance to.
 	Secret    string    `json:"-"`
 	Events    []string  `json:"events"`
 	CreatedAt time.Time `json:"created_at"`
@@ -60,13 +56,8 @@ type Subscriptions struct {
 	path string
 }
 
-// subscriptionsPath decides where the config database lives.
-//
-// A declared path wins. Otherwise it is derived from the CACHE database's path
-// rather than defaulting to a bare name in the working directory: the two files
-// belong together, and a relative default means one -db flag puts the cache in
-// one place and its subscriptions somewhere else entirely -- or nowhere, if the
-// working directory is not writable.
+// subscriptionsPath keeps the config database beside the cache unless a spec
+// names one: a bare working-directory default splits the pair, or fails.
 func subscriptionsPath(declared, cacheDB string) string {
 	if strings.TrimSpace(declared) != "" {
 		return declared
@@ -252,10 +243,8 @@ func (s *Subscriptions) query(ctx context.Context, stmt string, args ...any) ([]
 func newID() string     { return randomHex(8) }
 func newSecret() string { return randomHex(32) }
 
-// randomHex returns n random bytes as hex. A failure to read the system's
-// randomness is not something to paper over with a fallback: a predictable
-// secret is worse than no subscription at all, so it panics rather than
-// returning something that looks like a secret and is not.
+// randomHex returns n random bytes as hex. A failed read panics: a predictable
+// secret is worse than no subscription, and a fallback would return one.
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

@@ -12,14 +12,6 @@ import (
 	"time"
 )
 
-// Subscriber notifications: the mirror telling its own consumers what it just
-// absorbed.
-//
-// Without this a consumer that also receives the upstream's webhooks races the
-// mirror's ingestion: the delivery reaches them first, they read the mirror,
-// and they get the state the delivery was about to replace. Telling them AFTER
-// the write lands removes the race rather than making it narrower.
-
 // notifyDefaults back a declaration that leaves them out.
 const (
 	notifyDefaultTimeout = 10 * time.Second
@@ -39,7 +31,8 @@ type Notification struct {
 	At          time.Time           `json:"at"`
 }
 
-// Notifier fans one applied delivery out to every matching subscription.
+// Notifier fans one applied delivery out to every matching subscription, so a
+// consumer stops racing this mirror's ingestion with its own webhooks.
 type Notifier struct {
 	spec   *Spec
 	rule   *Notify
@@ -102,6 +95,11 @@ func (n *Notifier) Close() error {
 
 // Fan sends one notification to every live subscription that wants this event.
 //
+// A consumer who also receives the upstream's webhooks otherwise races the
+// mirror's ingestion: the delivery reaches them first, they read the mirror,
+// and they get the state that delivery was about to replace. Telling them
+// AFTER the write lands removes the race instead of narrowing it.
+//
 // Delivery is detached from the request that triggered it: the provider is
 // waiting on the ingest response, and making them wait on a subscriber's own
 // slow endpoint turns one consumer's outage into a lost delivery for everyone.
@@ -126,9 +124,7 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 		Disposition: disp,
 		At:          time.Now().UTC(),
 	}
-	// The document is marshalled, never assembled. A subject carries whatever
-	// the upstream put in a branch name, and one quote in it would reshape a
-	// spliced document rather than being one character of a string.
+	// Marshalled, never assembled: one quote in a subject reshapes a splice.
 	body, err := marshalJSON(note)
 	if err != nil {
 		logf("notify: render notification: %v", err)
@@ -215,8 +211,7 @@ func (n *Notifier) post(ctx context.Context, s Subscription, body []byte) (int, 
 		return 0, err
 	}
 	defer resp.Body.Close()
-	// The body is read and dropped so the transport reports the exchange and
-	// the connection is reusable. Nothing here cares what a subscriber says.
+	// Read and dropped so the transport reports and the connection is reusable.
 	_, _, _ = readCapped(resp.Body)
 	return resp.StatusCode, nil
 }

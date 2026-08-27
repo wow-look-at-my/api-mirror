@@ -54,8 +54,7 @@ func orderOf(ev *Event, payload any) (string, time.Time, error) {
 	return subject, time.Unix(n, 0).UTC(), nil
 }
 
-// DeliveryDisposition is what happened to one delivery. It is reported back to
-// the provider, so it lands in their delivery record.
+// DeliveryDisposition goes back to the provider, into their delivery record.
 type DeliveryDisposition string
 
 const (

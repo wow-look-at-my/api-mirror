@@ -6,15 +6,12 @@ import (
 	"time"
 )
 
-// Reading one declared field out of a decoded document.
-//
-// These sit beside lookupPath rather than inside it because they carry the
-// engine's own reading of an absent value: absent is reported as absent, never
-// as a zero. A zero written where a value was missing is the class of bug that
-// stores an outage as a fact.
+// Reading one declared field out of a decoded document. These sit beside
+// lookupPath because they carry the engine's reading of an absent value:
+// absent, never zero. A zero written for a missing value stores an outage as
+// a fact.
 
-// stringAt reads a path as text. An absent path is the empty string, which the
-// caller must treat as "not there" rather than as a value.
+// stringAt reads a path as text. Empty means "not there", never a value.
 func stringAt(doc any, path string) string {
 	if path == "" {
 		return ""
@@ -53,6 +50,5 @@ func timeAt(doc any, path string) (time.Time, bool) {
 	return time.Unix(n, 0).UTC(), true
 }
 
-// itoa is strconv.Itoa under a shorter name, for the error strings that would
-// otherwise pull strconv into a file that needs nothing else from it.
+// itoa keeps strconv out of files that need nothing else from it.
 func itoa(n int) string { return strconv.Itoa(n) }

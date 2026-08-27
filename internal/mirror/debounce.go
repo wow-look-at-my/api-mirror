@@ -7,17 +7,10 @@ import (
 	"time"
 )
 
-// maxDebounceWindow caps the hold. Every eligible read waits this long, so a
-// fat-fingered "5m" must fail at load rather than wedge the API for an hour
-// before anybody notices what changed.
+// maxDebounceWindow caps the hold, since every eligible read waits it out.
 const maxDebounceWindow = 30 * time.Second
 
-// Debouncer makes identical concurrent passthrough READS share one upstream
-// call.
-//
-// A passthrough is the traffic the spec does not model yet, which is exactly
-// the traffic nothing else is protecting. Ten consumers asking the same
-// unmodelled question at once should cost the budget one answer, not ten.
+// Debouncer makes identical concurrent passthrough READS share one call.
 type Debouncer struct {
 	window time.Duration
 
@@ -33,9 +26,8 @@ type shared struct {
 	body   []byte
 }
 
-// NewDebouncer returns a coalescer. A zero window returns nil: forwarding
-// immediately is a real choice, and a nil Debouncer says so by having nothing
-// to hold with.
+// NewDebouncer returns a coalescer, or nil for a zero window: forwarding
+// immediately is a real choice, and nil has nothing to hold with.
 func NewDebouncer(window time.Duration) *Debouncer {
 	if window <= 0 {
 		return nil
@@ -43,13 +35,15 @@ func NewDebouncer(window time.Duration) *Debouncer {
 	return &Debouncer{window: window, flight: map[string]*shared{}}
 }
 
-// Share forwards one request, letting an identical concurrent request wait for
-// the same answer instead of making its own.
+// Share lets an identical concurrent request wait for one answer instead of
+// making its own. Passthrough is the traffic nothing else protects, and ten
+// consumers asking the same unmodelled question at once should cost the budget
+// one answer rather than ten.
 //
-// Only a safe method with no credential of its own is eligible. Two callers
-// holding different credentials are asking different questions even when the
-// URL matches, and handing one caller the other's answer would be the reveal
-// layer defeated by a cache key.
+// Only a safe method with no credential of its own qualifies:
+// two callers holding different credentials ask different questions even at
+// the same URL, and answering one with the other's data is the reveal layer
+// defeated by a cache key.
 func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.ResponseWriter, *http.Request)) {
 	if d == nil || !shareable(r) {
 		forward(w, r)
@@ -65,8 +59,7 @@ func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.Respon
 			w.Header().Set("X-Mirror-Debounced", "true")
 			replay(w, inflight)
 		case <-r.Context().Done():
-			// The caller left. Nothing to write, and the shared call carries on
-			// for whoever is still waiting.
+			// The caller left; the shared call carries on for the rest.
 		}
 		return
 	}
@@ -84,9 +77,8 @@ func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.Respon
 
 	replay(w, leader)
 
-	// The window is how long a follower may still join. Holding the entry that
-	// long and no longer is what makes this a debounce rather than a cache: it
-	// coalesces what is happening now, and stores nothing.
+	// How long a follower may still join. Holding it this long and no longer is
+	// what makes this a debounce and not a cache: it stores nothing.
 	time.AfterFunc(d.window, func() {
 		d.mu.Lock()
 		if d.flight[key] == leader {
@@ -101,9 +93,7 @@ func shareable(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
 	}
-	// A credential makes the answer that caller's own. Sharing it across callers
-	// would hand one caller's data to another, which is the one failure this
-	// whole engine exists to make impossible.
+	// A credential makes the answer that caller's own, and never shareable.
 	return r.Header.Get("Authorization") == "" && r.Header.Get("Cookie") == ""
 }
 

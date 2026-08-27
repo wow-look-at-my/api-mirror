@@ -8,20 +8,8 @@ import (
 	"time"
 )
 
-// Delivery-gap replay: asking the upstream to re-send what never arrived.
-//
-// This exists because a lost delivery is the quietest failure a mirror has. The
-// provider sends once; if the mirror was restarting, or wedged, or briefly
-// unreachable, nothing retries and nothing reports it. Every cache that
-// delivery would have moved then serves its last absorbed answer for the whole
-// TTL, and the answer is wrong in the one way nobody checks for -- it is
-// well-formed, recent-looking and stale.
-//
-// A shorter TTL is not the fix. It shrinks the window and hides it; the gap is
-// still there and still silent.
-
-// Replayer asks the upstream's own failure log what it could not hand over, and
-// asks for those deliveries again.
+// Replayer reads the upstream's own failure log and asks for those deliveries
+// again.
 type Replayer struct {
 	engine *Engine
 	rule   *Replay
@@ -53,12 +41,9 @@ func (r *Replayer) Enabled() bool {
 	return r.declared() && r.missing() == ""
 }
 
-// missing names the requirement a spec declared that has no value.
-//
-// A failure log is an authenticated endpoint. Without the credential every cycle
-// is a call that can only fail, on a fixed interval, forever: a job that looks
-// like it is running and recovers nothing. A missing requirement means the
-// replayer does not start, and says which value would start it.
+// missing names a declared requirement that has no value. A failure log is an
+// authenticated endpoint, so without the credential every cycle is a call that
+// can only fail, forever: a job that looks busy and recovers nothing.
 func (r *Replayer) missing() string {
 	if r == nil || r.rule == nil || r.rule.Requires == "" {
 		return ""
@@ -69,11 +54,8 @@ func (r *Replayer) missing() string {
 	return r.rule.Requires
 }
 
-// Start runs the replayer until Stop.
-//
-// The first cycle runs immediately. A restart is itself a window in which
-// deliveries were missed, so it is the moment a replay is most likely to have
-// something to find.
+// Start runs the replayer until Stop. The first cycle runs immediately: a
+// restart is itself a window deliveries were missed in.
 func (r *Replayer) Start() {
 	if !r.declared() {
 		return
@@ -125,6 +107,11 @@ func (r *Replayer) Stop() {
 }
 
 // cycle reads the failure log and asks for what is still missing.
+//
+// A lost delivery is the quietest failure a mirror has. The provider sends
+// once, nothing retries, and every cache that delivery would have moved serves
+// its last answer for the whole TTL -- well-formed, recent-looking and wrong.
+// A shorter TTL shrinks that window and hides it; it does not close it.
 func (r *Replayer) cycle() {
 	ctx, cancel := context.WithTimeout(context.Background(), replayCycleTimeout)
 	defer cancel()
@@ -158,8 +145,7 @@ func (r *Replayer) cycle() {
 	cutoff := time.Now().Add(-r.lookback())
 	for _, item := range items {
 		if sent >= r.max() {
-			// The cap is stated, never silent: a run that quietly stopped at 25
-			// reads as a run that found only 25.
+			// Stated, never silent: a quiet stop at 25 reads as a find of 25.
 			logf("replay: stopped at the %d-per-cycle cap with %d still listed", r.max(), len(items)-found)
 			break
 		}
@@ -172,8 +158,7 @@ func (r *Replayer) cycle() {
 			continue
 		}
 		if r.alreadyAsked(id) {
-			// Once per delivery. Asking twice for the same one turns a recovery
-			// mechanism into a source of duplicate deliveries.
+			// Once per delivery: asking twice makes recovery a source of duplicates.
 			continue
 		}
 		if err := r.ask(ctx, item, id); err != nil {
@@ -246,8 +231,7 @@ func (r *Replayer) alreadyAsked(id string) bool {
 		return false
 	}
 	if time.Since(at) > r.lookback() {
-		// Past the lookback the record is not protecting anything: the failure
-		// log will not list it again either.
+		// Past the lookback the failure log will not list it again either.
 		delete(r.asked, id)
 		return false
 	}
@@ -281,8 +265,7 @@ func (r *Replayer) tally(found, sent, failed int) {
 // ReplayStats is what the replayer reports to the dashboard.
 type ReplayStats struct {
 	Enabled bool `json:"enabled"`
-	// Off names the empty requirement, so a replayer that is declared and not
-	// running reads as a decision rather than as a mystery.
+	// Off names the empty requirement: a decision, not a mystery.
 	Off      string    `json:"off,omitempty"`
 	Interval string    `json:"interval,omitempty"`
 	Cycles   int       `json:"cycles"`

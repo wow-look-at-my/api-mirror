@@ -64,16 +64,12 @@ func (s *Spec) validate() error {
 // serves, a replayer that lists failures and cannot ask for any of them back.
 func (s *Spec) validateOps(byName map[string]*Resource) error {
 	if s.Upstream.Debounce > maxDebounceWindow {
-		// Every eligible read waits this long. A fat-fingered "5m" must fail at
-		// load rather than wedge the API for an hour before anybody connects
-		// the latency to a config change.
+		// A fat-fingered "5m" must fail here, not wedge the API for an hour.
 		return fmt.Errorf("<upstream> debounce %s is longer than the %s cap: every uncacheable read waits it out",
 			s.Upstream.Debounce, maxDebounceWindow)
 	}
 	if s.Dashboard.Path == "" {
-		// The operator surface exists whether or not a spec mentions it. The
-		// default is filled in here, not at load, so a Spec built in code is
-		// the same Spec as one read off disk.
+		// Here, not at load: a Spec built in code is one read off disk.
 		s.Dashboard.Path = defaultDashboardPath
 	}
 	if !strings.HasPrefix(s.Dashboard.Path, "/") {

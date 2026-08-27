@@ -67,9 +67,7 @@ func buildCORS(n *node) (*CORS, error) {
 			return nil, fmt.Errorf("<cors>: unexpected child element <%s>", child.Name())
 		}
 	}
-	// The mirror's own headers are always exposed. Without them a browser client
-	// cannot tell a hit from a passthrough, and a spec author cannot be expected
-	// to know the engine's private vocabulary well enough to list it.
+	// Always exposed: no author should list the engine's own headers.
 	c.Expose = append(c.Expose, defaultExposed...)
 	return c, nil
 }
@@ -164,9 +162,7 @@ func buildReplay(n *node) (*Replay, error) {
 			return nil, err
 		}
 		if child.Name() == "redeliver" {
-			// The redelivery path is template source over `.delivery`, so it is
-			// compiled rather than read as literal text. Everything else here
-			// names a field, which is a plain path.
+			// Template source over `.delivery`; every other child is a path.
 			compiled, err := compileContent(child)
 			if err != nil {
 				return nil, fmt.Errorf("<replay><redeliver>: %w", err)

@@ -104,12 +104,9 @@ func Run() error {
 	return <-errs
 }
 
-// Drain waits for the work a shutdown must not interrupt: fetches that would
-// otherwise write to a closed database, deliveries the upstream will never send
-// again, and notifications a subscriber has already been promised.
-//
-// The background jobs are stopped FIRST. A sweep that starts a fetch while the
-// drain is waiting is a fetch the drain never agreed to wait for.
+// Drain waits for work a shutdown must not interrupt: fetches that would write
+// to a closed database, and notifications already promised. Background jobs
+// stop FIRST -- a sweep starting a fetch mid-drain is one nothing waits for.
 func (e *Engine) Drain(timeout time.Duration) bool {
 	e.refresh.Stop()
 	e.replay.Stop()

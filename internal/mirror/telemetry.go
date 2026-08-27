@@ -7,10 +7,6 @@ import (
 )
 
 // Telemetry is everything the mirror knows about its own traffic.
-//
-// It is on by construction, not behind a flag. An operator who has to discover
-// and enable the only view of what the mirror is doing has, in practice, no
-// view of what the mirror is doing.
 type Telemetry struct {
 	Timeline *Timeline
 	Requests *RequestLog
@@ -33,8 +29,8 @@ type LaneTally struct {
 	Last       time.Time     `json:"last"`
 }
 
-// NewTelemetry builds the stores. The rate headers come from the spec, because
-// which headers carry a budget is the upstream's vocabulary.
+// NewTelemetry builds the stores. It is never behind a flag: a view an
+// operator must discover and enable is a view nobody has.
 func NewTelemetry(rate RateHeaders) *Telemetry {
 	return &Telemetry{
 		Timeline: NewTimeline(),
@@ -69,9 +65,7 @@ func (t *Telemetry) Observe(e Exchange) {
 	t.upBytes += e.Bytes
 }
 
-// ObserveHeaders reads a budget out of an upstream answer. It is separate from
-// Observe because the transport reports an exchange without holding the
-// response, and a budget is a property of the headers, not of the exchange.
+// ObserveHeaders reads a budget out of an answer's headers.
 func (t *Telemetry) ObserveHeaders(principal string, h http.Header) {
 	if t == nil {
 		return

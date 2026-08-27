@@ -5,9 +5,8 @@ import (
 	"time"
 )
 
-// timelineWindow and timelineMax bound the ring two ways. The window is what an
-// operator is looking at; the count is the memory ceiling that holds whatever
-// the traffic does inside it.
+// The window is what an operator looks at; the count is the memory ceiling
+// that holds whatever the traffic does inside it.
 const (
 	timelineWindow = 24 * time.Hour
 	timelineMax    = 100000
@@ -28,11 +27,7 @@ type Frame struct {
 	Error     string        `json:"error,omitempty"`
 }
 
-// Timeline is a bounded, in-memory ring of everything the mirror exchanged.
-//
-// It is deliberately memory-only. This is a live view, not an audit log: a
-// table would put sub-day-ephemeral data behind a schema whose change nukes the
-// cache, and nothing here is worth that. It resets on restart, and says so.
+// Timeline is a bounded in-memory ring of everything the mirror exchanged.
 type Timeline struct {
 	mu      sync.Mutex
 	frames  []Frame
@@ -43,7 +38,8 @@ type Timeline struct {
 	now     func() time.Time
 }
 
-// NewTimeline returns an empty ring sized to the ceiling.
+// NewTimeline returns an empty ring, in memory: a live view, not an audit log.
+// It resets on restart, and the page says so.
 func NewTimeline() *Timeline {
 	return &Timeline{
 		frames:  make([]Frame, timelineMax),
@@ -110,8 +106,7 @@ func (t *Timeline) Frames() []Frame {
 			continue
 		}
 		if live == 0 {
-			// Everything before this one is out of the window; move the head past
-			// them so the next sweep does not walk them again.
+			// Everything before this is out of the window; skip it next sweep.
 			t.head = (t.head + i) % len(t.frames)
 		}
 		live++

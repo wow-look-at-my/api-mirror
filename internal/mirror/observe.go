@@ -9,9 +9,7 @@ import (
 	"time"
 )
 
-// Lane names the kind of traffic one exchange belongs to. It is the grain the
-// dashboard groups by, so a lane the code can produce but the vocabulary cannot
-// name is a hole in the chart.
+// Lane is the grain the dashboard groups by; a lane it cannot name is a hole.
 type Lane string
 
 const (
@@ -38,14 +36,12 @@ type Exchange struct {
 	Duration time.Duration
 	// Principal is who the exchange was made on behalf of, where that is known.
 	Principal string
-	// Detail carries the lane's own vocabulary: a passthrough reason, a delivery
-	// disposition, an event type. It is display text, never a key.
+	// Detail is the lane's own vocabulary. Display text, never a key.
 	Detail string
 	Err    error
 }
 
-// laneKey carries the lane and principal of the request being made into the
-// transport, which is the only place that sees every outbound request.
+// laneKey carries a lane into the transport, the one place that sees every request.
 type laneKey struct{}
 
 type laneTag struct {
@@ -63,26 +59,19 @@ func laneFrom(ctx context.Context) laneTag {
 	return t
 }
 
-// Observer is what a reporting client tells. Two calls rather than one because
-// an exchange is reported when its body is done, and a rate-limit budget is a
-// property of headers that arrive long before that.
+// Observer is what a reporting client tells: an exchange, and a budget.
 type Observer interface {
 	Observe(Exchange)
 	ObserveHeaders(principal string, h http.Header)
 }
 
-// funcObserver adapts a plain callback, for a caller that wants the exchanges
-// and has no use for the budget headers.
+// funcObserver adapts a callback that wants exchanges and not budget headers.
 type funcObserver func(Exchange)
 
 func (f funcObserver) Observe(e Exchange)               { f(e) }
 func (funcObserver) ObserveHeaders(string, http.Header) {}
 
 // observeTransport reports every request that passes through it.
-//
-// Observation lives in the TRANSPORT, not at the call sites, because call sites
-// only cover the calls somebody remembered to instrument. A client built here
-// cannot make an invisible request, whoever writes the next caller.
 type observeTransport struct {
 	base    http.RoundTripper
 	lane    Lane
@@ -90,8 +79,10 @@ type observeTransport struct {
 	timeNow func() time.Time
 }
 
-// observedClient derives a reporting client from one that is not. Timeout is
-// carried over so the derived client keeps the deadline the original had.
+// observedClient derives a reporting client from one that is not, keeping the
+// original's deadline. Observation lives in the TRANSPORT rather than at the
+// call sites, because call sites only ever cover the calls somebody remembered
+// to instrument. A client built here cannot make an invisible request.
 func observedClient(base *http.Client, lane Lane, obs Observer) *http.Client {
 	if base == nil {
 		base = http.DefaultClient
@@ -99,8 +90,7 @@ func observedClient(base *http.Client, lane Lane, obs Observer) *http.Client {
 	return &http.Client{
 		Timeout:   base.Timeout,
 		Transport: observing(base.Transport, lane, obs),
-		// A redirect is its own request and reports on its own; the hop count is
-		// the default because nothing here has a reason to differ.
+		// A redirect is its own request and reports on its own.
 		CheckRedirect: base.CheckRedirect,
 		Jar:           base.Jar,
 	}
@@ -142,14 +132,10 @@ func (t *observeTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	}
 
 	base.Status = resp.StatusCode
-	// The budget is read here, from the headers, because the exchange itself is
-	// not reported until the body is done and a budget read that late describes
-	// a window that may already have rolled over.
+	// Read now: by the time the body is done the window may have rolled over.
 	t.obs.ObserveHeaders(tag.principal, resp.Header)
 
-	// The exchange is reported when its body is done, not when the headers
-	// arrive: a streamed answer costs what it costs until the last byte, and a
-	// byte count taken before the read is always zero.
+	// Reported once the body is done: a count taken before the read is zero.
 	resp.Body = &reportingBody{
 		ReadCloser: resp.Body,
 		emit: func(n int) {
@@ -162,9 +148,7 @@ func (t *observeTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	return resp, nil
 }
 
-// reportingBody counts what a response actually cost and reports once, when the
-// body is closed. Close is the one call every consumer of an http.Response
-// makes, so it is the only place a report cannot be skipped.
+// reportingBody reports once, on Close: the one call no consumer skips.
 type reportingBody struct {
 	io.ReadCloser
 	emit func(n int)

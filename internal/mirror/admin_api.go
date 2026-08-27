@@ -33,8 +33,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 type RequestsView struct {
 	Recent []Request       `json:"recent"`
 	Groups []*RequestGroup `json:"groups"`
-	// Means is the per-group average, alongside the count. A total with no mean
-	// hides the one slow shape inside a busy one.
+	// Means: a total with no average hides one slow shape inside a busy one.
 	Means map[string]int64 `json:"means_ns"`
 }
 
@@ -75,9 +74,7 @@ func (a *Admin) timeline(w http.ResponseWriter, r *http.Request) {
 // RatesView is the Rate limit tab.
 type RatesView struct {
 	Budgets []RateBudget `json:"budgets"`
-	// Declared says whether the spec named the headers at all. Without it an
-	// empty table means "no traffic yet" and "this mirror cannot read a budget"
-	// at the same time, which are opposite problems.
+	// Declared separates "no traffic yet" from "cannot read a budget at all".
 	Declared bool        `json:"declared"`
 	Headers  RateHeaders `json:"headers"`
 }
@@ -235,8 +232,7 @@ type EventView struct {
 	Clock     string `json:"clock,omitempty"`
 	Unordered bool   `json:"unordered,omitempty"`
 	Sets      int    `json:"sets"`
-	// Invalidate is the escape hatch's stated reason, empty when the event
-	// applies its payload the way it should.
+	// Invalidate is the escape hatch's stated reason; empty means it applies.
 	Invalidate string `json:"invalidate,omitempty"`
 }
 

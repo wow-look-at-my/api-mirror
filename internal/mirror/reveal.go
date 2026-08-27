@@ -16,9 +16,7 @@ import (
 // grantSourceProbe labels a grant a probe earned. The source is what keeps a
 const grantSourceProbe = "probe"
 
-// DenyReason says which rung of the ladder refused. The vocabulary is closed so
-// the dashboard can tally refusals: "denied" with no reason is a number an
-// operator cannot act on.
+// DenyReason says which rung refused: "denied" alone cannot be acted on.
 type DenyReason string
 
 const (
@@ -151,9 +149,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 		return refuse(http.StatusBadGateway), err
 	}
 
-	// A probe is its own lane on the chart. It is upstream traffic the consumer
-	// never asked for, so folding it into the fetch lane hides what proving
-	// access actually costs.
+	// Its own lane: the fetch lane would hide what proving access costs.
 	ans, err := rv.up.Call(withLane(ctx, LaneProbe, principal, res.Name), rule.Probe.Method, path, rv.context(key, nil), forward)
 	if err != nil {
 		return refuse(http.StatusBadGateway), fmt.Errorf("reveal probe %s: %w", res.Name, err)

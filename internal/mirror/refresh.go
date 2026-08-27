@@ -7,12 +7,7 @@ import (
 	"time"
 )
 
-// Refresher keeps stored keys warm without a consumer having to ask first.
-//
-// A TTL that expires between reads means the next consumer pays for the fetch.
-// The sweep moves that cost off the request path, and it is the only thing that
-// keeps a key current at all when nobody is reading it -- which is exactly when
-// a delivery gap goes unnoticed.
+// Refresher keeps stored keys warm without a consumer asking first.
 type Refresher struct {
 	engine   *Engine
 	interval time.Duration
@@ -57,9 +52,9 @@ func (r *Refresher) Enabled() bool {
 
 // Start runs the sweep until Stop.
 //
-// The first cycle runs immediately rather than after one interval. A restart is
-// itself a window in which deliveries were missed, so waiting six hours to look
-// is waiting six hours to find out.
+// It keeps a key current when nobody is reading it, which is exactly when a
+// lost delivery goes unnoticed. The first cycle runs immediately: a restart is
+// itself a window deliveries were missed in.
 func (r *Refresher) Start() {
 	if !r.Enabled() {
 		return
@@ -141,17 +136,12 @@ func (r *Refresher) cycle() {
 	r.mu.Unlock()
 }
 
-// refreshCycleTimeout bounds one sweep. It is a leak guard: a cycle that cannot
-// finish inside it is one an operator needs to see in the log, not one that
-// quietly overlaps the next.
+// refreshCycleTimeout is a leak guard: an overrun belongs in the log.
 const refreshCycleTimeout = 30 * time.Minute
 
-// refreshOne re-fetches a single key using the plan the freshness row recorded.
-//
-// The sweep has no caller and therefore no credential. It can only refresh what
-// the mirror may fetch on its own account, which is what the spec's own
-// upstream headers say. A key that needed a consumer's credential stays as it
-// is rather than being refetched with the wrong identity.
+// refreshOne re-fetches one key from the plan its freshness row recorded. The
+// sweep holds no caller's credential, so a key that needed one stays as it is
+// rather than being refetched under the wrong identity.
 func (r *Refresher) refreshOne(ctx context.Context, kind string, k StaleKey) error {
 	plan, ok := r.engine.planFor(kind, k)
 	if !ok {

@@ -11,14 +11,11 @@ type Spec struct {
 	Routes    []*Route
 	Purges    []*Purge
 	Events    *Events
-	// Dashboard is the operator surface. It is always present -- a default is
-	// filled in when the spec declares none -- because a mirror nobody can see
-	// into is a mirror nobody can operate.
+	// Dashboard is the operator surface. Always present: a default fills in.
 	Dashboard Dashboard
-	// CORS is the browser policy. Nil means the mirror answers no preflight and
-	// sets no allow headers, which is correct for a server-to-server mirror.
+	// CORS is the browser policy. Nil answers no preflight and sets no headers.
 	CORS *CORS
-	// Notify declares subscriber notifications: who the mirror tells after it
+	// Notify declares who the mirror tells after a delivery lands.
 	Notify *Notify
 	// Refresh is the periodic background sweep over declared kinds.
 	Refresh *Refresh
@@ -31,12 +28,9 @@ type Spec struct {
 // Dashboard is the operator surface: the tabs, the admin JSON, and the token
 // that gates them.
 type Dashboard struct {
-	// Path is the prefix everything admin hangs off. It is one prefix so a
-	// deployment can put the whole surface behind its own gate in one rule.
+	// Path is the one prefix everything admin hangs off, gateable in one rule.
 	Path string
-	// Token is template source yielding the shared secret. An empty one means
-	// the engine mints a per-process token and logs the URL that carries it:
-	// on by default, but never open by default.
+	// Token is template source for the secret. Empty mints one and logs the URL.
 	Token string
 	// Title is what the page calls this mirror.
 	Title string
@@ -44,13 +38,9 @@ type Dashboard struct {
 
 // CORS is the browser-facing policy.
 type CORS struct {
-	// Origins is the allow-list. A single "*" allows any origin, which is safe
-	// here because the reveal layer gates by the caller's proven access, never
-	// by where the page came from.
+	// Origins is the allow-list; "*" is safe because reveal gates, not origin.
 	Origins []string
-	// Expose names the response headers a cross-origin script may read. Without
-	// it a browser hides every X-Mirror-* header, so a client cannot tell a hit
-	// from a passthrough.
+	// Expose lets a script read X-Mirror-*; without it the browser hides them.
 	Expose []string
 	// MaxAge is how long a preflight answer may be reused.
 	MaxAge time.Duration
@@ -62,9 +52,7 @@ type CORS struct {
 type Notify struct {
 	// Path is the subscription CRUD prefix.
 	Path string
-	// DB is the config database. It is deliberately a SEPARATE file: a
-	// subscription is not cached upstream state, and a schema change that nukes
-	// the cache must not take a consumer's registration with it.
+	// DB is a SEPARATE file: the cache nuke must not delete a registration.
 	DB string
 	// SignatureHeader carries the HMAC digest of each notification body.
 	SignatureHeader string
@@ -80,8 +68,7 @@ type Notify struct {
 // consumer having to ask first.
 type Refresh struct {
 	Interval time.Duration
-	// Kinds names the resources swept. Empty means every resource that has a
-	// route, because a resource nobody reads has nothing to keep warm.
+	// Kinds names the resources swept. Empty means every routed resource.
 	Kinds []string
 }
 
@@ -95,8 +82,7 @@ type Replay struct {
 	Interval time.Duration
 	// List is the upstream path returning failed deliveries.
 	List string
-	// Redeliver is the upstream path that asks for one to be re-sent. It is
-	// template source over `.delivery`.
+	// Redeliver asks for one to be re-sent; template source over `.delivery`.
 	Redeliver string
 	// Method is how a redelivery is asked for.
 	Method string
@@ -108,21 +94,14 @@ type Replay struct {
 	Lookback time.Duration
 	// Max bounds how many redeliveries one cycle asks for.
 	Max int
-	// Requires is a path to a value the failure log cannot be read without,
-	// usually the background credential. Empty at startup means every cycle is
-	// a call that can only fail, so the replayer declines to start and says so.
+	// Requires names a value without which every cycle can only fail.
 	Requires string
 }
 
 // Health declares the paths an orchestrator polls.
-//
-// The paths matter more than they look: an unrouted path here does not 404, it
-// falls through to the passthrough proxy and answers whatever the upstream
-// says. A checker reading any non-404 as "implemented" then reports a healthy
-// container as unhealthy forever.
 type Health struct {
 	Live string
-	// PreUpdate holds while a detached fetch is in flight, so a restart does not
+	// PreUpdate holds while a detached fetch is in flight.
 	PreUpdate string
 }
 
@@ -138,15 +117,11 @@ type Upstream struct {
 	Headers []Header
 	// Forward names the request headers copied from the caller to the upstream.
 	Forward []string
-	// Rate names the response headers carrying a rate-limit budget. Which
-	// headers those are is the upstream's vocabulary, so the engine reads the
-	// names from here rather than knowing any provider's spelling.
+	// Rate names the budget headers. Their spelling is the upstream's, not ours.
 	Rate RateHeaders
-	// Debounce is how long an eligible passthrough READ is held so identical
-	// concurrent requests share one upstream call. Zero forwards immediately.
+	// Debounce holds an eligible passthrough READ so identical reads share one call.
 	Debounce time.Duration
-	// RetryAfter names the header that says a refusal is about waiting, not
-	// about access. Without it a rate-limit refusal is stored as a denial.
+	// RetryAfter names the header saying a refusal is about waiting, not access.
 	RetryAfter string
 }
 

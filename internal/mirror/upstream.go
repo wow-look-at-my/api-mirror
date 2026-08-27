@@ -43,8 +43,7 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 		spec:    spec,
 		base:    base,
 		headers: spec.Upstream.Headers,
-		// The client reports from its transport, so a caller added later cannot
-		// make an unreported request by forgetting to instrument its call site.
+		// Reports from its transport: no call site can forget to.
 		client:  observedClient(upstreamClient, LaneFetch, observe),
 		observe: observe,
 	}, nil
@@ -97,8 +96,7 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 	if err != nil {
 		return nil, fmt.Errorf("upstream %s %s: %w", method, path, err)
 	}
-	// Closing the body is what reports the exchange, so this defer is the
-	// report, not just hygiene.
+	// Close reports the exchange, so this defer is the report, not hygiene.
 	defer resp.Body.Close()
 
 	body, overflow, err := readCapped(resp.Body)

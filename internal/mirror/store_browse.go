@@ -9,12 +9,9 @@ import (
 	"github.com/wow-look-at-my/api-mirror/internal/database/dbgen"
 )
 
-// What the operator surface reads. These are the only queries whose reason for
-// existing is a human looking at a page, so they live apart from the ones the
-// serving path needs.
+// What the operator surface reads, kept apart from the serving path's queries.
 
-// browseLimit bounds every browse. A dashboard that can ask for a million rows
-// is a dashboard that can take the server down by being opened.
+// browseLimit stops a page killing the server by being opened.
 const browseLimit = 500
 
 // StaleKey is one key the sweep may bring up to date.
@@ -207,16 +204,14 @@ func (s *Store) Rows(ctx context.Context, res *Resource, limit int) ([]Row, bool
 		return nil, false, err
 	}
 	if len(rows) > limit {
-		// Truncation is reported, never silent: a page that quietly shows the
-		// first 500 of 40,000 rows reads as a table with 500 rows in it.
+		// Reported, never silent: 500 quiet rows of 40,000 read as all of them.
 		return rows[:limit], true, nil
 	}
 	return rows, false, nil
 }
 
-// asUnix reads the second count out of what SQLite gave for a MAX(). The driver
-// answers an aggregate as int64 or float64 depending on the column, so both are
-// read rather than one being assumed.
+// asUnix reads a MAX() out of SQLite. The driver answers an aggregate as int64
+// or float64 depending on the column, so both are read.
 func asUnix(v any) (int64, bool) {
 	switch n := v.(type) {
 	case int64:

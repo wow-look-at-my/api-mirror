@@ -17,9 +17,8 @@ import (
 func revealSpec(base string) *Spec {
 	return &Spec{
 		Name: "reveal",
-		// The budget headers are declared because telling a rate-limit refusal
-		// from an access refusal is what decides whether a denial is cached,
-		// and which header carries a budget is the upstream's vocabulary.
+		// Declared because telling a rate-limit refusal from an access refusal
+		// decides whether a denial is cached.
 		Upstream: Upstream{
 			Base:    base,
 			Forward: []string{"Authorization"},

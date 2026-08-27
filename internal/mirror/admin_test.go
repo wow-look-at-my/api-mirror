@@ -118,8 +118,7 @@ func TestRequestLogSeesTheAdminSurfaceToo(t *testing.T) {
 }
 
 func TestBriefTurnsAPassthroughIntoSomethingToDo(t *testing.T) {
-	// The upstream answers 404 for these, which is fine: a passthrough is
-	// tallied by what it WAS, not by what came back.
+	// 404 is fine: a passthrough is tallied by what it WAS, not what came back.
 	e, _ := newTestEngine(t, http.NotFoundHandler())
 
 	get(t, e, "/widgets/7/releases")

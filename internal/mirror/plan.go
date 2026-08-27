@@ -33,9 +33,7 @@ func (e *Engine) planFor(kind string, sk StaleKey) (*fetchPlan, bool) {
 	}
 	for _, k := range res.Keys {
 		if k.Credential {
-			// This row was fetched with a caller's own credential. The sweep has
-			// none, so refreshing it would replace one caller's answer with the
-			// mirror's own -- a different question, filed under their key.
+			// The sweep would file its own answer under a caller's key.
 			return nil, false
 		}
 	}

@@ -7,22 +7,17 @@ import (
 	"strings"
 )
 
-// The dashboard's own files, compiled into the binary.
-//
-// They are plain HTML, CSS and ES modules with no build step. A toolchain
-// between the source in this repo and the bytes that ship is one more thing
-// that can be stale in a way nothing checks, and this page is small enough not
-// to need one.
-
 //go:embed web/index.html web/style.css web/app.js
 var webFS embed.FS
 
 // page serves the dashboard shell.
+//
+// The page is plain HTML, CSS and ES modules with no build step. A toolchain
+// between the source in this repo and the bytes that ship is one more thing
+// that can be stale in a way nothing checks.
 func (a *Admin) page(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != a.prefix+"/" {
-		// The mux's trailing-slash pattern catches every path under the prefix.
-		// Anything not named is a mistake, and answering the page for it would
-		// make a typo look like a working URL.
+		// Serving the page here would make a typo look like a working URL.
 		http.NotFound(w, r)
 		return
 	}
@@ -32,8 +27,7 @@ func (a *Admin) page(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// The page fetches its own JSON with the same token it was opened with, so
-	// it must not be cached anywhere but this browser tab.
+	// It carries the token it was opened with: cache it in this tab and nowhere.
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(body)
 }
@@ -53,10 +47,7 @@ func (a *Admin) asset(name, contentType string) http.HandlerFunc {
 	}
 }
 
-// assetNames is what the page loads. The test that walks these is what keeps a
-// renamed file from shipping as a blank dashboard: an embed that no longer
-// matches is a compile error, but a <script src> that no longer matches is a
-// page that loads and does nothing.
+// assetNames is what the page loads; a test walks it against index.html.
 func assetNames() []string {
 	names := []string{"index.html", "style.css", "app.js"}
 	return names

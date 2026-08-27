@@ -8,13 +8,10 @@ import (
 	"time"
 )
 
-// rateMeterMax bounds the meter. It is the size backstop behind lazy expiry,
-// not the primary eviction rule.
+// rateMeterMax is the size backstop behind lazy expiry, not the eviction rule.
 const rateMeterMax = 512
 
-// staleResetGrace is how long a reading whose reset moment is unreadable is
-// kept. It is the longest window a provider is likely to publish, so an entry
-// older than this is describing a budget that cannot still be current.
+// staleResetGrace is the longest window a provider publishes.
 const staleResetGrace = time.Hour
 
 // RateBudget is the latest reading of one identity's budget for one resource.
@@ -26,18 +23,11 @@ type RateBudget struct {
 	Used       int       `json:"used"`
 	Reset      time.Time `json:"reset"`
 	ObservedAt time.Time `json:"observed_at"`
-	// Stale says the reset moment has already passed, so this reading describes
-	// a window that is over. The dashboard renders it as such rather than as a
-	// budget about to refresh.
+	// Stale means the reset passed: a window that is over, not one refreshing.
 	Stale bool `json:"stale"`
 }
 
-// RateMeter is a passive, in-memory view of what the upstream last said about
-// each identity's budget.
-//
-// Passive is the whole design: nothing here asks the upstream for a budget. It
-// reads the headers of answers the mirror was already getting, so the meter
-// costs nothing and cannot itself spend the budget it reports.
+// RateMeter is a passive in-memory view of each identity's budget.
 type RateMeter struct {
 	mu      sync.Mutex
 	entries map[string]*RateBudget
@@ -45,8 +35,7 @@ type RateMeter struct {
 	now     func() time.Time
 }
 
-// RateHeaders names the response headers that carry a budget. The names are the
-// upstream's vocabulary, so they come from the spec rather than from here.
+// RateHeaders names the budget headers, in the upstream's own vocabulary.
 type RateHeaders struct {
 	Limit     string
 	Remaining string
@@ -60,13 +49,16 @@ func (h RateHeaders) declared() bool {
 	return h.Limit != "" || h.Remaining != "" || h.Reset != ""
 }
 
-// NewRateMeter returns a meter reading the headers the spec declared. A meter
-// with no declared headers observes nothing rather than guessing at names.
+// NewRateMeter reads the declared headers, and nothing at all without them.
 func NewRateMeter(headers RateHeaders) *RateMeter {
 	return &RateMeter{entries: map[string]*RateBudget{}, headers: headers, now: time.Now}
 }
 
 // Observe reads one answer's budget headers.
+//
+// Nothing here ever asks the upstream for a budget: it reads the headers of
+// answers the mirror was already getting, so the meter costs nothing and
+// cannot itself spend what it reports.
 func (m *RateMeter) Observe(principal string, h http.Header) {
 	if m == nil || h == nil || !m.headers.declared() {
 		return
@@ -125,12 +117,9 @@ func (m *RateMeter) Snapshot() []RateBudget {
 	return out
 }
 
-// sweepLocked drops readings that cannot still describe anything.
-//
-// An identity still calling is re-observed with a fresh reset on every answer,
-// so a reset well in the past means that identity stopped calling. Expiry is
-// lazy on both paths rather than on a timer: a goroutine whose only job is to
-// delete is a moving part with nothing to gain from moving.
+// sweepLocked drops readings that cannot still describe anything. An identity
+// still calling is re-observed with a fresh reset, so a reset well in the past
+// means it stopped. Lazy on both paths: a delete-only goroutine earns nothing.
 func (m *RateMeter) sweepLocked() {
 	now := m.now()
 	for k, b := range m.entries {

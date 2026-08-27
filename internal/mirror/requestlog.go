@@ -6,13 +6,10 @@ import (
 	"time"
 )
 
-// requestLogMax bounds the log. It is a live view of recent traffic, not an
-// audit trail, so the oldest entry leaves rather than the newest being refused.
+// requestLogMax bounds a live view: oldest out, never newest refused.
 const requestLogMax = 2000
 
-// Disposition is what the mirror DID with one inbound request. The vocabulary
-// is closed: a request whose outcome has no name here cannot be accounted for
-// on the dashboard.
+// Disposition is what the mirror DID with one request. The vocabulary is closed.
 type Disposition string
 
 const (
@@ -41,12 +38,7 @@ type Request struct {
 	Principal   string        `json:"principal,omitempty"`
 }
 
-// RequestLog is a bounded ring of recent inbound requests, plus the running
-// per-shape tallies the dashboard reads.
-//
-// The SHAPE is the point. One line per request answers "what happened just
-// now"; the tally per route shape answers "what is this mirror actually being
-// asked for", which is the question that decides what to model next.
+// RequestLog is a bounded ring of recent requests plus per-shape tallies.
 type RequestLog struct {
 	mu      sync.Mutex
 	entries []Request
@@ -71,8 +63,8 @@ type RequestGroup struct {
 	extra        map[string]interface{} `json:"-"`
 }
 
-// MeanDuration is the average an operator reads next to the count. A total with
-// no count behind it is a division, not a measurement, so it reports zero.
+// MeanDuration is the average shown beside the count. A total with no count
+// behind it is a division, not a measurement, so it reports zero.
 func (g *RequestGroup) MeanDuration() time.Duration {
 	if g.Count == 0 {
 		return 0
@@ -90,6 +82,10 @@ func NewRequestLog() *RequestLog {
 }
 
 // Record files one handled request.
+//
+// The SHAPE is the point. One line per request answers "what happened just
+// now"; the tally per shape answers "what is this mirror actually asked for",
+// which is the question that decides what to model next.
 func (l *RequestLog) Record(r Request) {
 	if l == nil {
 		return
@@ -110,8 +106,7 @@ func (l *RequestLog) Record(r Request) {
 	l.entries[(l.head+l.size)%len(l.entries)] = r
 	l.size++
 
-	// The tallies outlive the ring on purpose: an operator asking what this
-	// mirror is asked for wants the whole run, not the last two thousand lines.
+	// Tallies outlive the ring: the question is the whole run, not the last 2000.
 	key := r.Method + " " + r.Shape
 	g, ok := l.groups[key]
 	if !ok {

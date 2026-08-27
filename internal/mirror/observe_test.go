@@ -23,8 +23,7 @@ func TestObservedClient_ReportsFromTheTransportSoNoCallSiteCanSkipIt(t *testing.
 	tel := NewTelemetry(RateHeaders{})
 	client := observedClient(&http.Client{}, LaneProbe, tel)
 
-	// Deliberately a bare Do, with nothing instrumenting the call site. The
-	// point is that the report happens anyway.
+	// Bare, with nothing instrumenting the call site. It reports anyway.
 	resp, err := client.Get(srv.URL + "/thing")
 	require.NoError(t, err)
 	_, _, err = readCapped(resp.Body)
@@ -112,16 +111,14 @@ func TestRateMeter_DropsAnIdentityThatStoppedCalling(t *testing.T) {
 	m.Observe("token:gone", http.Header{"L": {"100"}, "R": {"7"}, "X": {itoa(int(now.Add(time.Minute).Unix()))}})
 	require.Len(t, m.Snapshot(), 1)
 
-	// An identity still calling is re-observed with a fresh reset on every
-	// answer, so a reset well in the past means that identity stopped.
+	// A caller still calling gets a fresh reset; a past one means it stopped.
 	now = now.Add(3 * time.Hour)
 	assert.Empty(t, m.Snapshot(), "a dead reading is swept lazily, with no goroutine whose only job is to delete")
 }
 
 func TestTimeline_ReportsWhatItDroppedRatherThanLosingItQuietly(t *testing.T) {
 	tl := NewTimeline()
-	// Shrink the ring so the eviction path is reachable in a test rather than
-	// only after a hundred thousand requests.
+	// Shrink the ring: eviction is otherwise 100,000 requests away.
 	tl.frames = make([]Frame, 2)
 
 	for i := range 5 {
@@ -154,8 +151,7 @@ func TestGeneralizeWith_UsesTheSpecsOwnWordsRatherThanGuessing(t *testing.T) {
 	vocab := pathVocabulary(&Spec{Routes: []*Route{
 		{Path: "/repos/{owner}/{repo}/pulls/{number}"},
 	}})
-	// "octocat" and "pulls" are indistinguishable to a shape heuristic and mean
-	// opposite things. The declared vocabulary is what tells them apart.
+	// "octocat" and "pulls" look alike and mean opposite things; vocabulary tells.
 	assert.Equal(t, "/repos/{id}/{id}/releases", generalizeWith(vocab, "/repos/octocat/hello/releases"))
 	assert.Equal(t, "/repos/{id}/{id}/pulls/{id}", generalizeWith(vocab, "/repos/octocat/hello/pulls/42"))
 }

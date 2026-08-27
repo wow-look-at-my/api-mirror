@@ -8,13 +8,6 @@ import (
 	"strings"
 )
 
-// The subscription API.
-//
-// A subscription belongs to the principal that created it, and every read and
-// write here is scoped to that principal. The one exception is the operator
-// listing, which is gated by the dashboard token rather than by a principal --
-// an operator seeing every registration is the point of the tab.
-
 // maxSubscriptionBody caps a registration. Nothing legitimate here is large.
 const maxSubscriptionBody = 64 << 10
 
@@ -27,9 +20,7 @@ type subscriptionRequest struct {
 // subscriptionCreated is the one and only time the secret is returned.
 type subscriptionCreated struct {
 	Subscription
-	// Secret signs every notification this subscription receives. It is shown
-	// here once because there is no second moment at which the subscriber can
-	// still be given it, and the store never reads it back out to a caller.
+	// Secret signs every notification, and is shown here exactly once.
 	Secret string `json:"secret"`
 }
 
