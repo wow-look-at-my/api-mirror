@@ -58,13 +58,13 @@ type Notifier struct {
 }
 
 // NewNotifier opens the subscription store and builds the fan-out.
-func NewNotifier(spec *Spec, vars map[string]any, tel *Telemetry) (*Notifier, error) {
+func NewNotifier(spec *Spec, vars map[string]any, tel *Telemetry, cacheDB string) (*Notifier, error) {
 	rule := spec.Notify
 	path, err := renderString(rule.DB, vars)
 	if err != nil {
 		return nil, fmt.Errorf("<notify> db: %w", err)
 	}
-	subs, err := OpenSubscriptions(path)
+	subs, err := OpenSubscriptions(subscriptionsPath(path, cacheDB))
 	if err != nil {
 		return nil, err
 	}

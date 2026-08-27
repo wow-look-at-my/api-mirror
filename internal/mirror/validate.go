@@ -105,9 +105,6 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		}
 	}
 	if s.Notify != nil {
-		if strings.TrimSpace(s.Notify.DB) == "" {
-			return fmt.Errorf("<notify> needs a db: a subscription is not cached upstream state and cannot live in the cache")
-		}
 		if s.Events == nil {
 			return fmt.Errorf("<notify> has nothing to announce: this spec declares no <events>")
 		}

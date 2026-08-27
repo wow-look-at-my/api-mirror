@@ -108,6 +108,10 @@ type Replay struct {
 	Lookback time.Duration
 	// Max bounds how many redeliveries one cycle asks for.
 	Max int
+	// Requires is a path to a value the failure log cannot be read without,
+	// usually the background credential. Empty at startup means every cycle is
+	// a call that can only fail, so the replayer declines to start and says so.
+	Requires string
 }
 
 // Health declares the paths an orchestrator polls.

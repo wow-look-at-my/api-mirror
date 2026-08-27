@@ -158,6 +158,37 @@ func TestReplayIsOffWhenTheSpecDeclaresNone(t *testing.T) {
 		"a mirror with no replay is valid; one whose author did not realise that was a choice is not")
 }
 
+func TestReplayDoesNotRunWithoutTheCredentialItRequires(t *testing.T) {
+	var calls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(upstream.Close)
+
+	declare := func(s *Spec) {
+		s.Upstream.Base = upstream.URL
+		s.Replay = &Replay{
+			Interval: time.Minute, List: "/deliveries", Redeliver: "/deliveries/{{ .id }}",
+			ID: "id", Requires: "env.MIRROR_TEST_REPLAY_TOKEN",
+		}
+	}
+
+	e, _ := newTestEngine(t, http.NotFoundHandler(), declare)
+	assert.False(t, e.replay.Enabled())
+	assert.Equal(t, "env.MIRROR_TEST_REPLAY_TOKEN", e.replay.Stats().Off,
+		"a declared job that is not running has to say which value would start it")
+
+	e.replay.Start()
+	t.Cleanup(e.replay.Stop)
+	assert.Zero(t, calls, "a cycle that can only fail is not a cycle worth running every interval forever")
+
+	t.Setenv("MIRROR_TEST_REPLAY_TOKEN", "sekrit")
+	with, _ := newTestEngine(t, http.NotFoundHandler(), declare)
+	assert.True(t, with.replay.Enabled())
+	assert.Empty(t, with.replay.Stats().Off)
+}
+
 func TestNotifierSignsAndTellsSubscribersAfterTheWriteLands(t *testing.T) {
 	var got struct {
 		body      []byte
@@ -348,4 +379,12 @@ func TestDebounceNeverSharesAcrossCredentials(t *testing.T) {
 
 func TestZeroDebounceForwardsImmediately(t *testing.T) {
 	assert.Nil(t, NewDebouncer(0), "forwarding at once is a real choice, and a nil says so by having nothing to hold with")
+}
+
+func TestSubscriptionDBTravelsWithTheCache(t *testing.T) {
+	assert.Equal(t, "/var/lib/mirror/github-subscriptions.db",
+		subscriptionsPath("", "/var/lib/mirror/github.db"),
+		"one -db flag must not put the cache in one place and its subscriptions in the working directory")
+	assert.Equal(t, "/etc/mirror/subs.db", subscriptionsPath("/etc/mirror/subs.db", "/var/lib/mirror/github.db"),
+		"a declared path is the operator's decision")
 }

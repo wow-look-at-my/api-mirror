@@ -2,6 +2,8 @@ package mirror
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -41,9 +43,30 @@ func NewReplayer(e *Engine) *Replayer {
 	return &Replayer{engine: e, rule: e.spec.Replay, asked: map[string]time.Time{}, stop: make(chan struct{})}
 }
 
+// declared reports whether a spec asked for a replayer at all.
+func (r *Replayer) declared() bool {
+	return r != nil && r.rule != nil && r.rule.Interval > 0 && r.rule.List != "" && r.rule.Redeliver != ""
+}
+
 // Enabled reports whether this replayer does anything.
 func (r *Replayer) Enabled() bool {
-	return r != nil && r.rule != nil && r.rule.Interval > 0 && r.rule.List != "" && r.rule.Redeliver != ""
+	return r.declared() && r.missing() == ""
+}
+
+// missing names the requirement a spec declared that has no value.
+//
+// A failure log is an authenticated endpoint. Without the credential every cycle
+// is a call that can only fail, on a fixed interval, forever: a job that looks
+// like it is running and recovers nothing. A missing requirement means the
+// replayer does not start, and says which value would start it.
+func (r *Replayer) missing() string {
+	if r == nil || r.rule == nil || r.rule.Requires == "" {
+		return ""
+	}
+	if v := lookupPath(r.engine.vars, r.rule.Requires); v != nil && strings.TrimSpace(fmt.Sprint(v)) != "" {
+		return ""
+	}
+	return r.rule.Requires
 }
 
 // Start runs the replayer until Stop.
@@ -52,7 +75,12 @@ func (r *Replayer) Enabled() bool {
 // deliveries were missed, so it is the moment a replay is most likely to have
 // something to find.
 func (r *Replayer) Start() {
-	if !r.Enabled() {
+	if !r.declared() {
+		return
+	}
+	if want := r.missing(); want != "" {
+		logf("replay: OFF because %s is empty. A delivery this mirror never received stays lost, "+
+			"and the caches it would have moved serve their last absorbed answer for the whole TTL.", want)
 		return
 	}
 	r.mu.Lock()
@@ -252,7 +280,10 @@ func (r *Replayer) tally(found, sent, failed int) {
 
 // ReplayStats is what the replayer reports to the dashboard.
 type ReplayStats struct {
-	Enabled  bool      `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	// Off names the empty requirement, so a replayer that is declared and not
+	// running reads as a decision rather than as a mystery.
+	Off      string    `json:"off,omitempty"`
 	Interval string    `json:"interval,omitempty"`
 	Cycles   int       `json:"cycles"`
 	Found    int       `json:"found"`
@@ -269,7 +300,7 @@ func (r *Replayer) Stats() ReplayStats {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s := ReplayStats{
-		Enabled: r.Enabled(),
+		Enabled: r.declared() && r.missing() == "",
 		Cycles:  r.cycles,
 		Found:   r.found,
 		Resent:  r.sent,
@@ -278,6 +309,9 @@ func (r *Replayer) Stats() ReplayStats {
 	}
 	if r.rule != nil && r.rule.Interval > 0 {
 		s.Interval = r.rule.Interval.String()
+	}
+	if r.declared() {
+		s.Off = r.missing()
 	}
 	return s
 }

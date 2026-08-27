@@ -60,6 +60,20 @@ type Subscriptions struct {
 	path string
 }
 
+// subscriptionsPath decides where the config database lives.
+//
+// A declared path wins. Otherwise it is derived from the CACHE database's path
+// rather than defaulting to a bare name in the working directory: the two files
+// belong together, and a relative default means one -db flag puts the cache in
+// one place and its subscriptions somewhere else entirely -- or nowhere, if the
+// working directory is not writable.
+func subscriptionsPath(declared, cacheDB string) string {
+	if strings.TrimSpace(declared) != "" {
+		return declared
+	}
+	return strings.TrimSuffix(cacheDB, ".db") + "-subscriptions.db"
+}
+
 // OpenSubscriptions opens or creates the config database.
 func OpenSubscriptions(path string) (*Subscriptions, error) {
 	if strings.TrimSpace(path) == "" {

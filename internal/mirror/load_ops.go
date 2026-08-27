@@ -137,10 +137,10 @@ func buildRefresh(n *node) (*Refresh, error) {
 }
 
 func buildReplay(n *node) (*Replay, error) {
-	if err := checkAttrs(n, "interval", "method", "lookback", "max"); err != nil {
+	if err := checkAttrs(n, "interval", "method", "lookback", "max", "requires"); err != nil {
 		return nil, err
 	}
-	rp := &Replay{Method: strings.ToUpper(n.Attr("method"))}
+	rp := &Replay{Method: strings.ToUpper(n.Attr("method")), Requires: strings.TrimSpace(n.Attr("requires"))}
 	if v := n.Attr("max"); v != "" {
 		num, err := strconv.Atoi(v)
 		if err != nil {

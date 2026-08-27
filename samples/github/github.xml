@@ -27,11 +27,25 @@
 		their behalf. That is what makes a probe prove THAT caller's access
 		rather than the mirror's, and it is why the mirror never needs a
 		credential of its own to serve a read.
+
+		The static Authorization below is for the requests that have NO caller:
+		the periodic sweep and the delivery-gap replayer. A forwarded header
+		wins over a static one, so a consumer's own token still answers every
+		read they make. Unset, the header is skipped and the background jobs
+		get whatever an anonymous caller gets.
+
+		<ratelimit> names the headers that carry a budget. Naming them is what
+		lets the Rate limit tab exist at all, and it is also what tells a
+		rate-limit refusal (wait) from an access refusal (you may not): the
+		difference that decides whether a denial is remembered for five minutes.
 	-->
-	<upstream base="{{ .var.base }}">
+	<upstream base="{{ .var.base }}" debounce="5s" retry-after="Retry-After">
 		<header name="Accept">application/vnd.github+json</header>
 		<header name="X-GitHub-Api-Version">2022-11-28</header>
+		<header name="Authorization"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
 		<forward name="Authorization"/>
+		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
+			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"/>
 	</upstream>
 
 	<!--
@@ -621,6 +635,80 @@
 			</apply>
 		</event>
 
+		<!--
+			A branch created. The payload states the ref and the sha it points
+			at, which is the whole of what a branch row holds, so this writes
+			rather than fetches.
+
+			`create` also fires for a tag, and a tag is not a branch. The set
+			below writes the ref with the heads/ prefix trimmed, and the subject
+			carries the full ref, so a tag lands under its own subject and its
+			own row rather than overwriting a branch of the same name.
+		-->
+		<event type="create" resource="branch" clock="repository.pushed_at">
+			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref_type"/>:<value name="payload.ref"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="repo">repository.name</set>
+				<set field="ref">ref</set>
+				<set field="tip_sha">repository.default_branch</set>
+			</apply>
+		</event>
+
+		<!--
+			A branch deleted. This is the one shape where invalidation is not a
+			shortcut: the row must GO, and the payload states exactly which one.
+			Writing anything would leave a branch being served after it stopped
+			existing.
+		-->
+		<event type="delete" resource="branch" clock="repository.pushed_at">
+			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref_type"/>:<value name="payload.ref"/></subject>
+			<invalidate reason="the ref is gone; there is no new value to write, only a row that must stop being served"/>
+		</event>
+
+		<!--
+			A pull request review. It moves nothing this mirror stores about the
+			pull itself, but the payload carries the pull's own updated_at, so
+			the row's freshness marker is worth advancing rather than letting a
+			review look like silence.
+		-->
+		<event type="pull_request_review" resource="pull" clock="pull_request.updated_at">
+			<subject>pr:<value name="payload.repository.full_name"/>#<value name="payload.pull_request.number"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="repo">repository.name</set>
+				<set field="number">pull_request.number</set>
+				<set field="state">pull_request.state</set>
+				<set field="draft">pull_request.draft</set>
+				<set field="head_sha">pull_request.head.sha</set>
+				<set field="updated_at">pull_request.updated_at</set>
+			</apply>
+		</event>
+
+		<!--
+			A check run reporting. The row this moves is the commit's whole
+			check-runs ANSWER, which one check_run payload does not state: it
+			carries this run, not the set. That is what makes this the last
+			resort rather than laziness, and it is why the reason is required.
+
+			Note what is NOT declared here: no fetch. An invalidation drops the
+			row and the next reader pays for it. A delivery must never make the
+			mirror go and ask.
+		-->
+		<event type="check_run" resource="commit_check_runs" clock="check_run.completed_at">
+			<subject>checks:<value name="payload.repository.full_name"/>:<value name="payload.check_run.head_sha"/></subject>
+			<invalidate reason="the payload carries this one run, and the stored answer is the whole set of runs for the commit"/>
+		</event>
+
+		<!--
+			Same shape, one level up: a workflow run's jobs are a set the run's
+			own payload does not enumerate.
+		-->
+		<event type="workflow_run" resource="workflow_runs" clock="workflow_run.updated_at">
+			<subject>runs:<value name="payload.repository.full_name"/></subject>
+			<invalidate reason="the stored answer is a page of the repository's runs, and this payload states one run"/>
+		</event>
+
 	</events>
 
 	<!--
@@ -844,5 +932,108 @@
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
+
+	<!--
+		Everything below is OPERATIONS: what an operator sees, what runs in the
+		background, and what this mirror tells its own consumers. None of it
+		changes an answer. All of it changes whether somebody can tell that the
+		answers are right.
+	-->
+
+	<!--
+		The dashboard exists whether or not it is declared here; what this
+		declares is where it lives and what gates it. With no <token> the engine
+		mints one for the process and logs the URL that carries it, so the page
+		is reachable on a fresh deployment without being open to anyone who
+		guesses the prefix.
+	-->
+	<dashboard path="/_mirror" title="GitHub mirror">
+		<token><value name="env.MIRROR_ADMIN_TOKEN"/></token>
+	</dashboard>
+
+	<!--
+		Any origin is safe here in a way it usually is not, and the reason is
+		the reveal ladder: what a caller may see is decided by proving THEIR
+		access to GitHub, never by where the page came from. An origin list
+		would be gating a door that is not the door.
+
+		<expose> is the half that is easy to forget and impossible to work
+		around. Without it a browser hides every one of these from a
+		cross-origin script, so a page cannot read the budget it is spending.
+		The engine adds its own X-Mirror-* headers to whatever is listed here.
+	-->
+	<cors max-age="10m">
+		<origin>*</origin>
+		<expose>X-RateLimit-Limit</expose>
+		<expose>X-RateLimit-Remaining</expose>
+		<expose>X-RateLimit-Used</expose>
+		<expose>X-RateLimit-Reset</expose>
+		<expose>Link</expose>
+	</cors>
+
+	<!--
+		The sweep keeps rows current for the keys nobody is reading, which is
+		exactly when a lost delivery goes unnoticed: with no reader there is no
+		refetch, and the row serves its last absorbed answer for the whole TTL
+		with nothing reporting the gap.
+
+		It names no <kind>, so it sweeps every resource some route serves. A
+		row keyed by a caller's own credential is skipped whatever it names:
+		the sweep holds no caller's token, and refreshing one of those would
+		file the mirror's own answer under somebody else's key.
+	-->
+	<refresh interval="6h"/>
+
+	<!--
+		GitHub sends a delivery ONCE. Miss it (a restart, a wedge, a minute
+		unreachable) and nothing retries and nothing reports it. The App's own
+		failure log is the record of what it could not hand over, so the
+		replayer reads that and asks for those deliveries again.
+
+		Once per delivery id, because asking twice turns a recovery mechanism
+		into a source of duplicates. A shorter TTL is not an alternative: it
+		shrinks the window and hides it, and the gap is still there.
+
+		requires= names the background credential. The failure log is an App
+		endpoint, so without that token every cycle is a call that can only
+		fail, every five minutes, forever: a job that looks like it is running
+		and recovers nothing. Empty means the replayer does not start, and says
+		which value would start it.
+	-->
+	<replay interval="5m" method="POST" lookback="24h" max="25"
+		requires="env.GITHUB_BACKGROUND_TOKEN">
+		<list>/app/hook/deliveries?status=failure</list>
+		<redeliver>/app/hook/deliveries/<value name="delivery.id"/>/attempts</redeliver>
+		<id>id</id>
+		<at>delivered_at</at>
+	</replay>
+
+	<!--
+		Subscriber notifications. A consumer that also receives GitHub's
+		webhooks races this mirror's ingestion: the delivery reaches them first,
+		they read the mirror, and they get the state the delivery was about to
+		replace. Telling them AFTER the write lands removes that race rather
+		than narrowing it.
+
+		The config database is a SEPARATE file on purpose. The cache is nuked
+		whenever a resource changes, which is safe because every row in it is a
+		copy of something GitHub still has. A consumer's registration is not a
+		copy of anything.
+
+		No db= here, so it is derived from whatever -db names: the two files
+		belong together and travel together.
+	-->
+	<notify path="/_mirror/subscriptions"
+		signature-header="X-Hub-Signature-256" timeout="10s" retries="3" disable-after="20"/>
+
+	<!--
+		Registering these paths is load-bearing, and not for the reason it
+		looks. An unrouted path here does not 404: it falls through to the
+		passthrough proxy and answers whatever GitHub says about it. A checker
+		that reads any non-404 as "implemented" then reports a perfectly healthy
+		container as unhealthy forever, over a path nobody declared.
+	-->
+	<health live="/.well-known/docker-updater/health"
+		pre-update="/.well-known/docker-updater/pre-update"/>
 
 </mirror>

@@ -91,7 +91,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	e.debounce = NewDebouncer(spec.Upstream.Debounce)
 	e.admin = NewAdmin(e)
 	if spec.Notify != nil {
-		e.notify, err = NewNotifier(spec, vars, tel)
+		e.notify, err = NewNotifier(spec, vars, tel, store.path)
 		if err != nil {
 			return nil, err
 		}

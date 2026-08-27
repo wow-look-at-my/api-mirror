@@ -185,7 +185,11 @@ func describeReplay(r *Replay) string {
 	if r == nil {
 		return ""
 	}
-	return "every " + r.Interval.String() + " from " + r.List
+	d := "every " + r.Interval.String() + " from " + r.List
+	if r.Requires != "" {
+		d += " (needs " + r.Requires + ")"
+	}
+	return d
 }
 
 func describeNotify(n *Notify) string {
