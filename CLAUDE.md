@@ -23,6 +23,14 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe.
 - `ordering.go` / `events.go` — webhook ingest: subject and clock, the reorder window, the watermark, the apply.
 - `upstream.go` — the one outbound client, reporting every request.
+- `load_ops.go` / the ops half of `validate.go` — `<dashboard>`, `<cors>`, `<notify>`, `<refresh>`, `<replay>`, `<health>`, `<ratelimit>`.
+- `observe.go` — `Lane`, `Exchange`, `Observer`, and the transport every outbound client is built through.
+- `telemetry.go` / `timeline.go` / `requestlog.go` / `ratemeter.go` — the four in-memory stores behind the page. Bounded, lazily swept, reset on restart.
+- `recorder.go` — the inbound wrapper that records what the caller actually received.
+- `shapes.go` — a path to a route shape, and the `<route>` sketch that would stop it leaking.
+- `admin.go` / `admin_api.go` / `admin_subs.go` / `web.go` + `web/` — the operator surface and its embedded page.
+- `refresh.go` / `replay.go` / `notify.go` / `subscriptions.go` / `debounce.go` — the background half.
+- `mirror.schema.xsd` — the reference grammar. Not enforced at load; a test walks the shipped specs against it.
 - `mirror.example.xml` — a runnable small spec. `samples/github/github.xml` — the full worked example. Both at the top of the tree, reached from a test through `repoRoot`.
 
 ## Invariants
@@ -38,6 +46,11 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
 - **The fingerprint is derived, never declared.** It hashes the schema the spec produces, so a resource change always nukes and nothing has to be kept in step by hand.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
+- **Every request this service sends is on the chart.** The reporting is in the TRANSPORT (`observedClient`), never at a call site: a call site only covers what somebody remembered to instrument, and the passthrough proxy is exactly what gets forgotten. A new outbound client is built through `observedClient` or it is a hole.
+- **The operator surface exists whether or not a spec declares one.** A spec chooses where it lives and what gates it. With no `<token>` the engine mints one per process and logs the URL carrying it: on by default, never open by default.
+- **A background job with a missing precondition does not run.** `<replay requires=>` names a value the failure log cannot be read without; empty means the job declines to start and logs which value would start it. A cycle that can only fail, forever, on a timer is a job that looks busy and recovers nothing.
+- **Telemetry is memory-only and bounded.** A live view, not an audit log: a table would put sub-day-ephemeral rows behind a cache-nuking schema. Every store sweeps lazily and reports what it dropped rather than truncating quietly.
+- **A browser fetches the page's subresources itself.** No header, no query string — which is why the dashboard's own assets are gated by a strict same-site cookie the shell sets. Test an operator surface the way a browser drives it, not the way the page does.
 
 ## Commands
 

@@ -60,10 +60,34 @@ api-mirror --spec mirror.xml --check     # print the derived schema and routes, 
 - **Ordering.** Deliveries are sorted per subject inside a short window, and a view older than one already applied is refused. A redelivered payload cannot reopen something that closed.
 - **Authorization at the read.** Storage is global — one row per fact. Whether a caller may see it is proven per request, against the upstream, with that caller's own credential.
 - **Honest passthrough.** A path the spec does not declare is forwarded and labelled with why. There is no "correctly uncached".
+- **A dashboard, on by default.** Traffic, cache contents, rate budget, deliveries, principals, and the passthrough brief. It mints its own token and logs the URL that opens it.
+
+## Operations
+
+A second half of the spec decides what runs in the background and what an operator can see. None of it changes an answer; all of it changes whether anybody can tell the answers are right.
+
+```xml
+<dashboard path="/_mirror" title="GitHub mirror"/>
+<cors max-age="10m"><origin>*</origin></cors>
+<refresh interval="6h"/>
+<replay interval="5m" requires="env.GITHUB_TOKEN">
+	<list>/app/hook/deliveries?status=failure</list>
+	<redeliver>/app/hook/deliveries/<value name="delivery.id"/>/attempts</redeliver>
+	<id>id</id>
+</replay>
+<notify path="/_mirror/subscriptions"/>
+<health live="/healthz" pre-update="/pre-update"/>
+```
+
+- **Every request is on the chart.** The observation is in the transport, not at the call sites, so a client built here cannot make an invisible request — the passthrough proxy included.
+- **The passthrough tab is a to-do list.** Requests are grouped by route shape, counted, and each family comes with the `<resource>` and `<route>` that would stop it leaving.
+- **Delivery-gap replay.** A provider sends once. The replayer reads its failure log and asks for what never arrived, once per delivery. `requires=` names the credential it needs; without it the job declines to start and says so, rather than failing on a timer forever.
+- **Subscriber notifications.** Consumers register a webhook endpoint and get an HMAC-signed notification *after* a delivery lands, so they stop racing this mirror's ingestion. Their registrations live in a separate database the schema nuke never touches.
+- **A periodic sweep**, a **passthrough debounce** that shares one upstream call between identical concurrent reads (never across credentials), and **liveness paths** that hold while a detached fetch is in flight.
 
 ## Not yet
 
-Absent, and worth knowing before you rely on this: no delivery-gap replay (asking the provider to re-send what never arrived), no read-time contradiction detection, no periodic background refresh, no passthrough debouncing, no subscriber notifications, and no dashboard. The outbound client reports every request it makes and nothing consumes those reports yet.
+Absent, and worth knowing before you rely on this. **No read-time contradiction detection**: a stored value that the mirror's own other rows disagree with is still served rather than refetched, which is the shape a lost delivery leaves behind. **No consistency check against upstream truth**: nothing re-fetches the whole cache and diffs it, so the dashboard reports what this process has seen, never what the upstream currently says.
 
 ## Docs
 

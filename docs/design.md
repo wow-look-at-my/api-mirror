@@ -131,12 +131,86 @@ Public is a predicate over the stored row. A probe re-asks upstream with the
 CALLER's own credential; a 2xx earns a grant, an authoritative denial is cached
 briefly, and a transient failure is never cached. Unknown fails closed.
 
+## The operations half
+
+Everything above decides what an answer IS. What follows decides whether
+anybody can tell the answers are right, and what happens when nobody is
+looking. None of it changes a response body.
+
+### `<dashboard>` — the operator surface
+
+```xml
+<dashboard path="/_mirror" title="GitHub mirror">
+	<token><value name="env.MIRROR_ADMIN_TOKEN"/></token>
+</dashboard>
+```
+
+The surface exists whether or not a spec declares one; this decides where it
+lives and what gates it. An absent `<token>` mints one per process and logs the
+URL that carries it — on by default, never open by default. Everything admin
+hangs off the one prefix, so a deployment gates the whole thing in one rule.
+
+The page reports traffic by lane, cache contents by kind, the rate budget per
+identity, deliveries by type, principals and their standing, and — the tab that
+matters most — **what is still leaving**. A passthrough is unfinished work, so
+each leaking family is grouped by route shape, counted, given real sample paths,
+and handed the `<resource>` and `<route>` that would stop it.
+
+### Everything the mirror exchanges is on the chart
+
+This is an invariant, not a feature. A request nobody can see spends budget, can
+be slow, can fail, and none of that reaches the operator. Instrumenting call
+sites cannot hold the property — it covers the calls somebody remembered, and
+the reverse proxy is exactly what gets forgotten. So the rule is about the
+CLIENT: it reports from its transport, or it is a hole.
+
+### Background work
+
+```xml
+<refresh interval="6h"/>
+<replay interval="5m" requires="env.GITHUB_TOKEN">
+	<list>/app/hook/deliveries?status=failure</list>
+	<redeliver>/app/hook/deliveries/<value name="delivery.id"/>/attempts</redeliver>
+	<id>id</id>
+	<at>delivered_at</at>
+</replay>
+```
+
+`<refresh>` sweeps stored keys, which matters most for the key nobody is
+reading: with no reader there is no refetch, and a missed delivery goes
+unnoticed for the whole TTL. The sweep holds no caller's credential, so a
+credential-keyed row is skipped rather than refetched under the wrong identity.
+
+`<replay>` reads the upstream's own failure log and asks for what never arrived,
+once per delivery id. `requires=` names a value the log cannot be read without;
+empty means the job declines to start and logs which value would start it,
+rather than calling an authenticated endpoint on a timer forever.
+
+### `<notify>` — telling consumers, so they stop racing us
+
+A consumer who also receives the upstream's webhooks reads the mirror before it
+has ingested the delivery and gets the state that delivery was about to replace.
+`<notify>` lets them register an endpoint and sends an HMAC-signed notification
+AFTER the write lands. Registrations live in a separate database file, because
+the cache nuke is safe only for rows the upstream still has a copy of.
+
+### `<cors>`, `<health>`, and debouncing
+
+`<cors>` names the origins and the response headers a cross-origin script may
+read; the engine always adds its own `X-Mirror-*` headers to that list, since no
+author should have to know them. `<health>` registers the paths an orchestrator
+polls — load-bearing, because an unrouted path falls through to the proxy rather
+than 404ing, and a checker reading any non-404 as "implemented" calls a healthy
+container unhealthy forever. `<upstream debounce=>` shares one upstream call
+between identical concurrent passthrough reads, and never across credentials.
+
 ## What the engine owns
 
 Schema derivation and the fingerprint nuke, the freshness state machine and its
 error backoff, detached fetches and the shutdown drain, request coalescing,
-ordering, HMAC verification, grant and deny bookkeeping, and the observability
-that makes every upstream request visible.
+ordering, HMAC verification, grant and deny bookkeeping, the dashboard and its
+telemetry, the background jobs, and the observability that makes every upstream
+request visible.
 
 ## What the spec owns
 
