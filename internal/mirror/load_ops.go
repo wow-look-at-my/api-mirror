@@ -160,6 +160,20 @@ func buildReplay(n *node) (*Replay, error) {
 		*dst = d
 	}
 	for _, child := range n.Children() {
+		if err := checkAttrs(child); err != nil {
+			return nil, err
+		}
+		if child.Name() == "redeliver" {
+			// The redelivery path is template source over `.delivery`, so it is
+			// compiled rather than read as literal text. Everything else here
+			// names a field, which is a plain path.
+			compiled, err := compileContent(child)
+			if err != nil {
+				return nil, fmt.Errorf("<replay><redeliver>: %w", err)
+			}
+			rp.Redeliver = strings.TrimSpace(compiled)
+			continue
+		}
 		text, err := textOf(child)
 		if err != nil {
 			return nil, err
@@ -167,30 +181,10 @@ func buildReplay(n *node) (*Replay, error) {
 		text = strings.TrimSpace(text)
 		switch child.Name() {
 		case "list":
-			if err := checkAttrs(child); err != nil {
-				return nil, err
-			}
 			rp.List = text
-		case "redeliver":
-			if err := checkAttrs(child); err != nil {
-				return nil, err
-			}
-			// The redelivery path is template source over `.delivery`, so it
-			// keeps its placeholders rather than being read as literal text.
-			compiled, err := compileContent(child)
-			if err != nil {
-				return nil, fmt.Errorf("<replay><redeliver>: %w", err)
-			}
-			rp.Redeliver = strings.TrimSpace(compiled)
 		case "id":
-			if err := checkAttrs(child); err != nil {
-				return nil, err
-			}
 			rp.ID = text
 		case "at":
-			if err := checkAttrs(child); err != nil {
-				return nil, err
-			}
 			rp.At = text
 		default:
 			return nil, fmt.Errorf("<replay>: unexpected child element <%s>", child.Name())
