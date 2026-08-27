@@ -106,12 +106,26 @@ An event declares how one webhook payload becomes stored rows:
 
 - `<subject>` — what this delivery is a view OF (the ordering grain).
 - `<clock>` — the payload field stating WHEN that view is from.
+- `<key field="...">payload path</key>` — where THIS delivery carries a key column.
 - `<apply>` — `<set field="...">payload path</set>`, one per column.
 - `<invalidate reason="...">` — the escape hatch, and the `reason` is required.
 
 The engine sorts deliveries for one subject inside a short reorder window,
 refuses a view older than one already applied, and applies unconditionally —
 there is no "does anyone have this cached?" gate to write.
+
+`<key>` exists because a resource's `from=` names a path in the upstream
+DOCUMENT, and a delivery wraps that document in an envelope — the repository
+under `repository`, the action beside it — so the same path finds nothing at the
+payload root. A `<set>` that writes a key column answers this too, which is why
+most events need no `<key>` at all; `<invalidate>` events, which write nothing,
+always do. `validate` refuses an event that names neither, because at run time
+this is one failed delivery per delivery, forever, on a mirror that looks like
+it is working.
+
+A write needs the whole key. An invalidate may name a prefix of it and deletes
+every row beneath: a payload names a commit, not one page of a paginated answer,
+so a page-keyed document set can only be dropped wholesale.
 
 ### `<reveal>` — who may be told
 

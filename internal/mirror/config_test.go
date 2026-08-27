@@ -132,6 +132,10 @@ func eventSpec() *Spec {
 			Resource: "repo",
 			Subject:  "{{ .payload.repository.full_name }}",
 			Clock:    "repository.updated_at",
+			Keys: []Set{
+				{Field: "owner", From: "repository.owner.login"},
+				{Field: "name", From: "repository.name"},
+			},
 			Sets: []Set{
 				{Field: "visibility", From: "repository.visibility"},
 			},

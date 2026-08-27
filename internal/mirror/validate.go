@@ -417,6 +417,47 @@ func (e *Events) validate(resources map[string]*Resource) error {
 				return fmt.Errorf("event %q set %q: give it a payload path or an expr, not both and not neither", ev.Type, st.Field)
 			}
 		}
+		if err := validateEventKeys(ev, res); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateEventKeys refuses an event that cannot address the row it is about.
+//
+// A resource's from= names a path in the UPSTREAM document, and a delivery
+// wraps that document in an envelope, so the same path finds nothing at the
+// payload root. The event has to say where the delivery carries each key
+// column. Left to run time it is one error per delivery, forever, on a mirror
+// whose dashboard reports every one of them accepted.
+func validateEventKeys(ev *Event, res *Resource) error {
+	for _, k := range ev.Keys {
+		if !slices.ContainsFunc(res.Keys, func(rk Key) bool { return rk.Name == k.Field }) {
+			return fmt.Errorf("event %q: <key field=%q> is not a key of resource %q", ev.Type, k.Field, res.Name)
+		}
+		if (k.From == "") == (k.Expr == "") {
+			return fmt.Errorf("event %q key %q: give it a payload path or an expr, not both and not neither", ev.Type, k.Field)
+		}
+	}
+	named := func(name string) bool {
+		match := func(s Set) bool { return s.Field == name }
+		return slices.ContainsFunc(ev.Keys, match) || slices.ContainsFunc(ev.Sets, match)
+	}
+	if ev.Invalidate != nil {
+		// A partial key is legitimate here and deletes everything beneath it,
+		// but naming none of them would delete the resource.
+		if len(ev.Keys) == 0 {
+			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about",
+				ev.Type, res.Name)
+		}
+		return nil
+	}
+	for _, k := range res.Keys {
+		if !named(k.Name) {
+			return fmt.Errorf("event %q cannot address key %q of resource %q: add <key field=%q>path</key> naming where the delivery carries it",
+				ev.Type, k.Name, res.Name, k.Name)
+		}
 	}
 	return nil
 }

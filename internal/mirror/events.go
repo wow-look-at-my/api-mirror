@@ -76,7 +76,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 	for _, ev := range spec.Events.List {
 		i.byType[ev.Type] = ev
 	}
-	i.reorder = NewReorderer(i.window, i.applyAndNotify)
+	i.reorder = NewReorderer(i.window, i.applyAndRecord)
 	return i, nil
 }
 
@@ -152,7 +152,7 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 	if i.window > 0 {
 		// The provider waits for this answer and gives up in single-digit
 		i.reorder.Submit(d)
-		i.reply(w, http.StatusAccepted, "accepted")
+		i.reply(w, http.StatusAccepted, string(DeliveryHeld))
 		return
 	}
 	// With no window there is nothing to wait for, so the answer carries the
@@ -223,7 +223,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 	if !ok {
 		return DeliveryFailed, fmt.Errorf("event %q names unknown resource %q", ev.Type, ev.Resource)
 	}
-	key, err := ingestKey(res, d.Payload)
+	key, err := ingestKey(res, ev, d.Payload)
 	if err != nil {
 		return DeliveryFailed, fmt.Errorf("event %q: %w", ev.Type, err)
 	}
@@ -270,17 +270,25 @@ func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 // ingestKey resolves every key component of a resource from the delivery
 // payload.
 //
-// A missing component is an error. A partial key matches rows the delivery is
-// not about, so a write under one lands on the wrong row.
-func ingestKey(res *Resource, payload any) (map[string]string, error) {
+// A write needs the whole key: a partial one matches rows the delivery is not
+// about, so a write under it lands on the wrong row. An invalidate is the one
+// case where a partial key is the right answer -- a payload names a commit, not
+// one page of a paginated answer -- and there it deletes every row beneath it.
+func ingestKey(res *Resource, ev *Event, payload any) (map[string]string, error) {
 	key := make(map[string]string, len(res.Keys))
 	for _, k := range res.Keys {
-		if k.From == "" {
-			return nil, fmt.Errorf("resource %q: key %q declares no from, so no delivery can address it", res.Name, k.Name)
+		v, from, err := keyValue(ev, k, payload)
+		if err != nil {
+			return nil, fmt.Errorf("resource %q: key %q: %w", res.Name, k.Name, err)
 		}
-		v := lookupPath(payload, k.From)
+		if from == "" {
+			if ev.Invalidate != nil {
+				continue
+			}
+			return nil, fmt.Errorf("resource %q: this event says nowhere the delivery carries key %q", res.Name, k.Name)
+		}
 		if v == nil {
-			return nil, fmt.Errorf("resource %q: the payload carries no %s for key %q", res.Name, k.From, k.Name)
+			return nil, fmt.Errorf("resource %q: the payload carries no %s for key %q", res.Name, from, k.Name)
 		}
 		s := foldKey(k, fmt.Sprintf("%v", v))
 		if s == "" {
@@ -289,6 +297,31 @@ func ingestKey(res *Resource, payload any) (map[string]string, error) {
 		key[k.Name] = s
 	}
 	return key, nil
+}
+
+// keyValue reads one key component out of a delivery, from the event's own
+// <key> or from the <set> that writes that column. It also reports which of
+// them it read, so a failure names a path the spec contains.
+//
+// The resource's from= is deliberately not consulted; validateEventKeys says
+// why, and refuses an event that names neither.
+func keyValue(ev *Event, k Key, payload any) (any, string, error) {
+	for _, group := range [][]Set{ev.Keys, ev.Sets} {
+		for _, st := range group {
+			if st.Field != k.Name {
+				continue
+			}
+			v, err := setValue(st, FieldText, payload)
+			if err != nil {
+				return nil, "", err
+			}
+			if st.Expr != "" {
+				return v, "expr", nil
+			}
+			return v, st.From, nil
+		}
+	}
+	return nil, "", nil
 }
 
 // merge overlays the fields this event names onto the stored row.

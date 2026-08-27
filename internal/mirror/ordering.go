@@ -63,6 +63,8 @@ const (
 	DeliveryInvalidated DeliveryDisposition = "invalidated"
 	DeliveryIgnored     DeliveryDisposition = "ignored"
 	DeliveryFailed      DeliveryDisposition = "error"
+	// DeliveryHeld is not an outcome: the reorder window is still open.
+	DeliveryHeld DeliveryDisposition = "accepted"
 )
 
 // applyFunc applies one delivery to the store.

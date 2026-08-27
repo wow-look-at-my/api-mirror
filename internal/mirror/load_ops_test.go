@@ -174,6 +174,7 @@ func TestLoadNotifyAlongsideEvents(t *testing.T) {
 		<secret>shh</secret>
 		<event type="thing.changed" resource="thing" clock="updated_at">
 			<subject>thing:<value name="payload.id"/></subject>
+			<key field="id">id</key>
 			<apply><set field="title">title</set></apply>
 		</event>
 	</events>`)

@@ -289,7 +289,9 @@ type Event struct {
 	Unordered bool
 	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
 	AbsorbWhenSuperseded bool
-	Sets                 []Set
+	// Keys say where the DELIVERY carries each key column.
+	Keys []Set
+	Sets []Set
 	// Invalidate is the last resort: the payload does not carry the new value
 	Invalidate *Invalidate
 }

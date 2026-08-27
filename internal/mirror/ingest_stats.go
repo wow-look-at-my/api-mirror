@@ -23,7 +23,10 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	i.serve(probe, r)
 
 	disp := probe.disposition()
-	i.stats.record(r.Header.Get(i.events.TypeHeader), disp)
+	// A held delivery is counted by applyAndRecord, once it has an outcome.
+	if disp != DeliveryHeld {
+		i.stats.record(r.Header.Get(i.events.TypeHeader), disp)
+	}
 	i.tel.Observe(Exchange{
 		Lane:     LaneDelivery,
 		Method:   r.Method,
@@ -163,4 +166,16 @@ func (i *Ingest) applyAndNotify(ctx context.Context, d *Delivery) (DeliveryDispo
 		i.notifier.Fan(ctx, d, disp)
 	}
 	return disp, nil
+}
+
+// applyAndRecord is what the reorderer runs: the apply, plus the tally and the
+// log the response could not carry. A held delivery is answered before it is
+// applied, so its outcome reaches an operator only from here.
+func (i *Ingest) applyAndRecord(ctx context.Context, d *Delivery) (DeliveryDisposition, error) {
+	disp, err := i.applyAndNotify(ctx, d)
+	if err != nil {
+		logf("delivery %s (%s): %v", d.ID, d.Type, err)
+	}
+	i.stats.record(d.Type, disp)
+	return disp, err
 }

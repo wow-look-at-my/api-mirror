@@ -320,6 +320,7 @@ func notifyEngine(t *testing.T) *Engine {
 			List: []*Event{{
 				Type: "widget.changed", Resource: "widget",
 				Subject: "widget:{{ .payload.id }}", Clock: "updated_at",
+				Keys: []Set{{Field: "id", From: "id"}},
 				Sets: []Set{{Field: "title", From: "title"}},
 			}},
 		}

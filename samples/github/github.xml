@@ -663,6 +663,9 @@
 		-->
 		<event type="delete" resource="branch" clock="repository.pushed_at">
 			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref_type"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref">ref</key>
 			<invalidate reason="the ref is gone; there is no new value to write, only a row that must stop being served"/>
 		</event>
 
@@ -697,6 +700,9 @@
 		-->
 		<event type="check_run" resource="commit_check_runs" clock="check_run.completed_at">
 			<subject>checks:<value name="payload.repository.full_name"/>:<value name="payload.check_run.head_sha"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref">check_run.head_sha</key>
 			<invalidate reason="the payload carries this one run, and the stored answer is the whole set of runs for the commit"/>
 		</event>
 
@@ -706,6 +712,8 @@
 		-->
 		<event type="workflow_run" resource="workflow_runs" clock="workflow_run.updated_at">
 			<subject>runs:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
 			<invalidate reason="the stored answer is a page of the repository's runs, and this payload states one run"/>
 		</event>
 

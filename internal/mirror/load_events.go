@@ -90,6 +90,19 @@ func buildEvent(n *node) (*Event, error) {
 				return nil, err
 			}
 			ev.Sets = append(ev.Sets, sets...)
+		case "key":
+			if err := checkAttrs(child, "field", "expr"); err != nil {
+				return nil, err
+			}
+			k := Set{Field: child.Attr("field"), Expr: child.Attr("expr")}
+			if k.Expr == "" {
+				from, err := textOf(child)
+				if err != nil {
+					return nil, err
+				}
+				k.From = strings.TrimSpace(from)
+			}
+			ev.Keys = append(ev.Keys, k)
 		case "invalidate":
 			if err := checkAttrs(child, "reason"); err != nil {
 				return nil, err
