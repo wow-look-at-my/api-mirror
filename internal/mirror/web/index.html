@@ -5,6 +5,12 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>api-mirror</title>
 	<link rel="stylesheet" href="style.css">
+	<!--
+		An empty icon, because a browser asks for /favicon.ico at the SITE root,
+		which is not the dashboard's prefix. That request falls through to the
+		passthrough proxy and spends an upstream call on nothing.
+	-->
+	<link rel="icon" href="data:,">
 </head>
 <body>
 	<header>

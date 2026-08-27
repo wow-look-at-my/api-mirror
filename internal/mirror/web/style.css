@@ -202,7 +202,7 @@ section + section { margin-top: 26px; }
 }
 
 .pill.hit, .pill.applied, .pill.ok { color: var(--ok); border-color: var(--ok); }
-.pill.miss, .pill.superseded { color: var(--warn); border-color: var(--warn); }
+.pill.miss, .pill.superseded, .pill.off { color: var(--warn); border-color: var(--warn); }
 .pill.passthrough { color: var(--warn); border-color: var(--warn); }
 .pill.denied, .pill.error, .pill.refusal { color: var(--bad); border-color: var(--bad); }
 

@@ -99,6 +99,7 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	a.keepToken(w, r)
 	if r.URL.Path == a.prefix {
 		http.Redirect(w, r, a.prefix+"/", http.StatusMovedPermanently)
 		return
@@ -107,8 +108,34 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
 }
 
-// authorized checks the token in constant time. Three carriers: a human opens
-// a URL, the page fetches with a header, a script uses what it already has.
+// sessionCookie carries the token for the requests a BROWSER makes on the
+// page's behalf.
+const sessionCookie = "mirror_admin"
+
+// keepToken hands the browser back the token the caller just proved.
+//
+// A stylesheet and a module are fetched by the browser, not by the page, so
+// they carry no header and no query string: without this the shell loads, both
+// subresources are refused, and the operator gets an unstyled page that never
+// runs. Strict same-site keeps the cookie off a cross-site request, so it
+// cannot answer for a POST somebody else's page made.
+func (a *Admin) keepToken(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(sessionCookie); err == nil && c.Value == a.token {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    a.token,
+		Path:     a.prefix,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   r.TLS != nil,
+	})
+}
+
+// authorized checks the token in constant time. Four carriers: a human opens a
+// URL, the page fetches with a header, a script uses what it already has, and
+// the browser sends back the cookie for a subresource it fetches itself.
 func (a *Admin) authorized(r *http.Request) bool {
 	presented := r.URL.Query().Get("token")
 	if presented == "" {
@@ -116,6 +143,11 @@ func (a *Admin) authorized(r *http.Request) bool {
 	}
 	if presented == "" {
 		presented = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	}
+	if presented == "" {
+		if c, err := r.Cookie(sessionCookie); err == nil {
+			presented = c.Value
+		}
 	}
 	return subtle.ConstantTimeCompare([]byte(presented), []byte(a.token)) == 1
 }

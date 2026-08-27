@@ -54,7 +54,7 @@ func TestDashboardRefusesWithoutTheToken(t *testing.T) {
 		"on by default is not the same as open by default: this page carries every path and principal the mirror has seen")
 }
 
-func TestDashboardTakesTheTokenThreeWaysBecauseThreeCallersCarryIt(t *testing.T) {
+func TestDashboardTakesTheTokenEveryWayACallerCarriesIt(t *testing.T) {
 	e, _ := newTestEngine(t, http.NotFoundHandler())
 	token := e.admin.token
 
@@ -65,6 +65,9 @@ func TestDashboardTakesTheTokenThreeWaysBecauseThreeCallersCarryIt(t *testing.T)
 		{"a human opening a url", func(r *http.Request) { r.URL.RawQuery = "token=" + token }},
 		{"the page fetching its own json", func(r *http.Request) { r.Header.Set("X-Mirror-Token", token) }},
 		{"a script with a bearer", func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+token) }},
+		{"a browser sending back the cookie", func(r *http.Request) {
+			r.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
@@ -87,6 +90,42 @@ func TestDashboardServesItsOwnAssets(t *testing.T) {
 		assert.Contains(t, rec.Header().Get("Content-Type"), wantType)
 		assert.NotEmpty(t, rec.Body.Bytes())
 	}
+}
+
+// A browser fetches a stylesheet and a module ITSELF, with no header and no
+// query string, so the two assets were refused and the page loaded unstyled
+// and inert. Every existing asset test passed, because each wired the token
+// the way the PAGE does. This one is the sequence a browser performs.
+func TestABrowserCanLoadTheAssetsTheShellAsksFor(t *testing.T) {
+	e, _ := newTestEngine(t, http.NotFoundHandler())
+
+	shell := httptest.NewRecorder()
+	e.ServeHTTP(shell, httptest.NewRequest(http.MethodGet,
+		defaultDashboardPath+"/?token="+e.admin.token, nil))
+	require.Equal(t, http.StatusOK, shell.Code)
+
+	jar := shell.Result().Cookies()
+	require.NotEmpty(t, jar, "the shell handed the browser nothing to fetch its own files with")
+
+	for path, wantType := range map[string]string{
+		"/app.js":    "text/javascript",
+		"/style.css": "text/css",
+	} {
+		// No header, no query: exactly what <script src> and <link href> send.
+		r := httptest.NewRequest(http.MethodGet, defaultDashboardPath+path, nil)
+		for _, c := range jar {
+			r.AddCookie(c)
+		}
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, r)
+		require.Equalf(t, http.StatusOK, rec.Code, "%s: an unstyled, inert page is what a 401 here looks like", path)
+		assert.Contains(t, rec.Header().Get("Content-Type"), wantType)
+	}
+
+	// The cookie is the only thing that opened those; without it they stay shut.
+	bare := httptest.NewRecorder()
+	e.ServeHTTP(bare, httptest.NewRequest(http.MethodGet, defaultDashboardPath+"/app.js", nil))
+	assert.Equal(t, http.StatusUnauthorized, bare.Code)
 }
 
 func TestOverviewCountsWhatIsAnsweredAgainstWhatStillLeaves(t *testing.T) {

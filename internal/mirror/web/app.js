@@ -142,8 +142,16 @@ views.overview = async () => {
 		[
 			['Refresh', o.refresh.enabled ? pill('ok') : el('span', { class: 'muted' }, 'not declared'),
 				o.refresh.enabled ? `every ${o.refresh.interval}, ${fmt.int(o.refresh.cycles)} cycles, ${fmt.int(o.refresh.swept)} swept, ${fmt.int(o.refresh.errors)} errors` : '-'],
-			['Replay', o.replay.enabled ? pill('ok') : el('span', { class: 'muted' }, 'not declared'),
-				o.replay.enabled ? `every ${o.replay.interval}, ${fmt.int(o.replay.resent)} re-sent of ${fmt.int(o.replay.found)} listed` : '-'],
+			// A declared replayer that is not running has a reason, and `off`
+			// carries it. Reading that state as "not declared" is the mystery
+			// the field exists to prevent.
+			['Replay',
+				o.replay.enabled ? pill('ok')
+					: o.replay.off ? pill('off')
+						: el('span', { class: 'muted' }, 'not declared'),
+				o.replay.enabled ? `every ${o.replay.interval}, ${fmt.int(o.replay.resent)} re-sent of ${fmt.int(o.replay.found)} listed`
+					: o.replay.off ? `declared, but ${o.replay.off} is empty -- a lost delivery stays lost`
+						: '-'],
 			['Notify', o.notify.enabled ? pill('ok') : el('span', { class: 'muted' }, 'not declared'),
 				o.notify.enabled ? `${fmt.int(o.notify.subscriptions)} subscriptions, ${fmt.int(o.notify.sent)} sent, ${fmt.int(o.notify.failed)} failed` : '-'],
 		])));

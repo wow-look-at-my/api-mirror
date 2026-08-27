@@ -72,8 +72,9 @@ func referencedAssets() ([]string, error) {
 			if j < 0 {
 				break
 			}
+			// A URL and an inline data: URI are not files this ships.
 			name := rest[:j]
-			if !strings.Contains(name, "://") {
+			if !strings.Contains(name, "://") && !strings.HasPrefix(name, "data:") {
 				out = append(out, name)
 			}
 			rest = rest[j:]
