@@ -7,34 +7,17 @@ import (
 	"time"
 )
 
-// Checking the cache against upstream truth.
-//
-// Every other view here reports what THIS PROCESS has seen: what it fetched,
-// what was delivered to it, what it answered. None of that can show a fact the
-// mirror never learned was wrong -- a delivery that never arrived leaves a row
-// that is well-formed, recent-looking and stale, and no amount of watching the
-// traffic reveals it. The only thing that does is asking the upstream again and
-// comparing.
-
-// CheckVerdict is what one key's comparison came to. The vocabulary is closed:
-// a verdict with no name here is a row an operator cannot decide about.
+// CheckVerdict is what one key's comparison came to, from a closed vocabulary.
 type CheckVerdict string
 
 const (
-	// CheckAgrees means every stored column matched.
-	CheckAgrees CheckVerdict = "agrees"
-	// CheckDrifted means the stored row and the upstream disagree.
-	CheckDrifted CheckVerdict = "drifted"
-	// CheckRaced means the row changed while this key was being fetched, so a
-	// difference may be the write that landed rather than drift.
-	CheckRaced CheckVerdict = "raced"
-	// CheckGone means the upstream no longer has what the row describes.
-	CheckGone CheckVerdict = "gone"
-	// CheckUnreachable means the upstream could not be asked. Never drift: a
-	// 5xx says nothing at all about whether the stored answer is right.
+	CheckAgrees  CheckVerdict = "agrees"  // every stored column matched
+	CheckDrifted CheckVerdict = "drifted" // the two sides disagree
+	CheckRaced   CheckVerdict = "raced"   // a write landed mid-fetch, so it may not be drift
+	CheckGone    CheckVerdict = "gone"    // the upstream no longer has it
+	// CheckUnreachable is never drift: a 5xx says nothing about the stored row.
 	CheckUnreachable CheckVerdict = "unreachable"
-	// CheckUnsupported means this key cannot be checked, and says why. Named
-	// rather than skipped: a key quietly left out reads as a key that agreed.
+	// CheckUnsupported is named, never skipped: one left out reads as agreed.
 	CheckUnsupported CheckVerdict = "unsupported"
 )
 
@@ -46,6 +29,12 @@ type Difference struct {
 }
 
 // KeyCheck is one key's verdict, as the page and the NDJSON stream carry it.
+//
+// Every other view here reports what THIS PROCESS has seen: what it fetched,
+// what was delivered, what it answered. None of that shows a fact the mirror
+// never learned was wrong -- a delivery that never arrived leaves a row that is
+// well-formed, recent-looking and stale. Asking the upstream again is the only
+// thing that surfaces one.
 type KeyCheck struct {
 	Kind     string       `json:"kind"`
 	Key      string       `json:"key"`
@@ -55,8 +44,7 @@ type KeyCheck struct {
 	Repaired bool         `json:"repaired,omitempty"`
 }
 
-// checkKeyTimeout bounds one key's fetch, so one wedged upstream response
-// cannot hold a whole check open.
+// checkKeyTimeout stops one wedged response holding a whole check open.
 const checkKeyTimeout = 30 * time.Second
 
 // Check re-asks the upstream about every stored key of one kind and reports

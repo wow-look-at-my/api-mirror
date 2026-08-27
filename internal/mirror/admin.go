@@ -90,6 +90,8 @@ func (a *Admin) routes() {
 	a.mux.HandleFunc("POST "+p+"/api/subscriptions", a.createSubscription)
 	a.mux.HandleFunc("DELETE "+p+"/api/subscriptions/{id}", a.deleteSubscription)
 	a.mux.HandleFunc("POST "+p+"/api/refresh", a.runRefresh)
+	a.mux.HandleFunc("GET "+p+"/api/check", a.check)
+	a.mux.HandleFunc("POST "+p+"/api/check", a.check)
 }
 
 // ServeHTTP gates the surface and dispatches.
