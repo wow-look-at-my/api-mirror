@@ -65,6 +65,8 @@ const wholeSpec = `
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>
 		<event type="repository" resource="repo" clock="repository.updated_at">
 			<subject>repo:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="name">repository.name</key>
 			<apply>
 				<set field="visibility">repository.visibility</set>
 				<set field="stars" expr="{{ .payload.repository.stargazers_count }}"/>
@@ -73,6 +75,8 @@ const wholeSpec = `
 		</event>
 		<event type="repository_renamed" resource="repo" unordered="true" absorb-when-superseded="true">
 			<subject>repo:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="name">changes.repository.name.from</key>
 			<invalidate reason="a rename states the old name, never the new full name"/>
 		</event>
 	</events>
@@ -355,6 +359,14 @@ func TestParseSpec_Rejects(t *testing.T) {
 		name: "an unknown child of <upstream>",
 		src:  `<mirror name="m"><upstream base="u"><retry/></upstream></mirror>`,
 		want: "unexpected child element <retry>",
+	}, {
+		name: "a <drop> naming its pattern as text",
+		src:  `<mirror name="m"><resource name="r"><drop>url</drop></resource></mirror>`,
+		want: `write <drop key="url"/>`,
+	}, {
+		name: "a <drop> naming no pattern at all",
+		src:  `<mirror name="m"><resource name="r"><drop/></resource></mirror>`,
+		want: "<drop> needs a key= pattern",
 	}, {
 		name: "a resource ttl that is not a duration",
 		src:  `<mirror name="m"><resource name="r" ttl="soon"/></mirror>`,

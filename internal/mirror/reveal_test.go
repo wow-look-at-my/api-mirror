@@ -16,8 +16,14 @@ import (
 // over one stored column, and a probe for everything the predicate refuses.
 func revealSpec(base string) *Spec {
 	return &Spec{
-		Name:     "reveal",
-		Upstream: Upstream{Base: base, Forward: []string{"Authorization"}},
+		Name: "reveal",
+		// Declared because telling a rate-limit refusal from an access refusal
+		// decides whether a denial is cached.
+		Upstream: Upstream{
+			Base:    base,
+			Forward: []string{"Authorization"},
+			Rate:    RateHeaders{Limit: "X-RateLimit-Limit", Remaining: "X-RateLimit-Remaining", Reset: "X-RateLimit-Reset"},
+		},
 		Resources: []*Resource{{
 			Name:   "repo",
 			Store:  StoreColumns,

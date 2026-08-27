@@ -44,6 +44,10 @@ type Ingest struct {
 	now    func() time.Time
 	// lastPrune stamps the last watermark sweep, as a Unix second.
 	lastPrune atomic.Int64
+	// tel puts every delivery on the chart. Nil-safe, so a test can skip it.
+	tel      *Telemetry
+	notifier *Notifier
+	stats    deliveryStats
 }
 
 // NewIngest builds the ingest endpoint a spec declares. vars is the spec's
@@ -72,7 +76,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 	for _, ev := range spec.Events.List {
 		i.byType[ev.Type] = ev
 	}
-	i.reorder = NewReorderer(i.window, i.apply)
+	i.reorder = NewReorderer(i.window, i.applyAndRecord)
 	return i, nil
 }
 
@@ -92,7 +96,7 @@ func (i *Ingest) Drain(timeout time.Duration) bool { return i.reorder.Drain(time
 //
 // Every branch fails closed. A delivery whose authenticity the mirror cannot
 // establish is refused, never treated as harmless.
-func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -121,7 +125,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ev, ok := i.byType[typ]
 	if !ok {
 		// A type the spec does not model is a real answer, not a failure. A 4xx
-		i.answer(w, DispIgnored)
+		i.answer(w, DeliveryIgnored)
 		return
 	}
 	payload, err := decodeJSON(raw)
@@ -132,7 +136,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	subject, at, err := orderOf(ev, payload)
 	if err != nil {
 		logf("delivery %s: %v", typ, err)
-		i.answer(w, DispError)
+		i.answer(w, DeliveryFailed)
 		return
 	}
 	d := &Delivery{
@@ -148,13 +152,13 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if i.window > 0 {
 		// The provider waits for this answer and gives up in single-digit
 		i.reorder.Submit(d)
-		i.reply(w, http.StatusAccepted, "accepted")
+		i.reply(w, http.StatusAccepted, string(DeliveryHeld))
 		return
 	}
 	// With no window there is nothing to wait for, so the answer carries the
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), deliverTimeout)
 	defer cancel()
-	disp, err := i.apply(ctx, d)
+	disp, err := i.applyAndNotify(ctx, d)
 	if err != nil {
 		logf("delivery %s (%s): %v", d.ID, d.Type, err)
 	}
@@ -162,7 +166,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // answer reports a disposition to the provider.
-func (i *Ingest) answer(w http.ResponseWriter, d Disposition) {
+func (i *Ingest) answer(w http.ResponseWriter, d DeliveryDisposition) {
 	i.reply(w, deliveryStatus(d), string(d))
 }
 
@@ -176,11 +180,11 @@ func (i *Ingest) reply(w http.ResponseWriter, status int, body string) {
 // deliveryStatus maps a disposition to the status the provider records.
 //
 // Every non-error is 2xx, so a healthy hook stays enabled. The 200/202 split
-func deliveryStatus(d Disposition) int {
+func deliveryStatus(d DeliveryDisposition) int {
 	switch d {
-	case DispApplied:
+	case DeliveryApplied:
 		return http.StatusOK
-	case DispError:
+	case DeliveryFailed:
 		return http.StatusInternalServerError
 	default:
 		return http.StatusAccepted
@@ -213,38 +217,38 @@ func deliveryID(body []byte) string {
 
 // apply writes one delivery to the store. It is the whole ingest contract:
 // order first, then write only the fields the event names.
-func (i *Ingest) apply(ctx context.Context, d *Delivery) (Disposition, error) {
+func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, error) {
 	ev := d.Event
 	res, ok := i.store.Resource(ev.Resource)
 	if !ok {
-		return DispError, fmt.Errorf("event %q names unknown resource %q", ev.Type, ev.Resource)
+		return DeliveryFailed, fmt.Errorf("event %q names unknown resource %q", ev.Type, ev.Resource)
 	}
-	key, err := ingestKey(res, d.Payload)
+	key, err := ingestKey(res, ev, d.Payload)
 	if err != nil {
-		return DispError, fmt.Errorf("event %q: %w", ev.Type, err)
+		return DeliveryFailed, fmt.Errorf("event %q: %w", ev.Type, err)
 	}
 
 	superseded := i.order(ctx, d)
 	if superseded && !ev.AbsorbWhenSuperseded {
-		return DispSuperseded, nil
+		return DeliverySuperseded, nil
 	}
 
 	if ev.Invalidate != nil {
 		if _, err := i.store.Delete(ctx, res, key); err != nil {
-			return DispError, err
+			return DeliveryFailed, err
 		}
 		i.prune(ctx)
-		return DispInvalidated, nil
+		return DeliveryInvalidated, nil
 	}
 	if err := i.merge(ctx, res, ev, key, d.Payload); err != nil {
-		return DispError, err
+		return DeliveryFailed, err
 	}
 	i.prune(ctx)
 	if superseded {
 		// The fields still landed, because the event declares them immutable.
-		return DispSuperseded, nil
+		return DeliverySuperseded, nil
 	}
-	return DispApplied, nil
+	return DeliveryApplied, nil
 }
 
 // order asks the watermark whether this view postdates what is already applied,
@@ -266,17 +270,25 @@ func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 // ingestKey resolves every key component of a resource from the delivery
 // payload.
 //
-// A missing component is an error. A partial key matches rows the delivery is
-// not about, so a write under one lands on the wrong row.
-func ingestKey(res *Resource, payload any) (map[string]string, error) {
+// A write needs the whole key: a partial one matches rows the delivery is not
+// about, so a write under it lands on the wrong row. An invalidate is the one
+// case where a partial key is the right answer -- a payload names a commit, not
+// one page of a paginated answer -- and there it deletes every row beneath it.
+func ingestKey(res *Resource, ev *Event, payload any) (map[string]string, error) {
 	key := make(map[string]string, len(res.Keys))
 	for _, k := range res.Keys {
-		if k.From == "" {
-			return nil, fmt.Errorf("resource %q: key %q declares no from, so no delivery can address it", res.Name, k.Name)
+		v, from, err := keyValue(ev, k, payload)
+		if err != nil {
+			return nil, fmt.Errorf("resource %q: key %q: %w", res.Name, k.Name, err)
 		}
-		v := lookupPath(payload, k.From)
+		if from == "" {
+			if ev.Invalidate != nil {
+				continue
+			}
+			return nil, fmt.Errorf("resource %q: this event says nowhere the delivery carries key %q", res.Name, k.Name)
+		}
 		if v == nil {
-			return nil, fmt.Errorf("resource %q: the payload carries no %s for key %q", res.Name, k.From, k.Name)
+			return nil, fmt.Errorf("resource %q: the payload carries no %s for key %q", res.Name, from, k.Name)
 		}
 		s := foldKey(k, fmt.Sprintf("%v", v))
 		if s == "" {
@@ -285,6 +297,31 @@ func ingestKey(res *Resource, payload any) (map[string]string, error) {
 		key[k.Name] = s
 	}
 	return key, nil
+}
+
+// keyValue reads one key component out of a delivery, from the event's own
+// <key> or from the <set> that writes that column. It also reports which of
+// them it read, so a failure names a path the spec contains.
+//
+// The resource's from= is deliberately not consulted; validateEventKeys says
+// why, and refuses an event that names neither.
+func keyValue(ev *Event, k Key, payload any) (any, string, error) {
+	for _, group := range [][]Set{ev.Keys, ev.Sets} {
+		for _, st := range group {
+			if st.Field != k.Name {
+				continue
+			}
+			v, err := setValue(st, FieldText, payload)
+			if err != nil {
+				return nil, "", err
+			}
+			if st.Expr != "" {
+				return v, "expr", nil
+			}
+			return v, st.From, nil
+		}
+	}
+	return nil, "", nil
 }
 
 // merge overlays the fields this event names onto the stored row.

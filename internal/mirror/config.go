@@ -11,6 +11,98 @@ type Spec struct {
 	Routes    []*Route
 	Purges    []*Purge
 	Events    *Events
+	// Dashboard is the operator surface. Always present: a default fills in.
+	Dashboard Dashboard
+	// CORS is the browser policy. Nil answers no preflight and sets no headers.
+	CORS *CORS
+	// Notify declares who the mirror tells after a delivery lands.
+	Notify *Notify
+	// Refresh is the periodic background sweep over declared kinds.
+	Refresh *Refresh
+	// Replay asks the upstream to re-send deliveries that never arrived.
+	Replay *Replay
+	// Health declares the liveness and pre-update paths an orchestrator polls.
+	Health *Health
+}
+
+// Dashboard is the operator surface: the tabs, the admin JSON, and the token
+// that gates them.
+type Dashboard struct {
+	// Path is the one prefix everything admin hangs off, gateable in one rule.
+	Path string
+	// Token is template source for the secret. Empty mints one and logs the URL.
+	Token string
+	// Title is what the page calls this mirror.
+	Title string
+}
+
+// CORS is the browser-facing policy.
+type CORS struct {
+	// Origins is the allow-list; "*" is safe because reveal gates, not origin.
+	Origins []string
+	// Expose lets a script read X-Mirror-*; without it the browser hides them.
+	Expose []string
+	// MaxAge is how long a preflight answer may be reused.
+	MaxAge time.Duration
+}
+
+// Notify declares the mirror telling its own subscribers after a delivery is
+// applied, so a consumer stops racing the mirror's ingestion with its own copy
+// of the upstream's webhooks.
+type Notify struct {
+	// Path is the subscription CRUD prefix.
+	Path string
+	// DB is a SEPARATE file: the cache nuke must not delete a registration.
+	DB string
+	// SignatureHeader carries the HMAC digest of each notification body.
+	SignatureHeader string
+	// Timeout bounds one delivery attempt.
+	Timeout time.Duration
+	// Retries is how many times a failed delivery is retried.
+	Retries int
+	// DisableAfter is the consecutive-failure count that parks a subscription.
+	DisableAfter int
+}
+
+// Refresh is the periodic sweep that keeps declared kinds warm without a
+// consumer having to ask first.
+type Refresh struct {
+	Interval time.Duration
+	// Kinds names the resources swept. Empty means every routed resource.
+	Kinds []string
+}
+
+// Replay asks the upstream to re-send deliveries the mirror never received.
+//
+// A lost delivery is the quietest failure a mirror has: every cache the
+// delivery would have moved serves its last absorbed answer for the whole TTL,
+// and nothing reports a gap. A shorter TTL hides that window; it does not close
+// it.
+type Replay struct {
+	Interval time.Duration
+	// List is the upstream path returning failed deliveries.
+	List string
+	// Redeliver asks for one to be re-sent; template source over `.delivery`.
+	Redeliver string
+	// Method is how a redelivery is asked for.
+	Method string
+	// ID is the path into a listed delivery that names it.
+	ID string
+	// At is the path into a listed delivery stating when it was attempted.
+	At string
+	// Lookback bounds how far back a cycle will ask.
+	Lookback time.Duration
+	// Max bounds how many redeliveries one cycle asks for.
+	Max int
+	// Requires names a value without which every cycle can only fail.
+	Requires string
+}
+
+// Health declares the paths an orchestrator polls.
+type Health struct {
+	Live string
+	// PreUpdate holds while a detached fetch is in flight.
+	PreUpdate string
 }
 
 // Var is a named value available to every template in the spec as `.var.<name>`.
@@ -25,6 +117,12 @@ type Upstream struct {
 	Headers []Header
 	// Forward names the request headers copied from the caller to the upstream.
 	Forward []string
+	// Rate names the budget headers. Their spelling is the upstream's, not ours.
+	Rate RateHeaders
+	// Debounce holds an eligible passthrough READ so identical reads share one call.
+	Debounce time.Duration
+	// RetryAfter names the header saying a refusal is about waiting, not access.
+	RetryAfter string
 }
 
 // Header is one header sent upstream.
@@ -191,7 +289,9 @@ type Event struct {
 	Unordered bool
 	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
 	AbsorbWhenSuperseded bool
-	Sets                 []Set
+	// Keys say where the DELIVERY carries each key column.
+	Keys []Set
+	Sets []Set
 	// Invalidate is the last resort: the payload does not carry the new value
 	Invalidate *Invalidate
 }

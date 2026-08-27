@@ -46,7 +46,7 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if answer.Status == 304 {
 		return FetchResult{ETag: etag}, nil
 	}
-	if !storable(plan.route, answer) {
+	if !storable(e.up, plan.route, answer) {
 		// The route models the request but not this answer. Storing it anyway
 		// would be a guess written down as a fact.
 		return FetchResult{}, fmt.Errorf("upstream %s answered %d, which route %s does not absorb",
@@ -90,8 +90,8 @@ func (p *fetchPlan) upstreamPath() string {
 // storable reports whether an answer is one the route said to keep.
 //
 // A 2xx is always kept. A 4xx is kept only when the route names it, which is
-func storable(rt *Route, a *Answer) bool {
-	if Transient(a) {
+func storable(up *Upstreamer, rt *Route, a *Answer) bool {
+	if up.Transient(a) {
 		return false
 	}
 	if a.Status >= 200 && a.Status < 300 {

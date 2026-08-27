@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>api-mirror</title>
+	<!--
+		scratch_ui, the org's design language, unpinned from its master deploy.
+		The org convention is that consumers link these shared URLs rather than
+		vendoring a copy, so a change to the language reaches every consumer.
+
+		The stylesheet is loaded twice on purpose, and fetched once: the <link>
+		puts the TOKENS on :root, where they inherit into every shadow root, and
+		the module imports the same file again as a CSS module script to get the
+		component rules INSIDE those roots, which a linked sheet cannot reach.
+	-->
+	<link rel="stylesheet" href="https://sites.pazer.build/scratch_ui/branch/master/scratch-ui.css">
+	<link rel="stylesheet" href="style.css">
+	<script type="module" src="https://sites.pazer.build/scratch_ui/branch/master/scratch-ui.js"></script>
+	<!--
+		An empty icon, because a browser asks for /favicon.ico at the SITE root,
+		which is not the dashboard's prefix. That request falls through to the
+		passthrough proxy and spends an upstream call on nothing.
+	-->
+	<link rel="icon" href="data:,">
+</head>
+<body>
+	<header>
+		<h1 id="title">api-mirror</h1>
+		<span class="muted mono" id="upstream"></span>
+		<span class="grow"></span>
+		<span class="muted mono" id="clock"></span>
+		<scratch-button id="reload" type="button">Reload</scratch-button>
+	</header>
+
+	<nav id="tabbar"></nav>
+
+	<main id="view">
+		<p class="muted">Loading.</p>
+	</main>
+
+	<script type="module" src="app.js"></script>
+</body>
+</html>

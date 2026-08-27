@@ -16,8 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ingestSpec is the spec every ingest test opens against. Its keys carry a
-// `from`, because a delivery addresses a row through the payload alone.
+// ingestSpec is the spec every ingest test opens against.
 func ingestSpec() *Spec {
 	return &Spec{
 		Name:     "test",
@@ -48,6 +47,10 @@ func ingestSpec() *Spec {
 				Resource: "repo",
 				Subject:  "{{ .payload.repository.full_name }}",
 				Clock:    "repository.updated_at",
+				Keys: []Set{
+					{Field: "owner", From: "repository.owner.login"},
+					{Field: "name", From: "repository.name"},
+				},
 				Sets: []Set{
 					{Field: "visibility", From: "repository.visibility"},
 					{Field: "stars", From: "repository.stargazers_count"},
@@ -55,10 +58,14 @@ func ingestSpec() *Spec {
 					{Field: "topic", From: "repository.topic", AllowNull: true},
 				},
 			}, {
-				Type:       "repository_deleted",
-				Resource:   "repo",
-				Subject:    "{{ .payload.repository.full_name }}",
-				Clock:      "repository.updated_at",
+				Type:     "repository_deleted",
+				Resource: "repo",
+				Subject:  "{{ .payload.repository.full_name }}",
+				Clock:    "repository.updated_at",
+				Keys: []Set{
+					{Field: "owner", From: "repository.owner.login"},
+					{Field: "name", From: "repository.name"},
+				},
 				Invalidate: &Invalidate{Reason: "the payload states the repo is gone, not its new state"},
 			}},
 		},
@@ -177,7 +184,7 @@ func TestUnknownEventTypeIsIgnored(t *testing.T) {
 	w := deliver(t, in, "gollum", repoDelivery("acme", "widget", clockEarly, nil))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
-	assert.Equal(t, string(DispIgnored), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryIgnored), w.Header().Get(dispositionHeader))
 	assert.Nil(t, repoRow(t, store, "acme", "widget"))
 }
 
@@ -188,7 +195,7 @@ func TestValidDeliveryApplies(t *testing.T) {
 		map[string]any{"visibility": "public", "stargazers_count": 7}))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, string(DispApplied), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryApplied), w.Header().Get(dispositionHeader))
 
 	// The keys declare folding, so the row lands under the lower-cased spelling
 	row := repoRow(t, store, "acme", "widget")
@@ -206,7 +213,7 @@ func TestOlderClockIsSupersededAndDoesNotOverwrite(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
-	assert.Equal(t, string(DispSuperseded), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliverySuperseded), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "private", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
@@ -221,7 +228,7 @@ func TestEqualClockApplies(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, string(DispApplied), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryApplied), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
@@ -236,7 +243,7 @@ func TestSupersededDeliveryStillAbsorbsWhenDeclared(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	// The verdict is still superseded: this view is not the newest one.
-	assert.Equal(t, string(DispSuperseded), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliverySuperseded), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
@@ -278,7 +285,7 @@ func TestInvalidateDeletesTheRow(t *testing.T) {
 	w := deliver(t, in, "repository_deleted", repoDelivery("acme", "widget", clockLate, nil))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
-	assert.Equal(t, string(DispInvalidated), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryInvalidated), w.Header().Get(dispositionHeader))
 	assert.Nil(t, repoRow(t, store, "acme", "widget"))
 }
 
@@ -341,14 +348,50 @@ func TestWindowedDeliveryAnswersBeforeItApplies(t *testing.T) {
 	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
+// A resource's from= describes the upstream DOCUMENT, and a delivery wraps that
+// document in an envelope. The event's own <key> is what bridges the two.
+func TestAnEventAddressesItsRowThroughItsOwnKeys(t *testing.T) {
+	spec := ingestSpec()
+	spec.Resources[0].Keys = []Key{
+		{Name: "owner", From: "owner.login", Fold: true},
+		{Name: "name", From: "name", Fold: true},
+	}
+
+	in, store := newIngest(t, spec)
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
+		map[string]any{"visibility": "public"}))
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
+}
+
+// The response to a held delivery says only that it was taken, so counting that
+// answer would report every failure as fine.
+func TestAHeldDeliveryIsCountedByItsOutcome(t *testing.T) {
+	spec := ingestSpec()
+	spec.Events.ReorderWindow = 20 * time.Millisecond
+	in, _ := newIngest(t, spec)
+
+	// No repository.name, so the delivery cannot name the row it is about.
+	w := deliver(t, in, "repository", map[string]any{
+		"repository": map[string]any{"owner": map[string]any{"login": "acme"}, "updated_at": clockEarly},
+	})
+	require.Equal(t, string(DeliveryHeld), w.Header().Get(dispositionHeader))
+	require.True(t, in.Drain(2*time.Second))
+
+	stats := in.Stats()
+	assert.Equal(t, 1, stats.Dispositions[DeliveryFailed])
+	assert.Zero(t, stats.Dispositions[DeliveryHeld], "a delivery counted as taken is a failure nobody sees")
+}
+
 func TestReorderWindowAppliesOldestFirst(t *testing.T) {
 	var mu sync.Mutex
 	var order []int64
-	r := NewReorderer(50*time.Millisecond, func(_ context.Context, d *Delivery) (Disposition, error) {
+	r := NewReorderer(50*time.Millisecond, func(_ context.Context, d *Delivery) (DeliveryDisposition, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		order = append(order, d.At.Unix())
-		return DispApplied, nil
+		return DeliveryApplied, nil
 	})
 
 	// Both deliveries are about one subject and land inside the window, newest
@@ -359,108 +402,4 @@ func TestReorderWindowAppliesOldestFirst(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []int64{1000, 2000}, order)
-}
-
-// The checks below are about what an events declaration MEANS, so they sit
-// beside the ingest tests rather than in config_test.go: each one names a
-// delivery the engine could not handle honestly if the spec were accepted.
-
-func TestValidateRejectsEventsWithoutTheirHeaders(t *testing.T) {
-	cases := []struct {
-		name string
-		bend func(*Events)
-		want string
-	}{
-		{name: "no path", bend: func(e *Events) { e.Path = "" }, want: "<events> needs a path"},
-		{
-			name: "no signature header",
-			bend: func(e *Events) { e.SignatureHeader = "" },
-			want: "needs a signature header",
-		},
-		{name: "no type header", bend: func(e *Events) { e.TypeHeader = "" }, want: "needs a type header"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := eventSpec()
-			tc.bend(s.Events)
-			err := s.validate()
-			require.Error(t, err, "ingest with %s cannot verify or classify a delivery", tc.name)
-			assert.Contains(t, err.Error(), tc.want)
-		})
-	}
-}
-
-func TestValidateRejectsEventMistakes(t *testing.T) {
-	cases := []struct {
-		name string
-		bend func(*Event)
-		want string
-	}{
-		{name: "no type", bend: func(e *Event) { e.Type = "" }, want: "<event> needs a type"},
-		{
-			name: "an undeclared resource",
-			bend: func(e *Event) { e.Resource = "nope" },
-			want: "which is not declared",
-		},
-		{
-			name: "both a clock and unordered",
-			bend: func(e *Event) { e.Unordered = true },
-			want: "both a clock and unordered",
-		},
-		{
-			name: "neither a set nor an invalidate",
-			bend: func(e *Event) { e.Sets = nil },
-			want: "does nothing",
-		},
-		{
-			name: "a set and an invalidate together",
-			bend: func(e *Event) { e.Invalidate = &Invalidate{Reason: "r"} },
-			want: "the write already replaced the row",
-		},
-		{
-			name: "a set with neither a path nor an expr",
-			bend: func(e *Event) { e.Sets = []Set{{Field: "visibility"}} },
-			want: "not both and not neither",
-		},
-		{
-			name: "a set with both a path and an expr",
-			bend: func(e *Event) { e.Sets = []Set{{Field: "visibility", From: "a", Expr: "{{ .a }}"}} },
-			want: "not both and not neither",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := eventSpec()
-			tc.bend(s.Events.List[0])
-			err := s.validate()
-			require.Error(t, err, "an event with %s writes something nobody can predict", tc.name)
-			assert.Contains(t, err.Error(), tc.want)
-		})
-	}
-}
-
-func TestValidateRejectsAnEventDeclaredTwice(t *testing.T) {
-	s := eventSpec()
-	s.Events.List = append(s.Events.List, s.Events.List[0])
-	err := s.validate()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "declared twice",
-		"two handlers for one type means only one of them ever runs, silently")
-}
-
-func TestValidateAcceptsAnEventSettingAKeyComponent(t *testing.T) {
-	s := eventSpec()
-	s.Events.List[0].Sets = []Set{{Field: "owner", From: "repository.owner.login"}}
-	require.NoError(t, s.validate(), "a key component is a declared column and an event may write it")
-}
-
-func TestValidateRejectsAnEventWritingFieldsIntoADocumentResource(t *testing.T) {
-	s := eventSpec()
-	s.Resources[0].Store = StoreDocument
-	s.Resources[0].Fields = nil
-	s.Events.List[0].Sets = []Set{{Field: "owner", From: "repository.owner.login"}}
-	err := s.validate()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "which stores a document",
-		"a document resource has no columns, so a set would write into nothing")
 }

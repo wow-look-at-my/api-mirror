@@ -54,6 +54,63 @@ func (s *Spec) validate() error {
 			return err
 		}
 	}
+	return s.validateOps(byName)
+}
+
+// validateOps checks the operational half.
+//
+// Each rule here is one an operator would otherwise discover from behaviour: a
+// window that adds latency to everything, a sweep that names a kind no route
+// serves, a replayer that lists failures and cannot ask for any of them back.
+func (s *Spec) validateOps(byName map[string]*Resource) error {
+	if s.Upstream.Debounce > maxDebounceWindow {
+		// A fat-fingered "5m" must fail here, not wedge the API for an hour.
+		return fmt.Errorf("<upstream> debounce %s is longer than the %s cap: every uncacheable read waits it out",
+			s.Upstream.Debounce, maxDebounceWindow)
+	}
+	if s.Dashboard.Path == "" {
+		// Here, not at load: a Spec built in code is one read off disk.
+		s.Dashboard.Path = defaultDashboardPath
+	}
+	if !strings.HasPrefix(s.Dashboard.Path, "/") {
+		return fmt.Errorf("<dashboard> path %q must start with /", s.Dashboard.Path)
+	}
+	if s.Refresh != nil {
+		if s.Refresh.Interval <= 0 {
+			return fmt.Errorf("<refresh> needs a positive interval")
+		}
+		kinds := make([]string, 0, len(s.Routes))
+		for _, rt := range s.Routes {
+			kinds = append(kinds, routeKind(rt))
+		}
+		for _, k := range s.Refresh.Kinds {
+			if !slices.Contains(kinds, k) {
+				return fmt.Errorf("<refresh><kind>%s</kind> names nothing any route serves", k)
+			}
+		}
+	}
+	if s.Replay != nil {
+		if s.Replay.List == "" || s.Replay.Redeliver == "" {
+			return fmt.Errorf("<replay> needs both <list> and <redeliver>: listing failures it cannot ask back is not recovery")
+		}
+		if s.Replay.ID == "" {
+			return fmt.Errorf("<replay> needs <id>: without it a delivery cannot be named, so every cycle would ask for all of them again")
+		}
+		if s.Replay.Interval <= 0 {
+			return fmt.Errorf("<replay> needs a positive interval")
+		}
+	}
+	if s.Notify != nil {
+		if s.Events == nil {
+			return fmt.Errorf("<notify> has nothing to announce: this spec declares no <events>")
+		}
+	}
+	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
+		return fmt.Errorf("<health> names no path, so it registers nothing and every check falls through to the upstream")
+	}
+	if s.CORS != nil && len(s.CORS.Origins) == 0 {
+		return fmt.Errorf("<cors> names no <origin>, so it would allow nothing while looking like a policy")
+	}
 	return nil
 }
 
@@ -359,6 +416,47 @@ func (e *Events) validate(resources map[string]*Resource) error {
 			if (st.From == "") == (st.Expr == "") {
 				return fmt.Errorf("event %q set %q: give it a payload path or an expr, not both and not neither", ev.Type, st.Field)
 			}
+		}
+		if err := validateEventKeys(ev, res); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateEventKeys refuses an event that cannot address the row it is about.
+//
+// A resource's from= names a path in the UPSTREAM document, and a delivery
+// wraps that document in an envelope, so the same path finds nothing at the
+// payload root. The event has to say where the delivery carries each key
+// column. Left to run time it is one error per delivery, forever, on a mirror
+// whose dashboard reports every one of them accepted.
+func validateEventKeys(ev *Event, res *Resource) error {
+	for _, k := range ev.Keys {
+		if !slices.ContainsFunc(res.Keys, func(rk Key) bool { return rk.Name == k.Field }) {
+			return fmt.Errorf("event %q: <key field=%q> is not a key of resource %q", ev.Type, k.Field, res.Name)
+		}
+		if (k.From == "") == (k.Expr == "") {
+			return fmt.Errorf("event %q key %q: give it a payload path or an expr, not both and not neither", ev.Type, k.Field)
+		}
+	}
+	named := func(name string) bool {
+		match := func(s Set) bool { return s.Field == name }
+		return slices.ContainsFunc(ev.Keys, match) || slices.ContainsFunc(ev.Sets, match)
+	}
+	if ev.Invalidate != nil {
+		// A partial key is legitimate here and deletes everything beneath it,
+		// but naming none of them would delete the resource.
+		if len(ev.Keys) == 0 {
+			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about",
+				ev.Type, res.Name)
+		}
+		return nil
+	}
+	for _, k := range res.Keys {
+		if !named(k.Name) {
+			return fmt.Errorf("event %q cannot address key %q of resource %q: add <key field=%q>path</key> naming where the delivery carries it",
+				ev.Type, k.Name, res.Name, k.Name)
 		}
 	}
 	return nil

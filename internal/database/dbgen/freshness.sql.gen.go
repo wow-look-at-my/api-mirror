@@ -10,6 +10,48 @@ import (
 	"database/sql"
 )
 
+const countFreshnessByKind = `-- name: CountFreshnessByKind :many
+SELECT kind, COUNT(*) AS rows_held,
+  SUM(CASE WHEN state = 'error' THEN 1 ELSE 0 END) AS errored,
+  MAX(COALESCE(fetched_at, 0)) AS newest
+FROM mirror_freshness GROUP BY kind ORDER BY kind
+`
+
+type CountFreshnessByKindRow struct {
+	Kind     string
+	RowsHeld int64
+	Errored  sql.NullFloat64
+	Newest   interface{}
+}
+
+func (q *Queries) CountFreshnessByKind(ctx context.Context) ([]CountFreshnessByKindRow, error) {
+	rows, err := q.db.QueryContext(ctx, countFreshnessByKind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountFreshnessByKindRow
+	for rows.Next() {
+		var i CountFreshnessByKindRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.RowsHeld,
+			&i.Errored,
+			&i.Newest,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteFreshness = `-- name: DeleteFreshness :execrows
 DELETE FROM mirror_freshness WHERE kind = ? AND key = ?
 `
@@ -52,6 +94,102 @@ func (q *Queries) GetFreshness(ctx context.Context, arg GetFreshnessParams) (Mir
 		&i.Status,
 	)
 	return i, err
+}
+
+const listFreshnessByKind = `-- name: ListFreshnessByKind :many
+SELECT kind, "key", fetched_at, changed_at, etag, expires_at, state, error, retry_after, status FROM mirror_freshness WHERE kind = ? ORDER BY key LIMIT ?
+`
+
+type ListFreshnessByKindParams struct {
+	Kind  string
+	Limit int64
+}
+
+// The dashboard reports what one kind holds. Keys are what an operator reads,
+// so the listing is by key and not a bare count.
+func (q *Queries) ListFreshnessByKind(ctx context.Context, arg ListFreshnessByKindParams) ([]MirrorFreshness, error) {
+	rows, err := q.db.QueryContext(ctx, listFreshnessByKind, arg.Kind, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MirrorFreshness
+	for rows.Next() {
+		var i MirrorFreshness
+		if err := rows.Scan(
+			&i.Kind,
+			&i.Key,
+			&i.FetchedAt,
+			&i.ChangedAt,
+			&i.Etag,
+			&i.ExpiresAt,
+			&i.State,
+			&i.Error,
+			&i.RetryAfter,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStaleKeys = `-- name: ListStaleKeys :many
+SELECT key, etag, state, expires_at FROM mirror_freshness
+WHERE kind = ? AND (expires_at IS NULL OR expires_at <= ?)
+ORDER BY expires_at LIMIT ?
+`
+
+type ListStaleKeysParams struct {
+	Kind      string
+	ExpiresAt sql.NullInt64
+	Limit     int64
+}
+
+type ListStaleKeysRow struct {
+	Key       string
+	Etag      string
+	State     string
+	ExpiresAt sql.NullInt64
+}
+
+// The sweep asks for the keys of one kind that have aged out, oldest first.
+// A row still inside its error backoff is included: the sweep is a deliberate
+// refresh, and a deliberate refresh is exactly what the backoff does not hold
+// off, having no consumer waiting on it.
+func (q *Queries) ListStaleKeys(ctx context.Context, arg ListStaleKeysParams) ([]ListStaleKeysRow, error) {
+	rows, err := q.db.QueryContext(ctx, listStaleKeys, arg.Kind, arg.ExpiresAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStaleKeysRow
+	for rows.Next() {
+		var i ListStaleKeysRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.Etag,
+			&i.State,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markError = `-- name: MarkError :exec

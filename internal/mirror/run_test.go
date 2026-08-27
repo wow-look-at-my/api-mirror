@@ -84,6 +84,7 @@ const runnableSpec = `
 		<secret>a-test-secret</secret>
 		<event type="thing" resource="thing" clock="thing.updated_at">
 			<subject>thing:<value name="payload.thing.id"/></subject>
+			<key field="id">thing.id</key>
 			<apply>
 				<set field="title">thing.title</set>
 			</apply>

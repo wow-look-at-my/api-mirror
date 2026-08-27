@@ -13,15 +13,22 @@ import (
 // Engine serves a spec: it answers declared routes from the store, forwards
 // everything else, and keeps the store current.
 type Engine struct {
-	spec    *Spec
-	store   *Store
-	up      *Upstreamer
-	fresh   *Fresh
-	reveal  *Revealer
-	ingest  *Ingest
-	proxy   *httputil.ReverseProxy
-	vars    map[string]any
-	baseURL *url.URL
+	spec     *Spec
+	store    *Store
+	up       *Upstreamer
+	fresh    *Fresh
+	reveal   *Revealer
+	ingest   *Ingest
+	proxy    *httputil.ReverseProxy
+	vars     map[string]any
+	baseURL  *url.URL
+	tel      *Telemetry
+	admin    *Admin
+	refresh  *Refresher
+	notify   *Notifier
+	replay   *Replayer
+	debounce *Debouncer
+	vocab    []string
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.
@@ -40,12 +47,19 @@ func forwardFrom(ctx context.Context) http.Header {
 }
 
 // NewEngine wires a spec into a server.
-func NewEngine(spec *Spec, store *Store, observe func(Exchange)) (*Engine, error) {
+//
+// Telemetry is built here rather than passed in when the caller has none: an
+// operator who has to discover and enable the only view of what the mirror is
+// doing has, in practice, no view of what the mirror is doing.
+func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	vars, err := resolveVars(spec)
 	if err != nil {
 		return nil, err
 	}
-	up, err := NewUpstreamer(spec, vars, observe)
+	if tel == nil {
+		tel = NewTelemetry(spec.Upstream.Rate)
+	}
+	up, err := NewUpstreamer(spec, vars, tel)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +74,7 @@ func NewEngine(spec *Spec, store *Store, observe func(Exchange)) (*Engine, error
 		reveal:  NewRevealer(store, up, vars),
 		vars:    vars,
 		baseURL: base,
+		tel:     tel,
 	}
 	e.fresh = NewFresh(store, e.fetch, e.ttlFor)
 	e.proxy = &httputil.ReverseProxy{
@@ -68,9 +83,25 @@ func NewEngine(spec *Spec, store *Store, observe func(Exchange)) (*Engine, error
 			// The upstream does not need the client's address, and adding it
 		},
 		ModifyResponse: stripUpstreamCORS,
+		// The path an instrumented call site would have missed entirely.
+		Transport: observing(http.DefaultTransport, LanePassthrough, tel),
 	}
+	e.vocab = pathVocabulary(spec)
+	e.debounce = NewDebouncer(spec.Upstream.Debounce)
+	e.admin = NewAdmin(e)
+	if spec.Notify != nil {
+		e.notify, err = NewNotifier(spec, vars, tel, store.path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	e.refresh = NewRefresher(e)
+	e.replay = NewReplayer(e)
 	return e, nil
 }
+
+// Telemetry exposes what the mirror knows about its own traffic.
+func (e *Engine) Telemetry() *Telemetry { return e.tel }
 
 // resolveVars renders the spec's vars once, in declaration order, each seeing
 // the ones before it.
@@ -123,12 +154,34 @@ func routeKind(rt *Route) string {
 }
 
 func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rec := newRecorder(w, r)
+	defer func() { e.tel.Requests.Record(rec.entry()) }()
+	e.dispatch(rec, r)
+}
+
+// dispatch picks who answers one request. Every branch ends by telling the
+// recorder what it did, because a disposition the log cannot name is traffic
+// nobody can account for.
+func (e *Engine) dispatch(rec *recorder, r *http.Request) {
+	if e.spec.CORS != nil && e.answerPreflight(rec, r) {
+		return
+	}
+	if e.health(rec, r) {
+		return
+	}
+	if e.admin != nil && e.admin.Handles(r.URL.Path) {
+		rec.note(DispAdmin, e.spec.Dashboard.Path, "", "")
+		e.admin.ServeHTTP(rec, r)
+		return
+	}
 	if e.ingest != nil && e.spec.Events != nil && r.URL.Path == e.spec.Events.Path {
-		e.ingest.ServeHTTP(w, r)
+		rec.note(DispDelivery, e.spec.Events.Path, "", "")
+		e.ingest.ServeHTTP(rec, r)
 		return
 	}
 	if p, params, ok := e.matchPurge(r); ok {
-		e.forwardAndPurge(w, r, p, params)
+		rec.note(DispMiss, p.Path, p.Resource, "purge")
+		e.forwardAndPurge(rec, r, p, params)
 		return
 	}
 	m, reason, err := e.resolve(r)
@@ -136,10 +189,12 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			logf("passthrough %s %s (%s): %v", r.Method, r.URL.Path, reason, err)
 		}
-		e.passthrough(w, r, reason)
+		e.passthrough(rec, r, reason)
 		return
 	}
-	e.serve(w, r, m)
+	rec.shape = m.route.Path
+	rec.resource = m.route.Resource
+	e.serve(rec, r, m)
 }
 
 // matchPurge finds the declared write, if any, this request names.
@@ -160,7 +215,7 @@ func (e *Engine) matchPurge(r *http.Request) (*Purge, map[string]string, bool) {
 // forwardAndPurge forwards a write verbatim, then drops the row it changed
 // once the upstream confirms the write actually happened. A write is never
 // cached itself; this only clears what it made stale.
-func (e *Engine) forwardAndPurge(w http.ResponseWriter, r *http.Request, p *Purge, params map[string]string) {
+func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, p *Purge, params map[string]string) {
 	res, ok := e.store.Resource(p.Resource)
 	if !ok {
 		e.passthrough(w, r, PassUnrouted)
@@ -183,14 +238,11 @@ func (e *Engine) forwardAndPurge(w http.ResponseWriter, r *http.Request, p *Purg
 	}
 
 	w.Header().Set("X-Mirror-Cache", "purge")
-	rec := &statusRecorder{ResponseWriter: w}
-	e.proxy.ServeHTTP(rec, r)
+	e.proxy.ServeHTTP(w, r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, "purge")))
 
-	status := rec.status
-	if status == 0 {
-		status = http.StatusOK
-	}
-	if status < 200 || status >= 300 {
+	// The recorder already holds what the caller actually received, so the
+	// purge decides on that rather than on what the write was expected to do.
+	if w.status < 200 || w.status >= 300 {
 		return
 	}
 	if _, err := e.store.Delete(r.Context(), res, key); err != nil {
@@ -198,19 +250,8 @@ func (e *Engine) forwardAndPurge(w http.ResponseWriter, r *http.Request, p *Purg
 	}
 }
 
-// statusRecorder captures the status a proxied write actually answered with.
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (r *statusRecorder) WriteHeader(status int) {
-	r.status = status
-	r.ResponseWriter.WriteHeader(status)
-}
-
 // serve answers one declared route.
-func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
+func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	ctx := withForward(r.Context(), r.Header)
 	res, ok := e.store.Resource(m.route.Resource)
 	if !ok {
@@ -219,13 +260,17 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 	}
 
 	principal := principalOf(r)
+	w.principal = principal
+	ctx = withLane(ctx, LaneFetch, principal, m.route.Resource)
 	verdict, err := e.reveal.Allow(ctx, principal, res, m.key, r.Header)
 	if err != nil {
 		// A transient failure proving access is not a refusal. Refusing would
+		w.note(DispError, m.route.Path, m.route.Resource, "reveal")
 		http.Error(w, "cannot establish access: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	if !verdict.Allowed {
+		w.note(DispDenied, m.route.Path, m.route.Resource, string(verdict.Reason))
 		http.Error(w, http.StatusText(verdict.Status), verdict.Status)
 		return
 	}
@@ -241,9 +286,11 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 	})
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	if err != nil {
+		w.note(DispError, "", "", "upstream")
 		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	w.note(dispositionOf(outcome), "", "", "")
 	refusal := e.rememberedRefusal(ctx, kind, key)
 	if outcome == OutcomeMiss && refusal == 0 {
 		// The fetch went out with this caller's own credential and the upstream
@@ -251,6 +298,7 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 	}
 	if status := refusal; status != 0 {
 		// The upstream stated this refusal and the route declared it worth
+		w.note(DispRefusal, "", "", "absorbed")
 		w.Header().Set("X-Mirror-Cache", string(outcome))
 		http.Error(w, http.StatusText(status), status)
 		return
@@ -258,15 +306,29 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, m *match) {
 
 	doc, err := e.read(ctx, m, res)
 	if err != nil {
+		w.note(DispError, "", "", "read-cache")
 		http.Error(w, "read cache: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if doc == nil {
 		// Nothing stored and nothing fetched: the upstream says this does not
+		w.note(DispRefusal, "", "", "empty")
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 	e.write(w, http.StatusOK, doc, outcome)
+}
+
+// dispositionOf maps a freshness outcome onto the log's vocabulary.
+func dispositionOf(o Outcome) Disposition {
+	switch o {
+	case OutcomeHit:
+		return DispHit
+	case OutcomeMiss:
+		return DispMiss
+	default:
+		return DispError
+	}
 }
 
 // rememberedRefusal reports the stored non-success status for a key, or zero.
@@ -344,10 +406,30 @@ func (e *Engine) write(w http.ResponseWriter, status int, doc any, outcome Outco
 //
 // The reason is the point. A passthrough is unfinished work, not a settled
 // state, and an operator needs to know which routes are still leaving.
-func (e *Engine) passthrough(w http.ResponseWriter, r *http.Request, reason PassReason) {
+func (e *Engine) passthrough(w *recorder, r *http.Request, reason PassReason) {
+	w.note(DispPassthrough, e.shapeOf(r), "", string(reason))
 	w.Header().Set("X-Mirror-Cache", "passthrough")
 	w.Header().Set("X-Mirror-Passthrough-Reason", string(reason))
-	e.proxy.ServeHTTP(w, r)
+
+	r = r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, string(reason)))
+	if e.debounce == nil {
+		e.proxy.ServeHTTP(w, r)
+		return
+	}
+	// A read already in flight is one the upstream is already answering.
+	e.debounce.Share(w, r, e.proxy.ServeHTTP)
+}
+
+// shapeOf reduces a passthrough path to something an operator can act on. A
+// raw path per caller makes the uncached table a list of one-offs; a shape
+// says "this family is still leaving", which names what to model next.
+func (e *Engine) shapeOf(r *http.Request) string {
+	for _, rt := range e.spec.Routes {
+		if _, ok := matchPath(rt.Path, r.URL.EscapedPath()); ok {
+			return rt.Path
+		}
+	}
+	return generalizeWith(e.vocab, r.URL.EscapedPath())
 }
 
 // stripUpstreamCORS removes the upstream's CORS headers from a forwarded

@@ -16,6 +16,7 @@ import (
 // per declared resource.
 type Store struct {
 	db   *sql.DB
+	path string
 	q    *dbgen.Queries
 	spec *Spec
 	// byName resolves a resource once, so no hot path does a linear scan.
@@ -62,7 +63,7 @@ func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
 		}
 	}
 
-	s := &Store{db: db, q: dbgen.New(db), spec: spec, byName: make(map[string]*Resource, len(spec.Resources))}
+	s := &Store{db: db, path: path, q: dbgen.New(db), spec: spec, byName: make(map[string]*Resource, len(spec.Resources))}
 	for _, r := range spec.Resources {
 		s.byName[r.Name] = r
 	}
@@ -132,6 +133,9 @@ func applySchema(ctx context.Context, db *sql.DB, spec *Spec, fingerprint string
 
 // Close releases the database.
 func (s *Store) Close() error { return s.db.Close() }
+
+// Ping asks whether the store answers, not merely whether the process runs.
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 // Resource resolves a declared resource by name.
 func (s *Store) Resource(name string) (*Resource, bool) {

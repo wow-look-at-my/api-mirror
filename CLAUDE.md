@@ -23,6 +23,15 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe.
 - `ordering.go` / `events.go` — webhook ingest: subject and clock, the reorder window, the watermark, the apply.
 - `upstream.go` — the one outbound client, reporting every request.
+- `load_ops.go` / the ops half of `validate.go` — `<dashboard>`, `<cors>`, `<notify>`, `<refresh>`, `<replay>`, `<health>`, `<ratelimit>`.
+- `observe.go` — `Lane`, `Exchange`, `Observer`, and the transport every outbound client is built through.
+- `telemetry.go` / `timeline.go` / `requestlog.go` / `ratemeter.go` — the four in-memory stores behind the page. Bounded, lazily swept, reset on restart.
+- `recorder.go` — the inbound wrapper that records what the caller actually received.
+- `shapes.go` — a path to a route shape, and the `<route>` sketch that would stop it leaking.
+- `admin.go` / `admin_api.go` / `admin_subs.go` / `admin_check.go` / `web.go` + `web/` — the operator surface and its embedded page. The page loads scratch_ui from the org's master deploy, dark only.
+- `check.go` — the consistency check: re-ask the upstream about every stored key of one kind, and optionally write back what drifted.
+- `refresh.go` / `replay.go` / `notify.go` / `subscriptions.go` / `debounce.go` — the background half.
+- `mirror.schema.xsd` — the reference grammar. Not enforced at load; a test walks the shipped specs against it.
 - `mirror.example.xml` — a runnable small spec. `samples/github/github.xml` — the full worked example. Both at the top of the tree, reached from a test through `repoRoot`.
 
 ## Invariants
@@ -31,6 +40,8 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - **Apply the payload. Invalidation is the last resort.** A delivery carries the new value; the engine writes it. `<invalidate>` needs a stated reason, and `validate.go` rejects one without.
 - **A write touches only the fields its event names.** A payload that does not carry a field cannot blank it. `null="allow"` is the explicit opt-in where absent and empty differ.
 - **Order before you write.** Every event declares a subject and a clock, or declares itself unordered out loud. A watermark refuses a view older than one applied; equal times apply.
+- **An event says where the DELIVERY carries its key.** A resource's `from=` names a path in the upstream document, and a delivery wraps that document in an envelope, so the two are not the same path. `<key field=>` states it, a `<set>` that writes a key column counts, and `validate` refuses an event that names neither. A write needs the whole key; an invalidate may name a prefix and deletes everything beneath it, because a payload names a commit rather than one page of a paginated answer.
+- **A held delivery is counted by its outcome.** With a reorder window the response goes out before the apply, so the tally comes from the applier, never from that answer. Counting the answer reports every failure as accepted.
 - **A list only deletes when it says it is complete.** `complete="true"` replace-syncs the set under the parent key; without it an item that vanished upstream keeps being served, because one page of a paginated list is not the set.
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.
@@ -38,6 +49,11 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
 - **The fingerprint is derived, never declared.** It hashes the schema the spec produces, so a resource change always nukes and nothing has to be kept in step by hand.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
+- **Every request this service sends is on the chart.** The reporting is in the TRANSPORT (`observedClient`), never at a call site: a call site only covers what somebody remembered to instrument, and the passthrough proxy is exactly what gets forgotten. A new outbound client is built through `observedClient` or it is a hole.
+- **The operator surface exists whether or not a spec declares one.** A spec chooses where it lives and what gates it. With no `<token>` the engine mints one per process and logs the URL carrying it: on by default, never open by default.
+- **A background job with a missing precondition does not run.** `<replay requires=>` names a value the failure log cannot be read without; empty means the job declines to start and logs which value would start it. A cycle that can only fail, forever, on a timer is a job that looks busy and recovers nothing.
+- **Telemetry is memory-only and bounded.** A live view, not an audit log: a table would put sub-day-ephemeral rows behind a cache-nuking schema. Every store sweeps lazily and reports what it dropped rather than truncating quietly.
+- **A browser fetches the page's subresources itself.** No header, no query string — which is why the dashboard's own assets are gated by a strict same-site cookie the shell sets. Test an operator surface the way a browser drives it, not the way the page does.
 
 ## Commands
 

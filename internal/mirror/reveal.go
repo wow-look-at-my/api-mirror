@@ -16,6 +16,16 @@ import (
 // grantSourceProbe labels a grant a probe earned. The source is what keeps a
 const grantSourceProbe = "probe"
 
+// DenyReason says which rung refused: "denied" alone cannot be acted on.
+type DenyReason string
+
+const (
+	DenyProbe    DenyReason = "probe-refused" // the upstream refused this caller
+	DenyCached   DenyReason = "cached-denial" // a refusal replayed from the deny cache
+	DenyNoProof  DenyReason = "no-proof"      // not public and nothing left to ask
+	DenyUpstream DenyReason = "probe-inconclusive"
+)
+
 // Verdict is the reveal decision for one read.
 type Verdict struct {
 	Allowed bool
@@ -23,6 +33,8 @@ type Verdict struct {
 	Status int
 	// Cached reports a refusal replayed from the deny cache rather than one a
 	Cached bool
+	// Reason names the rung that refused, for the dashboard's refusal tally.
+	Reason DenyReason
 }
 
 // Revealer decides what a principal may be shown.
@@ -83,7 +95,7 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 			return refuse(http.StatusBadGateway), err
 		}
 		if found {
-			return Verdict{Status: status, Cached: true}, nil
+			return Verdict{Status: status, Cached: true, Reason: DenyCached}, nil
 		}
 	}
 
@@ -130,14 +142,15 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 	rule := res.Reveal
 	if rule.Probe == nil {
 		// The predicate said no and there is nothing left to ask. The refusal
-		return refuse(http.StatusNotFound), nil
+		return Verdict{Status: http.StatusNotFound, Reason: DenyNoProof}, nil
 	}
 	path, err := rv.probePath(res, key)
 	if err != nil {
 		return refuse(http.StatusBadGateway), err
 	}
 
-	ans, err := rv.up.Call(ctx, rule.Probe.Method, path, rv.context(key, nil), forward)
+	// Its own lane: the fetch lane would hide what proving access costs.
+	ans, err := rv.up.Call(withLane(ctx, LaneProbe, principal, res.Name), rule.Probe.Method, path, rv.context(key, nil), forward)
 	if err != nil {
 		return refuse(http.StatusBadGateway), fmt.Errorf("reveal probe %s: %w", res.Name, err)
 	}
@@ -159,7 +172,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 		}
 		return Verdict{Allowed: true}, nil
 
-	case Transient(ans):
+	case rv.up.Transient(ans):
 		// Checked before the authoritative case on purpose: a rate-limited 403
 		// wears the same status as a real refusal and means the opposite.
 		return refuse(http.StatusBadGateway),
@@ -167,7 +180,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 
 	case ans.Status == http.StatusNotFound, ans.Status == http.StatusForbidden:
 		rv.remember(ctx, principal, res, k, ans.Status, now.Add(rule.DenyTTL))
-		return Verdict{Status: ans.Status}, nil
+		return Verdict{Status: ans.Status, Reason: DenyProbe}, nil
 
 	default:
 		return refuse(http.StatusBadGateway),
@@ -271,7 +284,7 @@ func (rv *Revealer) context(key map[string]string, row Row) map[string]any {
 
 // refuse builds a not-allowed verdict. Every failure path goes through it, so
 func refuse(status int) Verdict {
-	return Verdict{Status: status}
+	return Verdict{Status: status, Reason: DenyUpstream}
 }
 
 // keyString renders a resource key as the one string every path names it by:

@@ -85,6 +85,42 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Events = ev
+		case "dashboard":
+			d, err := buildDashboard(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Dashboard = d
+		case "cors":
+			c, err := buildCORS(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.CORS = c
+		case "notify":
+			no, err := buildNotify(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Notify = no
+		case "refresh":
+			r, err := buildRefresh(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Refresh = r
+		case "replay":
+			rp, err := buildReplay(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Replay = rp
+		case "health":
+			h, err := buildHealth(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Health = h
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}
@@ -118,12 +154,25 @@ func buildVars(n *node) ([]Var, error) {
 }
 
 func buildUpstream(n *node) (Upstream, error) {
-	if err := checkAttrs(n, "base"); err != nil {
+	if err := checkAttrs(n, "base", "debounce", "retry-after"); err != nil {
 		return Upstream{}, err
 	}
-	up := Upstream{Base: n.Attr("base")}
+	up := Upstream{Base: n.Attr("base"), RetryAfter: n.Attr("retry-after")}
+	if v := n.Attr("debounce"); v != "" {
+		d, err := parseDuration("<upstream> debounce", v)
+		if err != nil {
+			return Upstream{}, err
+		}
+		up.Debounce = d
+	}
 	for _, child := range n.Children() {
 		switch child.Name() {
+		case "ratelimit":
+			rate, err := buildRateHeaders(child)
+			if err != nil {
+				return Upstream{}, err
+			}
+			up.Rate = rate
 		case "header":
 			h, err := buildHeader(child)
 			if err != nil {
@@ -206,7 +255,17 @@ func addResourceChild(r *Resource, child *node) error {
 		if err := checkAttrs(child, "key"); err != nil {
 			return err
 		}
-		r.Drop = append(r.Drop, child.Attr("key"))
+		// An empty pattern matches nothing, so a <drop> that named its pattern
+		// as text would load, store an empty string, and quietly drop nothing.
+		pattern := strings.TrimSpace(child.Attr("key"))
+		if pattern == "" {
+			if text, err := textOf(child); err == nil && strings.TrimSpace(text) != "" {
+				return fmt.Errorf("resource %q: <drop>%s</drop> names its pattern as text; write <drop key=%q/>",
+					r.Name, strings.TrimSpace(text), strings.TrimSpace(text))
+			}
+			return fmt.Errorf("resource %q: <drop> needs a key= pattern", r.Name)
+		}
+		r.Drop = append(r.Drop, pattern)
 	case "keep":
 		if err := checkAttrs(child, "name", "reason"); err != nil {
 			return err
