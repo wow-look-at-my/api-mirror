@@ -180,8 +180,8 @@
 		<field name="committer_email" type="text">committer.email</field>
 		<field name="committer_date" type="text">committer.date</field>
 		<field name="tree_sha" type="text">tree.sha</field>
-		<drop>url</drop>
-		<drop>*_url</drop>
+		<drop key="url"/>
+		<drop key="*_url"/>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>

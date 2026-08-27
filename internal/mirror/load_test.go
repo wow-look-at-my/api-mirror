@@ -356,6 +356,14 @@ func TestParseSpec_Rejects(t *testing.T) {
 		src:  `<mirror name="m"><upstream base="u"><retry/></upstream></mirror>`,
 		want: "unexpected child element <retry>",
 	}, {
+		name: "a <drop> naming its pattern as text",
+		src:  `<mirror name="m"><resource name="r"><drop>url</drop></resource></mirror>`,
+		want: `write <drop key="url"/>`,
+	}, {
+		name: "a <drop> naming no pattern at all",
+		src:  `<mirror name="m"><resource name="r"><drop/></resource></mirror>`,
+		want: "<drop> needs a key= pattern",
+	}, {
 		name: "a resource ttl that is not a duration",
 		src:  `<mirror name="m"><resource name="r" ttl="soon"/></mirror>`,
 		want: `"soon" is not a duration`,

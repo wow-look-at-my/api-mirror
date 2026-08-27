@@ -5,7 +5,8 @@
 
 	The loader is authoritative: it rejects things this file cannot express,
 	and its messages say why. This exists for editor completion and for
-	reading, and CI checks that both shipped specs still match it.
+	reading. TestReferenceSchemaKnowsEveryNameTheShippedSpecsUse walks both
+	shipped specs and fails when this file has not kept up with them.
 -->
 
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
@@ -61,7 +62,14 @@
 				<xs:element name="upstream" type="upstream"/>
 				<xs:element name="resource" type="resource"/>
 				<xs:element name="route" type="route"/>
+				<xs:element name="purge" type="purge"/>
 				<xs:element name="events" type="events"/>
+				<xs:element name="dashboard" type="dashboard"/>
+				<xs:element name="cors" type="cors"/>
+				<xs:element name="notify" type="notify"/>
+				<xs:element name="refresh" type="refresh"/>
+				<xs:element name="replay" type="replay"/>
+				<xs:element name="health" type="health"/>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
@@ -87,8 +95,20 @@
 					<xs:attribute name="name" type="xs:string" use="required"/>
 				</xs:complexType>
 			</xs:element>
+			<!-- Which headers carry a budget is the upstream's own vocabulary. -->
+			<xs:element name="ratelimit">
+				<xs:complexType>
+					<xs:attribute name="limit" type="xs:string"/>
+					<xs:attribute name="remaining" type="xs:string"/>
+					<xs:attribute name="used" type="xs:string"/>
+					<xs:attribute name="reset" type="xs:string"/>
+					<xs:attribute name="resource" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="base" type="xs:string" use="required"/>
+		<xs:attribute name="debounce" type="xs:string"/>
+		<xs:attribute name="retry-after" type="xs:string"/>
 	</xs:complexType>
 
 	<xs:complexType name="headerType" mixed="true">
@@ -103,6 +123,8 @@
 					<xs:attribute name="name" type="xs:string" use="required"/>
 					<xs:attribute name="from" type="xs:string"/>
 					<xs:attribute name="fold" type="xs:boolean"/>
+					<!-- The key is a fingerprint of the caller's own credential. -->
+					<xs:attribute name="credential" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
 			<xs:element name="field">
@@ -141,6 +163,8 @@
 			</xs:element>
 			<xs:element name="grant" type="ttlType"/>
 			<xs:element name="deny" type="ttlType"/>
+			<!-- Self-gating: the row is only ever replayed to the credential it was fetched with. -->
+			<xs:element name="credential"/>
 		</xs:choice>
 	</xs:complexType>
 
@@ -181,6 +205,13 @@
 		<xs:attribute name="complete" type="xs:boolean"/>
 	</xs:complexType>
 
+	<!-- A write whose answer the mirror cannot derive: forward it, drop the row. -->
+	<xs:complexType name="purge">
+		<xs:attribute name="method" type="xs:string" use="required"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="resource" type="xs:string" use="required"/>
+	</xs:complexType>
+
 	<xs:complexType name="events">
 		<xs:choice minOccurs="0" maxOccurs="unbounded">
 			<xs:element name="secret" type="content"/>
@@ -219,6 +250,69 @@
 		<xs:attribute name="clock" type="xs:string"/>
 		<xs:attribute name="unordered" type="xs:boolean"/>
 		<xs:attribute name="absorb-when-superseded" type="xs:boolean"/>
+	</xs:complexType>
+
+	<!--
+		Operations. None of this changes an answer; all of it changes whether
+		anybody can tell that the answers are right.
+	-->
+
+	<!-- The surface exists either way. This says where it lives and what gates it. -->
+	<xs:complexType name="dashboard">
+		<xs:sequence>
+			<xs:element name="token" type="content" minOccurs="0"/>
+		</xs:sequence>
+		<xs:attribute name="path" type="xs:string"/>
+		<xs:attribute name="title" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="cors">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="origin" type="xs:string"/>
+			<!-- Without this a browser hides the headers from a cross-origin script. -->
+			<xs:element name="expose" type="xs:string"/>
+		</xs:choice>
+		<xs:attribute name="max-age" type="xs:string"/>
+	</xs:complexType>
+
+	<!-- db= is optional: it otherwise sits beside whatever -db names. -->
+	<xs:complexType name="notify">
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="db" type="xs:string"/>
+		<xs:attribute name="signature-header" type="xs:string"/>
+		<xs:attribute name="timeout" type="xs:string"/>
+		<xs:attribute name="retries" type="xs:integer"/>
+		<xs:attribute name="disable-after" type="xs:integer"/>
+	</xs:complexType>
+
+	<!-- No <kind> sweeps every resource some route serves. -->
+	<xs:complexType name="refresh">
+		<xs:sequence>
+			<xs:element name="kind" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:sequence>
+		<xs:attribute name="interval" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="replay">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<xs:element name="list" type="xs:string"/>
+			<!-- Template source over `.delivery`. -->
+			<xs:element name="redeliver" type="content"/>
+			<xs:element name="id" type="xs:string"/>
+			<xs:element name="at" type="xs:string"/>
+		</xs:choice>
+		<xs:attribute name="interval" type="xs:string"/>
+		<xs:attribute name="method" type="xs:string"/>
+		<xs:attribute name="lookback" type="xs:string"/>
+		<xs:attribute name="max" type="xs:integer"/>
+		<!-- Empty at startup means the replayer declines to start, and says so. -->
+		<xs:attribute name="requires" type="xs:string"/>
+	</xs:complexType>
+
+	<!-- Unregistered, these fall through to the proxy rather than 404ing. -->
+	<xs:complexType name="health">
+		<xs:attribute name="live" type="xs:string"/>
+		<xs:attribute name="pre-update" type="xs:string"/>
 	</xs:complexType>
 
 </xs:schema>
