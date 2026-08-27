@@ -1,64 +1,45 @@
-/* The dashboard's whole stylesheet. Element rules first, exceptions after: a
-   plain <a> or <table> needs no rule of its own, and a specific rule carries
-   only its delta. */
+/* The dashboard's own rules. The PALETTE is not here: it comes from
+   scratch_ui's tokens, loaded from the org's site, which inherit into
+   everything including the components' shadow roots.
 
-:root {
-	--bg: #fbfbfa;
-	--panel: #ffffff;
-	--ink: #1d1d1b;
-	--muted: #6a6a66;
-	--line: #e3e3df;
-	--accent: #2f6f4f;
-	--warn: #9a6b18;
-	--bad: #a33a2a;
-	--ok: #2f6f4f;
-	--code: #f2f2ef;
-	--radius: 6px;
-}
+   Every var() carries the token's own value as a fallback, so a mirror running
+   where that site is unreachable renders dark and readable rather than as
+   unstyled white. There is no light theme, here or in scratch_ui.
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--bg: #17181a;
-		--panel: #1e2023;
-		--ink: #e8e8e4;
-		--muted: #9a9a93;
-		--line: #303338;
-		--accent: #7fc79c;
-		--warn: #dcae5b;
-		--bad: #e28073;
-		--ok: #7fc79c;
-		--code: #24262a;
-	}
-}
+   Element rules first, exceptions after: a plain <a> or <table> needs no rule
+   of its own, and a specific rule carries only its delta. */
 
 * { box-sizing: border-box; }
 
 body {
 	margin: 0;
-	background: var(--bg);
-	color: var(--ink);
-	font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	background: var(--bg, #0d0f14);
+	color: var(--text, #c8cdd8);
+	font: var(--fs-body, 14px)/1.5 var(--font-body, 'Quantico', 'Segoe UI', system-ui, sans-serif);
+	/* The dot-grid substrate the design language is built on. */
+	background-image: radial-gradient(var(--grid-dot, rgba(200, 205, 216, 0.08)) 1px, transparent 1px);
+	background-size: var(--grid-size, 24px) var(--grid-size, 24px);
 }
 
 a {
-	color: var(--accent);
+	color: var(--accent, #ffae00);
 	text-decoration: none;
 }
 
-a:hover { text-decoration: underline; }
+a:hover { color: var(--accent-hover, #ffc64d); }
 
 code, pre, .mono {
-	font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
-	font-size: 12px;
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-size: var(--fs-small, 12px);
 }
 
 pre {
-	background: var(--code);
-	border: 1px solid var(--line);
-	border-radius: var(--radius);
-	padding: 10px 12px;
+	background: var(--bg-surface, rgba(232, 236, 244, 0.03));
+	border: 1px solid var(--border-light, #1e222c);
+	padding: var(--sp-3, 12px);
 	overflow-x: auto;
 	margin: 0;
+	color: var(--text, #c8cdd8);
 }
 
 table {
@@ -68,92 +49,76 @@ table {
 
 th, td {
 	text-align: left;
-	padding: 6px 10px;
-	border-bottom: 1px solid var(--line);
+	padding: var(--sp-2, 8px) var(--sp-3, 12px);
+	border-bottom: 1px solid var(--border-light, #1e222c);
 	vertical-align: top;
 }
 
 th {
-	color: var(--muted);
-	font-weight: 600;
-	font-size: 12px;
+	color: var(--text-muted, #6b7280);
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-weight: 500;
+	font-size: var(--fs-micro, 10px);
 	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.12em;
 	white-space: nowrap;
 }
 
 tbody tr:last-child td { border-bottom: none; }
 
-button {
-	font: inherit;
-	color: var(--ink);
-	background: var(--panel);
-	border: 1px solid var(--line);
-	border-radius: var(--radius);
-	padding: 5px 12px;
-	cursor: pointer;
-}
-
-button:hover { border-color: var(--accent); }
+tbody tr:hover td { background: var(--bg-hover, rgba(232, 236, 244, 0.1)); }
 
 header {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 12px;
-	padding: 14px 20px;
-	background: var(--panel);
-	border-bottom: 1px solid var(--line);
+	align-items: center;
+	gap: var(--sp-3, 12px);
+	padding: var(--sp-3, 12px) var(--sp-5, 24px);
+	background: var(--bg-deep, #08090c);
+	border-bottom: 1px solid var(--border, #2a2e3a);
 }
 
 header h1 {
 	margin: 0;
-	font-size: 16px;
-	font-weight: 650;
+	font-family: var(--font-display, 'Space Grotesk', monospace);
+	font-size: var(--fs-lg, 16px);
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	color: var(--text-bright, #e8ecf4);
+	text-transform: uppercase;
 }
 
 nav {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 2px;
-	padding: 0 12px;
-	background: var(--panel);
-	border-bottom: 1px solid var(--line);
+	background: var(--bg-deep, #08090c);
+	border-bottom: 1px solid var(--border, #2a2e3a);
+	padding: 0 var(--sp-4, 16px);
 }
 
-nav button {
-	border: none;
-	background: none;
-	border-bottom: 2px solid transparent;
-	border-radius: 0;
-	color: var(--muted);
-	padding: 8px 12px;
-}
-
-nav button[aria-selected="true"] {
-	color: var(--ink);
-	border-bottom-color: var(--accent);
-}
-
-main { padding: 18px 20px 60px; }
+main { padding: var(--sp-5, 24px) var(--sp-5, 24px) var(--sp-8, 64px); }
 
 section h2 {
-	margin: 0 0 10px;
-	font-size: 13px;
-	font-weight: 650;
-	color: var(--muted);
+	margin: 0 0 var(--sp-3, 12px);
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-size: var(--fs-micro, 10px);
+	font-weight: 500;
+	color: var(--accent, #ffae00);
 	text-transform: uppercase;
-	letter-spacing: 0.05em;
+	letter-spacing: 0.18em;
 }
 
-section + section { margin-top: 26px; }
+/* The registration mark the design language puts before a section label. */
+section h2::before {
+	content: "+ ";
+	color: var(--border, #2a2e3a);
+}
+
+section + section { margin-top: var(--sp-6, 32px); }
 
 /* The panel is the one shared container. Everything that groups content is one
    of these, so a new block needs no new rule. */
 .panel {
-	background: var(--panel);
-	border: 1px solid var(--line);
-	border-radius: var(--radius);
+	background: var(--bg-surface, rgba(232, 236, 244, 0.03));
+	border: 1px solid var(--border, #2a2e3a);
 	overflow: hidden;
 }
 
@@ -163,100 +128,101 @@ section + section { margin-top: 26px; }
 
 .tiles {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-	gap: 10px;
+	grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+	gap: var(--sp-2, 8px);
 }
 
 .tile {
-	background: var(--panel);
-	border: 1px solid var(--line);
-	border-radius: var(--radius);
-	padding: 10px 12px;
+	position: relative;
+	background: var(--bg-surface, rgba(232, 236, 244, 0.03));
+	border: 1px solid var(--border, #2a2e3a);
+	padding: var(--sp-3, 12px) var(--sp-4, 16px);
 }
 
+/* Corner registration marks: the wireframe read, and the reason a tile needs
+   no rounding to look deliberate. */
+.tile::before, .tile::after {
+	content: "";
+	position: absolute;
+	width: 6px;
+	height: 6px;
+	border-color: var(--accent-dim, rgba(255, 174, 0, 0.5));
+	border-style: solid;
+}
+
+.tile::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.tile::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+
 .tile .label {
-	color: var(--muted);
-	font-size: 11px;
+	color: var(--text-muted, #6b7280);
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-size: var(--fs-micro, 10px);
 	text-transform: uppercase;
-	letter-spacing: 0.05em;
+	letter-spacing: 0.12em;
 }
 
 .tile .value {
-	font-size: 22px;
-	font-weight: 650;
+	font-family: var(--font-display, 'Space Grotesk', monospace);
+	font-size: var(--fs-h2, 1.5rem);
+	font-weight: 600;
+	color: var(--text-bright, #e8ecf4);
 	font-variant-numeric: tabular-nums;
 }
 
 .tile .note {
-	color: var(--muted);
-	font-size: 12px;
+	color: var(--text-muted, #6b7280);
+	font-size: var(--fs-tiny, 11px);
 }
 
-.pill {
-	display: inline-block;
-	padding: 1px 7px;
-	border-radius: 999px;
-	border: 1px solid var(--line);
-	font-size: 11px;
-	white-space: nowrap;
-}
+.bad { color: var(--danger, #ff4444); }
 
-.pill.hit, .pill.applied, .pill.ok { color: var(--ok); border-color: var(--ok); }
-.pill.miss, .pill.superseded, .pill.off { color: var(--warn); border-color: var(--warn); }
-.pill.passthrough { color: var(--warn); border-color: var(--warn); }
-.pill.denied, .pill.error, .pill.refusal { color: var(--bad); border-color: var(--bad); }
-.pill.fresh { color: var(--ok); border-color: var(--ok); }
-.pill.stale { color: var(--warn); border-color: var(--warn); }
-.bad { color: var(--bad); }
-
-.muted { color: var(--muted); }
+.muted { color: var(--text-muted, #6b7280); }
 .num { font-variant-numeric: tabular-nums; text-align: right; }
 .wrap { word-break: break-all; }
 
 /* The timeline is drawn as rows of positioned bars rather than a canvas, so it
    stays readable at any zoom and copies as text. */
-.lanes { display: grid; gap: 4px; }
+.lanes { display: grid; gap: var(--sp-1, 4px); }
 
 .lane {
 	display: grid;
-	grid-template-columns: 110px 1fr;
+	grid-template-columns: 150px 1fr;
 	align-items: center;
-	gap: 8px;
+	gap: var(--sp-2, 8px);
 }
 
 .track {
 	position: relative;
 	height: 20px;
-	background: var(--code);
-	border-radius: 3px;
+	background: var(--bg-elevated, rgba(232, 236, 244, 0.06));
+	border: 1px solid var(--border-light, #1e222c);
 	overflow: hidden;
 }
 
 .bar {
 	position: absolute;
 	top: 3px;
-	height: 14px;
+	height: 12px;
 	min-width: 2px;
-	border-radius: 2px;
-	background: var(--accent);
-	opacity: 0.75;
+	background: var(--accent, #ffae00);
+	opacity: 0.8;
 }
 
-.bar.err { background: var(--bad); opacity: 0.9; }
+.bar.err { background: var(--danger, #ff4444); opacity: 1; }
 
 .axis {
 	display: flex;
 	justify-content: space-between;
-	color: var(--muted);
-	font-size: 11px;
-	margin-top: 4px;
+	color: var(--text-muted, #6b7280);
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-size: var(--fs-micro, 10px);
+	margin-top: var(--sp-1, 4px);
 }
 
 .meter {
 	position: relative;
-	height: 8px;
-	border-radius: 999px;
-	background: var(--code);
+	height: 6px;
+	background: var(--bg-elevated, rgba(232, 236, 244, 0.06));
 	overflow: hidden;
 	min-width: 90px;
 }
@@ -264,26 +230,27 @@ section + section { margin-top: 26px; }
 .meter > span {
 	position: absolute;
 	inset: 0 auto 0 0;
-	background: var(--accent);
+	background: var(--signal, #00e47a);
 }
 
-.meter.low > span { background: var(--bad); }
+.meter.low > span { background: var(--danger, #ff4444); }
 
 .empty {
-	padding: 22px;
-	color: var(--muted);
+	padding: var(--sp-6, 32px);
+	color: var(--text-muted, #6b7280);
+	font-family: var(--font-mono, ui-monospace, monospace);
 	text-align: center;
 }
 
 .err {
-	color: var(--bad);
-	padding: 10px 0;
+	color: var(--danger, #ff4444);
+	padding: var(--sp-3, 12px) 0;
 }
 
 .row {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 10px;
+	gap: var(--sp-2, 8px);
 	align-items: center;
 }
 

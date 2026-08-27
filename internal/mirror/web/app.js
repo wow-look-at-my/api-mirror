@@ -83,15 +83,39 @@ function panel(...children) {
 
 function table(headers, rows) {
 	if (!rows.length) return panel(el('div', { class: 'empty' }, 'Nothing yet.'));
+	// A number is right-aligned, and its heading follows it: a left heading
+	// over a right column reads as two columns that failed to line up.
+	const numeric = headers.map((_, i) => rows.some((cells) => typeof cells[i] === 'number'));
 	return panel(el('table', {},
-		el('thead', {}, el('tr', {}, headers.map((h) => el('th', {}, h)))),
-		el('tbody', {}, rows.map((cells) => el('tr', {}, cells.map((c) =>
-			el('td', { class: typeof c === 'number' ? 'num' : null },
+		el('thead', {}, el('tr', {}, headers.map((h, i) => el('th', { class: numeric[i] ? 'num' : null }, h)))),
+		el('tbody', {}, rows.map((cells) => el('tr', {}, cells.map((c, i) =>
+			el('td', { class: numeric[i] ? 'num' : null },
 				typeof c === 'number' ? fmt.int(c) : c)))))));
 }
 
+// pill is a scratch-badge in the variant that matches the verdict.
+//
+// The design language's LED reports a STATE, so a colour-only chip is what
+// labels an outcome: signal for what worked, accent for what needs a look,
+// off for what is inactive, and the neutral key chip for everything else.
+const PILL_VARIANT = {
+	hit: 'signal', applied: 'signal', ok: 'signal', fresh: 'signal',
+	miss: 'accent', superseded: 'accent', passthrough: 'accent', stale: 'accent',
+	off: 'off', unsupported: 'off', gone: 'off',
+	raced: 'accent', drifted: 'accent', repaired: 'signal',
+	denied: 'danger', error: 'danger', refusal: 'danger', unreachable: 'danger',
+};
+
 function pill(text) {
-	return el('span', { class: `pill ${String(text).toLowerCase()}` }, text);
+	const word = String(text).toLowerCase();
+	// A danger chip is not one of the shipped variants, so it borrows the plain
+	// key chip and takes its colour from a token here rather than from a
+	// variant the library does not have.
+	const variant = PILL_VARIANT[word] || 'key';
+	if (variant === 'danger') {
+		return el('scratch-badge', { variant: 'key', class: 'bad' }, text);
+	}
+	return el('scratch-badge', { variant }, text);
 }
 
 function section(title, ...body) {
@@ -110,10 +134,16 @@ function dispositions(map) {
 
 const views = {};
 
-views.overview = async () => {
-	const o = await api('api/overview');
+// nameTheMirror fills the header. Which mirror this is, and what it stands in
+// front of, belong to the page: a link into any tab has to answer them too.
+function nameTheMirror(o) {
 	document.getElementById('title').textContent = o.title || o.mirror;
 	document.getElementById('upstream').textContent = o.upstream;
+}
+
+views.overview = async () => {
+	const o = await api('api/overview');
+	nameTheMirror(o);
 
 	const total = o.answered + o.passthrough;
 	const modelled = total ? Math.round((o.answered / total) * 100) : 0;
@@ -311,11 +341,14 @@ views.webhooks = async () => {
 			seen.get(d.type) || 0,
 		]))));
 
+	// Declared-but-off and never-declared are different answers, and only one of
+	// them is somebody's mistake. Reporting both as "no replay" hides which.
 	out.append(section('Delivery-gap replay', v.replay.enabled
 		? table(['Interval', 'Cycles', 'Listed', 'Re-sent', 'Errors', 'Last'],
 			[[v.replay.interval, v.replay.cycles, v.replay.found, v.replay.resent, v.replay.errors, fmt.ago(v.replay.last)]])
-		: panel(el('div', { class: 'empty' },
-			'No <replay> declared. A delivery the provider could not hand over is never re-sent, and nothing reports the gap.'))));
+		: panel(el('div', { class: 'empty' }, v.replay.off
+			? `Declared, and off: ${v.replay.off} is empty. A delivery the provider could not hand over is never re-sent.`
+			: 'No <replay> declared. A delivery the provider could not hand over is never re-sent, and nothing reports the gap.'))));
 	return out;
 };
 
@@ -357,6 +390,8 @@ views.resources = async () => {
 					: el('span', { class: 'muted' }, '-'),
 			]))));
 
+		out.append(checkSection(chosen.name));
+
 		const rows = chosen.rows || [];
 		const cols = rows.length ? Object.keys(rows[0]) : [];
 		out.append(section(`${chosen.name} rows${chosen.truncated ? ' (truncated)' : ''}`,
@@ -364,6 +399,111 @@ views.resources = async () => {
 	}
 	return out;
 };
+
+// checkResults holds the last check per kind, so a timed re-render redraws it.
+const checkResults = new Map();
+
+// checkSection drives the consistency check.
+//
+// Every other view here reports what this process has SEEN. This is the only
+// one that asks the upstream whether the stored answers are still right, which
+// is the only way a delivery that never arrived ever surfaces.
+function checkSection(kind) {
+	// The page re-reads on a timer, which rebuilds this whole panel. A check
+	// takes one upstream call per key, so its result has to outlive that: it is
+	// held per kind and redrawn, or a long check finishes into a discarded DOM.
+	const held = checkResults.get(kind);
+	const results = el('div', { class: 'panel scroll' },
+		held ? checkTable(held.lines) : el('div', { class: 'empty' }, 'Not run. The check asks the upstream once per stored key.'));
+	const status = el('span', { class: 'muted mono' }, held?.status || '');
+
+	async function run(repair) {
+		const seen = [];
+		checkResults.set(kind, { lines: seen, status: '' });
+		results.replaceChildren(el('div', { class: 'empty' }, 'Asking the upstream...'));
+		status.textContent = '';
+		try {
+			// The stream is read as it arrives rather than awaited whole: a check
+			// is one upstream call per key, so a large kind takes minutes and a
+			// buffered read cannot be told apart from a wedged one.
+			await readNDJSON(`api/check?kind=${encodeURIComponent(kind)}${repair ? '&apply=true' : ''}&stream=1`,
+				repair ? 'POST' : 'GET',
+				(line) => {
+					if (line.error) {
+						results.replaceChildren(el('div', { class: 'err' }, line.error));
+						return;
+					}
+					if (line.verdict) {
+						seen.push(line);
+						results.replaceChildren(checkTable(seen));
+						return;
+					}
+					status.textContent = `${fmt.int(line.checked)} keys in ${line.elapsed}`
+						+ (line.repaired ? `, ${fmt.int(line.repaired)} rewritten` : '');
+					checkResults.set(kind, { lines: seen, status: status.textContent });
+				});
+		} catch (e) {
+			checkResults.delete(kind);
+			results.replaceChildren(el('div', { class: 'err' }, String(e.message || e)));
+		}
+	}
+
+	return section(`${kind} against the upstream`,
+		el('div', { class: 'row' },
+			el('scratch-button', { onclick: () => run(false) }, 'Check'),
+			el('scratch-button', {
+				variant: 'ghost',
+				onclick: () => run(true),
+				title: 'Rewrite every drifted row with what the upstream says',
+			}, 'Check and repair'),
+			status),
+		results);
+}
+
+function checkTable(lines) {
+	return table(['Key', 'Verdict', 'Field', 'Stored', 'Upstream'],
+		lines.flatMap((l) => {
+			if (!l.diffs || !l.diffs.length) {
+				return [[el('span', { class: 'mono wrap' }, l.key), verdictPill(l),
+					el('span', { class: 'muted' }, l.detail || '-'), '', '']];
+			}
+			return l.diffs.map((d, i) => [
+				i === 0 ? el('span', { class: 'mono wrap' }, l.key) : el('span', {}),
+				i === 0 ? verdictPill(l) : el('span', {}),
+				el('span', { class: 'mono' }, d.field),
+				el('span', { class: 'mono wrap' }, d.stored),
+				el('span', { class: 'mono wrap' }, d.upstream),
+			]);
+		}));
+}
+
+function verdictPill(line) {
+	const chip = pill(line.verdict === 'agrees' ? 'ok' : line.verdict);
+	if (!line.repaired) return chip;
+	return el('span', { class: 'row' }, chip, pill('repaired'));
+}
+
+// readNDJSON reads one line-delimited JSON stream, handing over each object as
+// it lands rather than after the last one.
+async function readNDJSON(path, method, onLine) {
+	const headers = token ? { 'X-Mirror-Token': token } : {};
+	const resp = await fetch(path, { method, headers });
+	if (!resp.ok) throw new Error(`${path}: ${resp.status} ${await resp.text()}`);
+	const reader = resp.body.getReader();
+	const decoder = new TextDecoder();
+	let buffered = '';
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		buffered += decoder.decode(value, { stream: true });
+		const lines = buffered.split('\n');
+		buffered = lines.pop() ?? '';
+		for (const line of lines) {
+			if (line.trim()) onLine(JSON.parse(line));
+		}
+	}
+	if (buffered.trim()) onLine(JSON.parse(buffered));
+}
 
 function revealSummary(rv) {
 	if (!rv) return el('span', { class: 'muted' }, 'none');
@@ -449,14 +589,27 @@ function currentTab() {
 	return views[name] ? name : 'overview';
 }
 
+// drawTabs fills <scratch-tabs strip-only>, which renders the strip and leaves
+// the panel to this page. The hash stays the source of truth for which tab is
+// open, so a reload and a shared link land in the same place; the component's
+// own selection follows it rather than the other way round.
+let tabStrip = null;
+
 function drawTabs() {
-	const nav = document.getElementById('tabs');
-	nav.replaceChildren(...tabs.map(([id, label]) => el('button', {
-		type: 'button',
-		role: 'tab',
-		'aria-selected': id === currentTab(),
-		onclick: () => { location.hash = id; },
-	}, label)));
+	const active = tabs.findIndex(([id]) => id === currentTab());
+	if (!tabStrip) {
+		// The strip is built from the children present when the component is
+		// inserted, so it arrives whole. Filling an empty one already in the
+		// page leaves a bar with no buttons.
+		tabStrip = el('scratch-tabs', { 'strip-only': true },
+			tabs.map(([id, label], i) => el('scratch-tab', { label, 'data-tab': id, selected: i === active })));
+		tabStrip.addEventListener('change', (e) => {
+			const picked = tabs[e.detail?.index ?? 0];
+			if (picked && picked[0] !== currentTab()) location.hash = picked[0];
+		});
+		document.getElementById('tabbar').replaceChildren(tabStrip);
+	}
+	if (active >= 0) tabStrip.activeIndex = active;
 }
 
 async function render() {
@@ -471,6 +624,8 @@ async function render() {
 	}
 	document.getElementById('clock').textContent = `updated ${new Date().toLocaleTimeString()}`;
 }
+
+api('api/overview').then(nameTheMirror).catch(() => {});
 
 window.addEventListener('hashchange', render);
 document.getElementById('reload').addEventListener('click', render);
