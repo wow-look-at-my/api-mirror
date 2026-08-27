@@ -342,6 +342,21 @@ views.resources = async () => {
 			['Column', 'Type', 'From'],
 			chosen.fields.map((f) => [el('span', { class: 'mono' }, f.name), f.type,
 				el('span', { class: 'mono' }, f.from || '(expr)')]))));
+		// An errored key is the reason to open this tab, so it is shown before
+		// the rows: the overview counts them and this is where they are named.
+		const keyed = chosen.keyed || [];
+		out.append(section(`${chosen.name} keys`, table(
+			['Key', 'State', 'Fetched', 'Expires', 'Detail'],
+			keyed.map((k) => [
+				el('span', { class: 'mono wrap' }, k.key),
+				pill(k.state),
+				fmt.ago(k.fetched_at),
+				fmt.ago(k.expires_at),
+				k.error
+					? el('span', { class: 'mono wrap bad' }, `${k.status || ''} ${k.error}`.trim())
+					: el('span', { class: 'muted' }, '-'),
+			]))));
+
 		const rows = chosen.rows || [];
 		const cols = rows.length ? Object.keys(rows[0]) : [];
 		out.append(section(`${chosen.name} rows${chosen.truncated ? ' (truncated)' : ''}`,

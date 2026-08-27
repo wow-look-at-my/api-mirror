@@ -144,6 +144,21 @@ type ResourceView struct {
 	Reveal    RevealView  `json:"reveal"`
 	Rows      []Row       `json:"rows,omitempty"`
 	Truncated bool        `json:"truncated,omitempty"`
+	// Keyed is where each stored key stands. The overview counts errored keys
+	// per kind, and a count with no way to see WHICH keys errored, and why, is
+	// a number an operator cannot act on.
+	Keyed []KeyState `json:"keyed,omitempty"`
+}
+
+// KeyState is one stored key on the resources tab.
+type KeyState struct {
+	Key        string    `json:"key"`
+	State      string    `json:"state"`
+	Status     int       `json:"status,omitempty"`
+	Error      string    `json:"error,omitempty"`
+	FetchedAt  time.Time `json:"fetched_at,omitempty"`
+	ExpiresAt  time.Time `json:"expires_at,omitempty"`
+	RetryAfter time.Time `json:"retry_after,omitempty"`
 }
 
 // FieldView is one stored column as the page shows it.
@@ -175,6 +190,18 @@ func (a *Admin) resources(w http.ResponseWriter, r *http.Request) {
 			}
 			view.Rows = rows
 			view.Truncated = truncated
+
+			keyed, err := a.engine.store.FreshnessByKind(r.Context(), res.Name)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for _, f := range keyed {
+				view.Keyed = append(view.Keyed, KeyState{
+					Key: f.Key, State: f.State, Status: f.Status, Error: f.Error,
+					FetchedAt: f.FetchedAt, ExpiresAt: f.ExpiresAt, RetryAfter: f.RetryAfter,
+				})
+			}
 		}
 		out = append(out, view)
 	}

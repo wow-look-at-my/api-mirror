@@ -205,6 +205,9 @@ section + section { margin-top: 26px; }
 .pill.miss, .pill.superseded, .pill.off { color: var(--warn); border-color: var(--warn); }
 .pill.passthrough { color: var(--warn); border-color: var(--warn); }
 .pill.denied, .pill.error, .pill.refusal { color: var(--bad); border-color: var(--bad); }
+.pill.fresh { color: var(--ok); border-color: var(--ok); }
+.pill.stale { color: var(--warn); border-color: var(--warn); }
+.bad { color: var(--bad); }
 
 .muted { color: var(--muted); }
 .num { font-variant-numeric: tabular-nums; text-align: right; }

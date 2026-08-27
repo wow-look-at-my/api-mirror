@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -189,6 +190,36 @@ func TestResourcesTabDescribesTheGateAsWellAsTheColumns(t *testing.T) {
 	assert.Len(t, widget.Fields, 4)
 	assert.Contains(t, widget.Routes, "GET /widgets/{id}")
 	assert.Equal(t, "true", widget.Reveal.Public)
+}
+
+// The overview counts errored keys per kind. A count with no way to see WHICH
+// keys errored, and why, is a number an operator cannot act on -- and the query
+// that answers it sat written and unwired.
+func TestResourcesTabNamesTheKeysBehindTheErroredCount(t *testing.T) {
+	var fail atomic.Bool
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() {
+			http.Error(w, "upstream is having a day", http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(`{"id":"7","title":"hi"}`))
+	}))
+	require.Equal(t, http.StatusOK, get(t, e, "/widgets/7").Code)
+
+	fail.Store(true)
+	expire(t, e, "widget", "7")
+	get(t, e, "/widgets/7")
+
+	views := adminJSON[[]ResourceView](t, e, defaultDashboardPath+"/api/resources?resource=widget")
+	var widget ResourceView
+	for _, v := range views {
+		if v.Name == "widget" {
+			widget = v
+		}
+	}
+	require.NotEmpty(t, widget.Keyed, "the tab that counts errors has to be able to name them")
+	assert.Equal(t, "7", widget.Keyed[0].Key)
+	assert.NotEmpty(t, widget.Keyed[0].Error, "a state of 'error' with no error text is not actionable")
 }
 
 func TestRatesTabSaysWhenTheSpecNamedNoHeaders(t *testing.T) {
