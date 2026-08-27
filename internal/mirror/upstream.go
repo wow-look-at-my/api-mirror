@@ -22,21 +22,11 @@ type Upstreamer struct {
 	base    string
 	headers []Header
 	client  *http.Client
-	observe func(Exchange)
-}
-
-// Exchange is one completed upstream request, as reported to the observer.
-type Exchange struct {
-	Method   string
-	URL      string
-	Status   int
-	Bytes    int
-	Duration time.Duration
-	Err      error
+	observe Observer
 }
 
 // NewUpstreamer resolves the upstream's base URL and static headers once.
-func NewUpstreamer(spec *Spec, vars map[string]any, observe func(Exchange)) (*Upstreamer, error) {
+func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstreamer, error) {
 	base, err := renderString(spec.Upstream.Base, vars)
 	if err != nil {
 		return nil, fmt.Errorf("upstream base: %w", err)
@@ -47,13 +37,15 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe func(Exchange)) (*Up
 		return nil, fmt.Errorf("upstream base resolved to nothing usable: %q is not an absolute URL", base)
 	}
 	if observe == nil {
-		observe = func(Exchange) {}
+		observe = funcObserver(func(Exchange) {})
 	}
 	return &Upstreamer{
 		spec:    spec,
 		base:    base,
 		headers: spec.Upstream.Headers,
-		client:  upstreamClient,
+		// The client reports from its transport, so a caller added later cannot
+		// make an unreported request by forgetting to instrument its call site.
+		client:  observedClient(upstreamClient, LaneFetch, observe),
 		observe: observe,
 	}, nil
 }
@@ -101,26 +93,18 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 	// A buffered body must be plain bytes: the mirror parses and rebuilds it,
 	req.Header.Set("Accept-Encoding", "identity")
 
-	started := time.Now()
 	resp, err := u.client.Do(req)
 	if err != nil {
-		u.observe(Exchange{Method: method, URL: url, Duration: time.Since(started), Err: err})
 		return nil, fmt.Errorf("upstream %s %s: %w", method, path, err)
 	}
+	// Closing the body is what reports the exchange, so this defer is the
+	// report, not just hygiene.
 	defer resp.Body.Close()
 
 	body, overflow, err := readCapped(resp.Body)
 	if err != nil {
-		u.observe(Exchange{Method: method, URL: url, Status: resp.StatusCode, Duration: time.Since(started), Err: err})
 		return nil, fmt.Errorf("read upstream %s %s: %w", method, path, err)
 	}
-	u.observe(Exchange{
-		Method:   method,
-		URL:      url,
-		Status:   resp.StatusCode,
-		Bytes:    len(body),
-		Duration: time.Since(started),
-	})
 	return &Answer{Status: resp.StatusCode, Header: resp.Header, Body: body, Overflow: overflow}, nil
 }
 
@@ -138,23 +122,34 @@ func readCapped(r io.Reader) ([]byte, bool, error) {
 
 // RateLimited reports whether an answer is the upstream refusing for rate
 // reasons rather than for access reasons.
-func RateLimited(a *Answer) bool {
+//
+// The header names come from the spec: which header says "wait" and which says
+// "you may not" is the upstream's vocabulary, and getting it wrong stores an
+// outage as a denial for the whole deny window.
+func (u *Upstreamer) RateLimited(a *Answer) bool {
 	if a == nil {
 		return false
 	}
 	if a.Status == http.StatusTooManyRequests {
 		return true
 	}
-	if a.Header.Get("Retry-After") != "" {
+	retryAfter := u.spec.Upstream.RetryAfter
+	if retryAfter == "" {
+		retryAfter = "Retry-After"
+	}
+	if a.Header.Get(retryAfter) != "" {
 		return true
 	}
-	return a.Header.Get("X-RateLimit-Remaining") == "0"
+	if name := u.spec.Upstream.Rate.Remaining; name != "" {
+		return a.Header.Get(name) == "0"
+	}
+	return false
 }
 
 // Transient reports whether an answer is one that must never be stored: a
-func Transient(a *Answer) bool {
+func (u *Upstreamer) Transient(a *Answer) bool {
 	if a == nil {
 		return true
 	}
-	return a.Status >= 500 || RateLimited(a)
+	return a.Status >= 500 || u.RateLimited(a)
 }

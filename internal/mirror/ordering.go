@@ -54,19 +54,20 @@ func orderOf(ev *Event, payload any) (string, time.Time, error) {
 	return subject, time.Unix(n, 0).UTC(), nil
 }
 
-// Disposition is what happened to one delivery. It is reported back to the
-type Disposition string
+// DeliveryDisposition is what happened to one delivery. It is reported back to
+// the provider, so it lands in their delivery record.
+type DeliveryDisposition string
 
 const (
-	DispApplied     Disposition = "applied"
-	DispSuperseded  Disposition = "superseded"
-	DispInvalidated Disposition = "invalidated"
-	DispIgnored     Disposition = "ignored"
-	DispError       Disposition = "error"
+	DeliveryApplied     DeliveryDisposition = "applied"
+	DeliverySuperseded  DeliveryDisposition = "superseded"
+	DeliveryInvalidated DeliveryDisposition = "invalidated"
+	DeliveryIgnored     DeliveryDisposition = "ignored"
+	DeliveryFailed      DeliveryDisposition = "error"
 )
 
 // applyFunc applies one delivery to the store.
-type applyFunc func(ctx context.Context, d *Delivery) (Disposition, error)
+type applyFunc func(ctx context.Context, d *Delivery) (DeliveryDisposition, error)
 
 // Reorderer sorts deliveries that land close together for the SAME subject and
 // applies them oldest-first.

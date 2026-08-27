@@ -54,6 +54,70 @@ func (s *Spec) validate() error {
 			return err
 		}
 	}
+	return s.validateOps(byName)
+}
+
+// validateOps checks the operational half.
+//
+// Each rule here is one an operator would otherwise discover from behaviour: a
+// window that adds latency to everything, a sweep that names a kind no route
+// serves, a replayer that lists failures and cannot ask for any of them back.
+func (s *Spec) validateOps(byName map[string]*Resource) error {
+	if s.Upstream.Debounce > maxDebounceWindow {
+		// Every eligible read waits this long. A fat-fingered "5m" must fail at
+		// load rather than wedge the API for an hour before anybody connects
+		// the latency to a config change.
+		return fmt.Errorf("<upstream> debounce %s is longer than the %s cap: every uncacheable read waits it out",
+			s.Upstream.Debounce, maxDebounceWindow)
+	}
+	if s.Dashboard.Path == "" {
+		// The operator surface exists whether or not a spec mentions it. The
+		// default is filled in here, not at load, so a Spec built in code is
+		// the same Spec as one read off disk.
+		s.Dashboard.Path = defaultDashboardPath
+	}
+	if !strings.HasPrefix(s.Dashboard.Path, "/") {
+		return fmt.Errorf("<dashboard> path %q must start with /", s.Dashboard.Path)
+	}
+	if s.Refresh != nil {
+		if s.Refresh.Interval <= 0 {
+			return fmt.Errorf("<refresh> needs a positive interval")
+		}
+		kinds := make([]string, 0, len(s.Routes))
+		for _, rt := range s.Routes {
+			kinds = append(kinds, routeKind(rt))
+		}
+		for _, k := range s.Refresh.Kinds {
+			if !slices.Contains(kinds, k) {
+				return fmt.Errorf("<refresh><kind>%s</kind> names nothing any route serves", k)
+			}
+		}
+	}
+	if s.Replay != nil {
+		if s.Replay.List == "" || s.Replay.Redeliver == "" {
+			return fmt.Errorf("<replay> needs both <list> and <redeliver>: listing failures it cannot ask back is not recovery")
+		}
+		if s.Replay.ID == "" {
+			return fmt.Errorf("<replay> needs <id>: without it a delivery cannot be named, so every cycle would ask for all of them again")
+		}
+		if s.Replay.Interval <= 0 {
+			return fmt.Errorf("<replay> needs a positive interval")
+		}
+	}
+	if s.Notify != nil {
+		if strings.TrimSpace(s.Notify.DB) == "" {
+			return fmt.Errorf("<notify> needs a db: a subscription is not cached upstream state and cannot live in the cache")
+		}
+		if s.Events == nil {
+			return fmt.Errorf("<notify> has nothing to announce: this spec declares no <events>")
+		}
+	}
+	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
+		return fmt.Errorf("<health> names no path, so it registers nothing and every check falls through to the upstream")
+	}
+	if s.CORS != nil && len(s.CORS.Origins) == 0 {
+		return fmt.Errorf("<cors> names no <origin>, so it would allow nothing while looking like a policy")
+	}
 	return nil
 }
 

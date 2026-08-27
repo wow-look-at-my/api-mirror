@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>api-mirror</title>
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+	<header>
+		<h1 id="title">api-mirror</h1>
+		<span class="muted mono" id="upstream"></span>
+		<span class="grow"></span>
+		<span class="muted" id="clock"></span>
+		<button id="reload" type="button">Reload</button>
+	</header>
+
+	<nav id="tabs" role="tablist"></nav>
+
+	<main id="view">
+		<p class="muted">Loading.</p>
+	</main>
+
+	<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -177,7 +177,7 @@ func TestUnknownEventTypeIsIgnored(t *testing.T) {
 	w := deliver(t, in, "gollum", repoDelivery("acme", "widget", clockEarly, nil))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
-	assert.Equal(t, string(DispIgnored), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryIgnored), w.Header().Get(dispositionHeader))
 	assert.Nil(t, repoRow(t, store, "acme", "widget"))
 }
 
@@ -188,7 +188,7 @@ func TestValidDeliveryApplies(t *testing.T) {
 		map[string]any{"visibility": "public", "stargazers_count": 7}))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, string(DispApplied), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryApplied), w.Header().Get(dispositionHeader))
 
 	// The keys declare folding, so the row lands under the lower-cased spelling
 	row := repoRow(t, store, "acme", "widget")
@@ -206,7 +206,7 @@ func TestOlderClockIsSupersededAndDoesNotOverwrite(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
-	assert.Equal(t, string(DispSuperseded), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliverySuperseded), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "private", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
@@ -221,7 +221,7 @@ func TestEqualClockApplies(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, string(DispApplied), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryApplied), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
@@ -236,7 +236,7 @@ func TestSupersededDeliveryStillAbsorbsWhenDeclared(t *testing.T) {
 		map[string]any{"visibility": "public"}))
 
 	// The verdict is still superseded: this view is not the newest one.
-	assert.Equal(t, string(DispSuperseded), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliverySuperseded), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
@@ -278,7 +278,7 @@ func TestInvalidateDeletesTheRow(t *testing.T) {
 	w := deliver(t, in, "repository_deleted", repoDelivery("acme", "widget", clockLate, nil))
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
-	assert.Equal(t, string(DispInvalidated), w.Header().Get(dispositionHeader))
+	assert.Equal(t, string(DeliveryInvalidated), w.Header().Get(dispositionHeader))
 	assert.Nil(t, repoRow(t, store, "acme", "widget"))
 }
 
@@ -344,11 +344,11 @@ func TestWindowedDeliveryAnswersBeforeItApplies(t *testing.T) {
 func TestReorderWindowAppliesOldestFirst(t *testing.T) {
 	var mu sync.Mutex
 	var order []int64
-	r := NewReorderer(50*time.Millisecond, func(_ context.Context, d *Delivery) (Disposition, error) {
+	r := NewReorderer(50*time.Millisecond, func(_ context.Context, d *Delivery) (DeliveryDisposition, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		order = append(order, d.At.Unix())
-		return DispApplied, nil
+		return DeliveryApplied, nil
 	})
 
 	// Both deliveries are about one subject and land inside the window, newest

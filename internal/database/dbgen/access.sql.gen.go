@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const countLiveDenials = `-- name: CountLiveDenials :one
+SELECT COUNT(*) FROM mirror_deny WHERE expires_at > ?
+`
+
+func (q *Queries) CountLiveDenials(ctx context.Context, expiresAt int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLiveDenials, expiresAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countLiveGrants = `-- name: CountLiveGrants :one
 SELECT COUNT(*) FROM mirror_grant
 WHERE principal = ? AND resource = ? AND key = ? AND expires_at > ?
@@ -95,6 +106,140 @@ func (q *Queries) GetDenial(ctx context.Context, arg GetDenialParams) (int64, er
 	var status int64
 	err := row.Scan(&status)
 	return status, err
+}
+
+const listDenialsByPrincipal = `-- name: ListDenialsByPrincipal :many
+SELECT resource, key, status, expires_at FROM mirror_deny
+WHERE principal = ? AND expires_at > ? ORDER BY resource, key LIMIT ?
+`
+
+type ListDenialsByPrincipalParams struct {
+	Principal string
+	ExpiresAt int64
+	Limit     int64
+}
+
+type ListDenialsByPrincipalRow struct {
+	Resource  string
+	Key       string
+	Status    int64
+	ExpiresAt int64
+}
+
+func (q *Queries) ListDenialsByPrincipal(ctx context.Context, arg ListDenialsByPrincipalParams) ([]ListDenialsByPrincipalRow, error) {
+	rows, err := q.db.QueryContext(ctx, listDenialsByPrincipal, arg.Principal, arg.ExpiresAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDenialsByPrincipalRow
+	for rows.Next() {
+		var i ListDenialsByPrincipalRow
+		if err := rows.Scan(
+			&i.Resource,
+			&i.Key,
+			&i.Status,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGrantPrincipals = `-- name: ListGrantPrincipals :many
+SELECT principal, COUNT(*) AS grants, MAX(expires_at) AS newest
+FROM mirror_grant WHERE expires_at > ? GROUP BY principal ORDER BY grants DESC LIMIT ?
+`
+
+type ListGrantPrincipalsParams struct {
+	ExpiresAt int64
+	Limit     int64
+}
+
+type ListGrantPrincipalsRow struct {
+	Principal string
+	Grants    int64
+	Newest    interface{}
+}
+
+// The dashboard reports each principal's standing. Grants and denials are the
+// only per-caller tables, so this is the whole of what the mirror knows about
+// who has proven what.
+func (q *Queries) ListGrantPrincipals(ctx context.Context, arg ListGrantPrincipalsParams) ([]ListGrantPrincipalsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGrantPrincipals, arg.ExpiresAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGrantPrincipalsRow
+	for rows.Next() {
+		var i ListGrantPrincipalsRow
+		if err := rows.Scan(&i.Principal, &i.Grants, &i.Newest); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGrantsByPrincipal = `-- name: ListGrantsByPrincipal :many
+SELECT resource, key, source, expires_at FROM mirror_grant
+WHERE principal = ? AND expires_at > ? ORDER BY resource, key LIMIT ?
+`
+
+type ListGrantsByPrincipalParams struct {
+	Principal string
+	ExpiresAt int64
+	Limit     int64
+}
+
+type ListGrantsByPrincipalRow struct {
+	Resource  string
+	Key       string
+	Source    string
+	ExpiresAt int64
+}
+
+func (q *Queries) ListGrantsByPrincipal(ctx context.Context, arg ListGrantsByPrincipalParams) ([]ListGrantsByPrincipalRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGrantsByPrincipal, arg.Principal, arg.ExpiresAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGrantsByPrincipalRow
+	for rows.Next() {
+		var i ListGrantsByPrincipalRow
+		if err := rows.Scan(
+			&i.Resource,
+			&i.Key,
+			&i.Source,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const pruneDenials = `-- name: PruneDenials :execrows

@@ -44,6 +44,11 @@ type Ingest struct {
 	now    func() time.Time
 	// lastPrune stamps the last watermark sweep, as a Unix second.
 	lastPrune atomic.Int64
+	// tel puts every delivery on the chart. Nil-safe by construction, so a test
+	// building an Ingest directly is not forced to wire telemetry.
+	tel      *Telemetry
+	notifier *Notifier
+	stats    deliveryStats
 }
 
 // NewIngest builds the ingest endpoint a spec declares. vars is the spec's
@@ -72,7 +77,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 	for _, ev := range spec.Events.List {
 		i.byType[ev.Type] = ev
 	}
-	i.reorder = NewReorderer(i.window, i.apply)
+	i.reorder = NewReorderer(i.window, i.applyAndNotify)
 	return i, nil
 }
 
@@ -92,7 +97,7 @@ func (i *Ingest) Drain(timeout time.Duration) bool { return i.reorder.Drain(time
 //
 // Every branch fails closed. A delivery whose authenticity the mirror cannot
 // establish is refused, never treated as harmless.
-func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -121,7 +126,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ev, ok := i.byType[typ]
 	if !ok {
 		// A type the spec does not model is a real answer, not a failure. A 4xx
-		i.answer(w, DispIgnored)
+		i.answer(w, DeliveryIgnored)
 		return
 	}
 	payload, err := decodeJSON(raw)
@@ -132,7 +137,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	subject, at, err := orderOf(ev, payload)
 	if err != nil {
 		logf("delivery %s: %v", typ, err)
-		i.answer(w, DispError)
+		i.answer(w, DeliveryFailed)
 		return
 	}
 	d := &Delivery{
@@ -154,7 +159,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// With no window there is nothing to wait for, so the answer carries the
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), deliverTimeout)
 	defer cancel()
-	disp, err := i.apply(ctx, d)
+	disp, err := i.applyAndNotify(ctx, d)
 	if err != nil {
 		logf("delivery %s (%s): %v", d.ID, d.Type, err)
 	}
@@ -162,7 +167,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // answer reports a disposition to the provider.
-func (i *Ingest) answer(w http.ResponseWriter, d Disposition) {
+func (i *Ingest) answer(w http.ResponseWriter, d DeliveryDisposition) {
 	i.reply(w, deliveryStatus(d), string(d))
 }
 
@@ -176,11 +181,11 @@ func (i *Ingest) reply(w http.ResponseWriter, status int, body string) {
 // deliveryStatus maps a disposition to the status the provider records.
 //
 // Every non-error is 2xx, so a healthy hook stays enabled. The 200/202 split
-func deliveryStatus(d Disposition) int {
+func deliveryStatus(d DeliveryDisposition) int {
 	switch d {
-	case DispApplied:
+	case DeliveryApplied:
 		return http.StatusOK
-	case DispError:
+	case DeliveryFailed:
 		return http.StatusInternalServerError
 	default:
 		return http.StatusAccepted
@@ -213,38 +218,38 @@ func deliveryID(body []byte) string {
 
 // apply writes one delivery to the store. It is the whole ingest contract:
 // order first, then write only the fields the event names.
-func (i *Ingest) apply(ctx context.Context, d *Delivery) (Disposition, error) {
+func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, error) {
 	ev := d.Event
 	res, ok := i.store.Resource(ev.Resource)
 	if !ok {
-		return DispError, fmt.Errorf("event %q names unknown resource %q", ev.Type, ev.Resource)
+		return DeliveryFailed, fmt.Errorf("event %q names unknown resource %q", ev.Type, ev.Resource)
 	}
 	key, err := ingestKey(res, d.Payload)
 	if err != nil {
-		return DispError, fmt.Errorf("event %q: %w", ev.Type, err)
+		return DeliveryFailed, fmt.Errorf("event %q: %w", ev.Type, err)
 	}
 
 	superseded := i.order(ctx, d)
 	if superseded && !ev.AbsorbWhenSuperseded {
-		return DispSuperseded, nil
+		return DeliverySuperseded, nil
 	}
 
 	if ev.Invalidate != nil {
 		if _, err := i.store.Delete(ctx, res, key); err != nil {
-			return DispError, err
+			return DeliveryFailed, err
 		}
 		i.prune(ctx)
-		return DispInvalidated, nil
+		return DeliveryInvalidated, nil
 	}
 	if err := i.merge(ctx, res, ev, key, d.Payload); err != nil {
-		return DispError, err
+		return DeliveryFailed, err
 	}
 	i.prune(ctx)
 	if superseded {
 		// The fields still landed, because the event declares them immutable.
-		return DispSuperseded, nil
+		return DeliverySuperseded, nil
 	}
-	return DispApplied, nil
+	return DeliveryApplied, nil
 }
 
 // order asks the watermark whether this view postdates what is already applied,

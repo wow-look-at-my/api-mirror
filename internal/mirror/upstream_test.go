@@ -52,9 +52,28 @@ func newUpstreamer(t *testing.T, h http.HandlerFunc) (*Upstreamer, *httptest.Ser
 
 	var seen []Exchange
 	up, err := NewUpstreamer(upstreamSpec(srv.URL), callVars,
-		func(e Exchange) { seen = append(seen, e) })
+		funcObserver(func(e Exchange) { seen = append(seen, e) }))
 	require.NoError(t, err)
 	return up, srv, &seen
+}
+
+// rateAwareUpstreamer is an upstreamer whose spec names the budget headers.
+// Which header says "wait" and which says "you may not" is the upstream's
+// vocabulary, so telling those apart is a property of a configured upstreamer
+// rather than of a bare answer.
+func rateAwareUpstreamer(t *testing.T) *Upstreamer {
+	t.Helper()
+	spec := &Spec{Name: "up", Upstream: Upstream{
+		Base: "https://api.example.com",
+		Rate: RateHeaders{
+			Limit:     "X-RateLimit-Limit",
+			Remaining: "X-RateLimit-Remaining",
+			Reset:     "X-RateLimit-Reset",
+		},
+	}}
+	up, err := NewUpstreamer(spec, map[string]any{}, nil)
+	require.NoError(t, err)
+	return up
 }
 
 func TestUpstreamCall_SendsStaticHeadersAndTheCallersOwn(t *testing.T) {
@@ -120,7 +139,7 @@ func TestUpstreamCall_TransportFailureIsAnErrorAndIsStillReported(t *testing.T) 
 
 	var seen []Exchange
 	up, err := NewUpstreamer(&Spec{Name: "up", Upstream: Upstream{Base: base}}, map[string]any{},
-		func(e Exchange) { seen = append(seen, e) })
+		funcObserver(func(e Exchange) { seen = append(seen, e) }))
 	require.NoError(t, err)
 
 	answer, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{})
@@ -281,7 +300,7 @@ func TestRateLimited_TellsARefusalToWaitFromARefusalToRead(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, RateLimited(tc.answer),
+			assert.Equal(t, tc.want, rateAwareUpstreamer(t).RateLimited(tc.answer),
 				"%s decides whether a denial is cached; getting it wrong either locks a caller out or forgets a real verdict", tc.name)
 		})
 	}
@@ -309,7 +328,7 @@ func TestTransient_NamesWhatMustNeverBeStored(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, Transient(tc.answer),
+			assert.Equal(t, tc.want, rateAwareUpstreamer(t).Transient(tc.answer),
 				"a transient failure stored is an outage remembered long after it ended")
 		})
 	}

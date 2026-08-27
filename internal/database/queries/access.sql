@@ -38,3 +38,21 @@ DELETE FROM mirror_deny WHERE principal = ? AND resource = ? AND key = ?;
 
 -- name: PruneDenials :execrows
 DELETE FROM mirror_deny WHERE expires_at <= ?;
+
+-- The dashboard reports each principal's standing. Grants and denials are the
+-- only per-caller tables, so this is the whole of what the mirror knows about
+-- who has proven what.
+-- name: ListGrantPrincipals :many
+SELECT principal, COUNT(*) AS grants, MAX(expires_at) AS newest
+FROM mirror_grant WHERE expires_at > ? GROUP BY principal ORDER BY grants DESC LIMIT ?;
+
+-- name: ListGrantsByPrincipal :many
+SELECT resource, key, source, expires_at FROM mirror_grant
+WHERE principal = ? AND expires_at > ? ORDER BY resource, key LIMIT ?;
+
+-- name: ListDenialsByPrincipal :many
+SELECT resource, key, status, expires_at FROM mirror_deny
+WHERE principal = ? AND expires_at > ? ORDER BY resource, key LIMIT ?;
+
+-- name: CountLiveDenials :one
+SELECT COUNT(*) FROM mirror_deny WHERE expires_at > ?;

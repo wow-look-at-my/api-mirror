@@ -133,6 +133,10 @@ func applySchema(ctx context.Context, db *sql.DB, spec *Spec, fingerprint string
 // Close releases the database.
 func (s *Store) Close() error { return s.db.Close() }
 
+// Ping reports whether the database still answers. A liveness check that only
+// proves the process is scheduled reports a mirror with no store as healthy.
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
 // Resource resolves a declared resource by name.
 func (s *Store) Resource(name string) (*Resource, bool) {
 	r, ok := s.byName[name]
