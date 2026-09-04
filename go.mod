@@ -2,8 +2,6 @@ module github.com/wow-look-at-my/api-mirror
 
 go 1.25.0
 
-// Pinned to a concrete commit until api-dsl's own branch merges. Tracking its
-// default branch resolves to a commit that predates the package.
 require github.com/wow-look-at-my/api-dsl v0.0.0-20260823132545-703875e77856 // go-toolchain:auto-branch
 
 require (
