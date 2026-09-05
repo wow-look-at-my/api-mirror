@@ -144,9 +144,7 @@ type ResourceView struct {
 	Reveal    RevealView  `json:"reveal"`
 	Rows      []Row       `json:"rows,omitempty"`
 	Truncated bool        `json:"truncated,omitempty"`
-	// Keyed is where each stored key stands. The overview counts errored keys
-	// per kind, and a count with no way to see WHICH keys errored, and why, is
-	// a number an operator cannot act on.
+	// Keyed is where each stored key stands, so an errored count is actionable.
 	Keyed []KeyState `json:"keyed,omitempty"`
 }
 

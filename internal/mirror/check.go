@@ -29,12 +29,6 @@ type Difference struct {
 }
 
 // KeyCheck is key's verdict, as the page and the NDJSON stream carry it.
-//
-// Every other view here reports what THIS PROCESS has seen: what it fetched,
-// what was delivered, what it answered. None of that shows a fact the mirror
-// never learned was wrong -- a delivery that never arrived leaves a row that is
-// well-formed, recent-looking and stale. Asking the upstream again is the only
-// thing that surfaces.
 type KeyCheck struct {
 	Kind     string       `json:"kind"`
 	Key      string       `json:"key"`
@@ -47,13 +41,8 @@ type KeyCheck struct {
 // checkKeyTimeout stops wedged response holding a whole check open.
 const checkKeyTimeout = 30 * time.Second
 
-// Check re-asks the upstream about every stored key of kind and reports
-// where the cache and the upstream disagree.
-//
-// It uses the mirror's own credential, which is what makes it an operator tool
-// rather than a consumer: a caller's token would answer for that caller,
-// and the question here is whether the SHARED row is right. repair writes the
-// upstream's answer over a row that drifted.
+// Check re-asks the upstream about every stored key of kind and reports where
+// the cache and the upstream disagree, using the mirror's own credential.
 func (e *Engine) Check(ctx context.Context, kind string, repair bool, emit func(KeyCheck)) error {
 	keys, err := e.store.FreshnessByKind(ctx, kind)
 	if err != nil {
@@ -79,9 +68,7 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 		return out
 	}
 	if plan.route.List {
-		// A list key stands for a set, and the upstream's page boundaries are
-		// not the mirror's. Comparing page to key would report drift
-		// wherever pagination differs, which is worse than reporting nothing.
+		// The upstream's page boundaries are not the mirror's.
 		out.Verdict = CheckUnsupported
 		out.Detail = "a list route holds a set under one key; comparing it needs the whole set, not one page"
 		return out

@@ -110,17 +110,11 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
 }
 
-// sessionCookie carries the token for the requests a BROWSER makes on the
-// page's behalf.
+// sessionCookie carries the token for a BROWSER's own subresource fetches.
 const sessionCookie = "mirror_admin"
 
-// keepToken hands the browser back the token the caller just proved.
-//
-// A stylesheet and a module are fetched by the browser, not by the page, so
-// they carry no header and no query string: without this the shell loads, both
-// subresources are refused, and the operator gets an unstyled page that never
-// runs. Strict same-site keeps the cookie off a cross-site request, so it
-// cannot answer for a POST somebody else's page made.
+// keepToken hands the browser back the token the caller just proved. Strict
+// same-site keeps it off a cross-site request.
 func (a *Admin) keepToken(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value == a.token {
 		return

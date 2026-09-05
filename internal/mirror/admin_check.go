@@ -66,8 +66,7 @@ func (a *Admin) streamCheck(w http.ResponseWriter, r *http.Request, kind string,
 	})
 	summary.done(started)
 	if err != nil {
-		// The failure is a line in the stream, not a status code: the header
-		// went out with the key, so there is no code left to change.
+		// The header already went out, so there is no status code left to set.
 		emit(map[string]string{"error": err.Error()})
 		return
 	}

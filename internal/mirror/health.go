@@ -5,10 +5,7 @@ import (
 )
 
 // health answers the declared liveness paths, and reports whether it did.
-//
-// An unrouted path falls through to the proxy rather than 404ing, and a
-// checker reading any non- as "implemented" then calls a healthy container
-// unhealthy forever. Status only, and outside the token: a checker has none.
+// Status only, and outside the token, because a checker carries none.
 func (e *Engine) health(w *recorder, r *http.Request) bool {
 	rule := e.spec.Health
 	if rule == nil {

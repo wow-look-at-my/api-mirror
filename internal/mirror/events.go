@@ -179,7 +179,7 @@ func (i *Ingest) reply(w http.ResponseWriter, status int, body string) {
 
 // deliveryStatus maps a disposition to the status the provider records.
 //
-// Every non-error is 2xx, so a healthy hook stays enabled. The 200/202 split
+// Every non-error is 2xx, so a healthy hook stays enabled.
 func deliveryStatus(d DeliveryDisposition) int {
 	switch d {
 	case DeliveryApplied:

@@ -46,8 +46,7 @@ func TestCheckFindsAFactTheMirrorNeverLearnedWasWrong(t *testing.T) {
 	first := "hi"
 	title.Store(&first)
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Marshalled, never spliced: the title under test carries whatever the
-		// upstream renamed it to.
+		// Marshalled, never spliced.
 		w.Write(deliveryBody(t, map[string]any{"id": "7", "title": *title.Load()}))
 	}))
 	seedWidget(t, e)
@@ -163,8 +162,7 @@ func TestCheckRepairsOnlyOnAPost(t *testing.T) {
 	rec := adminGet(t, e, defaultDashboardPath+"/api/check")
 	assert.Equal(t, http.StatusBadRequest, rec.Code, "a check with no kind has nothing to ask about")
 
-	// apply=true on a GET is still a read: a request that rewrites rows
-	// depending on a query parameter is nobody can run safely.
+	// apply=true on a GET is still a read.
 	seedWidget(t, e)
 	var summary CheckSummary
 	body := adminGet(t, e, defaultDashboardPath+"/api/check?kind=widget&apply=true")

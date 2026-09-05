@@ -10,7 +10,7 @@ package database
 
 import _ "embed"
 
-// Schema is the engine's DDL; a spec appends its derived resource tables to it.
+// Schema is the engine's DDL.
 //
 //go:embed schema.sql
 var Schema string
