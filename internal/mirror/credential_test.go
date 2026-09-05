@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -39,7 +40,9 @@ func TestCredentialResource_OneRowPerCaller(t *testing.T) {
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"login":"` + r.Header.Get("Authorization") + `"}`))
+		body, err := json.Marshal(map[string]string{"login": r.Header.Get("Authorization")})
+		require.NoError(t, err)
+		w.Write(body)
 	}), withCredentialResource(&Route{Method: "GET", Path: "/user", Resource: "identity"}))
 
 	getAs := func(auth string) *httptest.ResponseRecorder {

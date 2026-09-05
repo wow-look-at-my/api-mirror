@@ -2,10 +2,10 @@ package mirror
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/wow-look-at-my/api-mirror/internal/database"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // The engine's own tables. They are the same for every spec, so they carry a
@@ -88,7 +88,7 @@ func columnsOf(r *Resource) []string {
 }
 
 // reservedColumns are the names the engine owns inside a resource table.
-var reservedColumns = []string{"mirror_written_at", "document", "rowid"}
+var reservedColumns = set.Of("mirror_written_at", "document", "rowid")
 
 // validateNames rejects a spec whose names would collide with the engine's own,
 // or with SQL. It runs before any DDL is derived, because a collision surfaces
@@ -105,7 +105,7 @@ func (s *Spec) validateNames() error {
 			if err := validateIdent(fmt.Sprintf("resource %q column", r.Name), c); err != nil {
 				return err
 			}
-			if slices.Contains(reservedColumns, c) && !(c == "document" && r.Store == StoreDocument) {
+			if reservedColumns.Contains(c) && !(c == "document" && r.Store == StoreDocument) {
 				return fmt.Errorf("resource %q: column %q is the engine's", r.Name, c)
 			}
 		}
@@ -130,7 +130,7 @@ func validateIdent(what, name string) error {
 			return fmt.Errorf("%s %q: only lower-case letters, digits and underscore are allowed", what, name)
 		}
 	}
-	if slices.Contains(sqlKeywords, name) {
+	if sqlKeywords.Contains(name) {
 		return fmt.Errorf("%s %q: that is a SQL keyword", what, name)
 	}
 	return nil
@@ -139,11 +139,11 @@ func validateIdent(what, name string) error {
 // sqlKeywords is the subset a field name plausibly collides with. It is not
 // SQLite's full list: a name outside this set and inside validateIdent's shape
 // parses unquoted.
-var sqlKeywords = []string{
+var sqlKeywords = set.Of(
 	"index", "table", "select", "from", "where",
 	"order", "group", "primary", "key", "default",
 	"unique", "check", "references", "constraint",
 	"create", "drop", "insert", "update", "delete",
 	"values", "join", "on", "as", "null",
 	"not", "and", "or", "in", "is",
-}
+)

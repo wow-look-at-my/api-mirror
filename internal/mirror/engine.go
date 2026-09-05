@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // Engine serves a spec: it answers declared routes from the store, forwards
@@ -28,7 +30,7 @@ type Engine struct {
 	notify   *Notifier
 	replay   *Replayer
 	debounce *Debouncer
-	vocab    []string
+	vocab    set.Set[string]
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.

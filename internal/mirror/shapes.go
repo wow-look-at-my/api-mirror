@@ -2,10 +2,11 @@ package mirror
 
 import (
 	"html/template"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // Shapes: turning "this request left" into "this family of requests is still
@@ -29,13 +30,13 @@ func generalize(path string) string {
 // A declared word stays. So do the and last segments unless they look
 // like identities -- losing the last names nothing to model. The rest are
 // identities, which is a guess, so a brief item carries real sample paths.
-func generalizeWith(vocab []string, path string) string {
-	if len(vocab) == 0 {
+func generalizeWith(vocab set.Set[string], path string) string {
+	if vocab.Len() == 0 {
 		return generalize(path)
 	}
 	segs := strings.Split(strings.Trim(path, "/"), "/")
 	for i, s := range segs {
-		if slices.Contains(vocab, strings.ToLower(s)) {
+		if vocab.Contains(strings.ToLower(s)) {
 			continue
 		}
 		if looksLikeIdentity(s) {
@@ -51,16 +52,14 @@ func generalizeWith(vocab []string, path string) string {
 }
 
 // pathVocabulary collects every literal path segment the spec declares.
-func pathVocabulary(spec *Spec) []string {
-	var vocab []string
+func pathVocabulary(spec *Spec) set.Set[string] {
+	vocab := set.New[string]()
 	add := func(pattern string) {
 		for _, s := range strings.Split(strings.Trim(pattern, "/"), "/") {
 			if s == "" || (strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}")) {
 				continue
 			}
-			if word := strings.ToLower(s); !slices.Contains(vocab, word) {
-				vocab = append(vocab, word)
-			}
+			vocab.Add(strings.ToLower(s))
 		}
 	}
 	for _, rt := range spec.Routes {
