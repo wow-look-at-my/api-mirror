@@ -7,7 +7,7 @@ import (
 // health answers the declared liveness paths, and reports whether it did.
 //
 // An unrouted path falls through to the proxy rather than 404ing, and a
-// checker reading any non-404 as "implemented" then calls a healthy container
+// checker reading any non- as "implemented" then calls a healthy container
 // unhealthy forever. Status only, and outside the token: a checker has none.
 func (e *Engine) health(w *recorder, r *http.Request) bool {
 	rule := e.spec.Health
@@ -29,7 +29,7 @@ func (e *Engine) health(w *recorder, r *http.Request) bool {
 // answerLive reports whether this process can still do its job.
 //
 // It pings the database rather than answering unconditionally. A process whose
-// store has gone away still accepts connections and still answers 200 to a
+// store has gone away still accepts connections and still answers to a
 // handler that only proves the goroutine is scheduled.
 func (e *Engine) answerLive(w *recorder, r *http.Request) {
 	w.note(DispAdmin, "health", "", "live")

@@ -118,7 +118,7 @@ func TestRateMeter_DropsAnIdentityThatStoppedCalling(t *testing.T) {
 
 func TestTimeline_ReportsWhatItDroppedRatherThanLosingItQuietly(t *testing.T) {
 	tl := NewTimeline()
-	// Shrink the ring: eviction is otherwise 100,000 requests away.
+	// Shrink the ring: eviction is otherwise, requests away.
 	tl.frames = make([]Frame, 2)
 
 	for i := range 5 {

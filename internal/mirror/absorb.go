@@ -139,7 +139,7 @@ func toInt(v any) (any, error) {
 }
 
 // toUnix reads a time as a Unix. Both encodings an API plausibly uses
-// are accepted -- an RFC 3339 string and a numeric epoch -- because upstream
+// are accepted -- an RFC string and a numeric epoch -- because upstream
 // uses both, sometimes for the same field, and a reader that handles only
 // silently loses every value in the other shape.
 func toUnix(v any) (any, error) {

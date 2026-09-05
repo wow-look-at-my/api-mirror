@@ -109,7 +109,7 @@ func (r *Replayer) Stop() {
 // cycle reads the failure log and asks for what is still missing.
 //
 // A lost delivery is the quietest failure a mirror has. The provider sends
-// , nothing retries, and every cache that delivery would have moved serves
+//, nothing retries, and every cache that delivery would have moved serves
 // its last answer for the whole TTL -- well-formed, recent-looking and wrong.
 // A shorter TTL shrinks that window and hides it; it does not close it.
 func (r *Replayer) cycle() {
@@ -145,7 +145,7 @@ func (r *Replayer) cycle() {
 	cutoff := time.Now().Add(-r.lookback())
 	for _, item := range items {
 		if sent >= r.max() {
-			// Stated, never silent: a quiet stop at 25 reads as a find of 25.
+			// Stated, never silent: a quiet stop at reads as a find of.
 			logf("replay: stopped at the %d-per-cycle cap with %d still listed", r.max(), len(items)-found)
 			break
 		}

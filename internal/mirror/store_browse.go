@@ -204,7 +204,7 @@ func (s *Store) Rows(ctx context.Context, res *Resource, limit int) ([]Row, bool
 		return nil, false, err
 	}
 	if len(rows) > limit {
-		// Reported, never silent: 500 quiet rows of 40,000 read as all of them.
+		// Reported, never silent: quiet rows of, read as all of them.
 		return rows[:limit], true, nil
 	}
 	return rows, false, nil

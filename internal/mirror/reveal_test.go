@@ -99,7 +99,7 @@ func (f *fixture) allow(t *testing.T, principal string, key map[string]string) (
 
 // grantRows counts the stored grant rows for a key, expired ones included.
 // HasGrant filters on expiry, so it cannot tell a revoked grant from a lapsed
-// , and the revoke rules are exactly about that difference.
+//, and the revoke rules are exactly about that difference.
 func (f *fixture) grantRows(t *testing.T, principal, key string) int {
 	t.Helper()
 	var n int
@@ -238,7 +238,7 @@ func TestProbeForwardsCallerCredential(t *testing.T) {
 	assert.Equal(t, "Bearer caller-token", f.auth.Load())
 }
 
-// A 404 cannot be told apart from a missing thing inside something the caller
+// A cannot be told apart from a missing thing inside something the caller
 // CAN see, so it is remembered and it revokes nothing.
 func TestProbe404DeniesWithoutRevoking(t *testing.T) {
 	f := newFixture(t, respondWith(http.StatusNotFound))
@@ -262,7 +262,7 @@ func TestProbe404DeniesWithoutRevoking(t *testing.T) {
 	assert.Equal(t, 1, f.grantRows(t, "user:1", k), "a 404 must not revoke")
 }
 
-// A 403 is the upstream stating this caller may not read this, so the proof it
+// A is the upstream stating this caller may not read this, so the proof it
 // contradicts has to go.
 func TestProbe403DeniesAndRevokes(t *testing.T) {
 	f := newFixture(t, respondWith(http.StatusForbidden))
@@ -284,7 +284,7 @@ func TestProbe403DeniesAndRevokes(t *testing.T) {
 	assert.Zero(t, f.grantRows(t, "user:1", k), "a 403 must revoke the proof it contradicts")
 }
 
-// A rate-limited refusal wears a 403 and means the opposite of. Caching it
+// A rate-limited refusal wears a and means the opposite of. Caching it
 // would lock a caller out of their own data for the whole deny window.
 func TestRateLimited403CachesNothing(t *testing.T) {
 	f := newFixture(t, func(w http.ResponseWriter, _ *http.Request) {

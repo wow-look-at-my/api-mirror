@@ -158,7 +158,7 @@ func TestRequestLogSeesTheAdminSurfaceToo(t *testing.T) {
 }
 
 func TestBriefTurnsAPassthroughIntoSomethingToDo(t *testing.T) {
-	// 404 is fine: a passthrough is tallied by what it WAS, not what came back.
+	// is fine: a passthrough is tallied by what it WAS, not what came back.
 	e, _ := newTestEngine(t, http.NotFoundHandler())
 
 	get(t, e, "/widgets/7/releases")
@@ -284,7 +284,7 @@ func TestHealthAnswersOutsideTheDashboardToken(t *testing.T) {
 		s.Health = &Health{Live: "/.well-known/live", PreUpdate: "/.well-known/pre-update"}
 	})
 	// A checker has no credential to give, and an unregistered path here does
-	// not 404 -- it falls through to the proxy and answers whatever the upstream
+	// not -- it falls through to the proxy and answers whatever the upstream
 	// says about it.
 	for _, path := range []string{"/.well-known/live", "/.well-known/pre-update"} {
 		rec := httptest.NewRecorder()

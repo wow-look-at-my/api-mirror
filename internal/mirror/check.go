@@ -230,7 +230,7 @@ func displayValue(v any) string {
 	}
 }
 
-// CheckSummary tallies run, so a page can say "12 keys, 2 drifted" without
+// CheckSummary tallies run, so a page can say " keys, drifted" without
 // the reader counting rows.
 type CheckSummary struct {
 	Kind     string               `json:"kind"`

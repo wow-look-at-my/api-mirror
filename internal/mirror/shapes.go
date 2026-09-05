@@ -113,7 +113,7 @@ type BriefItem struct {
 
 // Brief reports what is still leaving, worst, with a sketch for each.
 // This is why a passthrough reason is named: "some traffic is uncached" is a
-// mood, "this shape left 412 times, here is the route" is a task.
+// mood, "this shape left times, here is the route" is a task.
 func (e *Engine) Brief() []BriefItem {
 	groups := e.tel.Requests.Groups()
 	out := make([]BriefItem, 0, len(groups))

@@ -173,7 +173,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 		return Verdict{Allowed: true}, nil
 
 	case rv.up.Transient(ans):
-		// Checked before the authoritative case on purpose: a rate-limited 403
+		// Checked before the authoritative case on purpose: a rate-limited
 		// wears the same status as a real refusal and means the opposite.
 		return refuse(http.StatusBadGateway),
 			fmt.Errorf("reveal probe %s: upstream answered %d, which states nothing about access", res.Name, ans.Status)
@@ -188,10 +188,10 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 	}
 }
 
-// remember caches authoritative refusal, and on a 403 drops the proof it
+// remember caches authoritative refusal, and on a drops the proof it
 // contradicts.
 //
-// A 403 is the upstream stating that this caller may not read this. A 404 is
+// A is the upstream stating that this caller may not read this. A is
 // not: it cannot be told apart from a missing thing inside something the caller
 // CAN see, so it never revokes.
 //

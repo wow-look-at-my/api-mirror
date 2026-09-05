@@ -106,7 +106,7 @@ func (l *RequestLog) Record(r Request) {
 	l.entries[(l.head+l.size)%len(l.entries)] = r
 	l.size++
 
-	// Tallies outlive the ring: the question is the whole run, not the last 2000.
+	// Tallies outlive the ring: the question is the whole run, not the last.
 	key := r.Method + " " + r.Shape
 	g, ok := l.groups[key]
 	if !ok {
