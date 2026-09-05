@@ -9,7 +9,7 @@ import (
 //
 // GET reports; POST with apply=true repairs. The split is the point: a read
 // that could rewrite rows depending on a query parameter is a read nobody can
-// run without reading the code first.
+// run without reading the code.
 
 func (a *Admin) check(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
@@ -35,11 +35,11 @@ func (a *Admin) check(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, summary)
 }
 
-// streamCheck writes one JSON object per key as it is decided.
+// streamCheck writes JSON object per key as it is decided.
 //
-// A check asks the upstream once per stored key, so a large kind takes minutes.
+// A check asks the upstream per stored key, so a large kind takes minutes.
 // Buffering it means an operator watches a spinner and cannot tell a slow check
-// from a wedged one; each line is flushed as it is decided.
+// from a wedged; each line is flushed as it is decided.
 func (a *Admin) streamCheck(w http.ResponseWriter, r *http.Request, kind string, repair bool) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Cache-Control", "no-store")
@@ -67,7 +67,7 @@ func (a *Admin) streamCheck(w http.ResponseWriter, r *http.Request, kind string,
 	summary.done(started)
 	if err != nil {
 		// The failure is a line in the stream, not a status code: the header
-		// went out with the first key, so there is no code left to change.
+		// went out with the key, so there is no code left to change.
 		emit(map[string]string{"error": err.Error()})
 		return
 	}

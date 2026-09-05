@@ -31,7 +31,7 @@ type Notification struct {
 	At          time.Time           `json:"at"`
 }
 
-// Notifier fans one applied delivery out to every matching subscription, so a
+// Notifier fans applied delivery out to every matching subscription, so a
 // consumer stops racing this mirror's ingestion with its own webhooks.
 type Notifier struct {
 	spec   *Spec
@@ -93,16 +93,16 @@ func (n *Notifier) Close() error {
 	return n.subs.Close()
 }
 
-// Fan sends one notification to every live subscription that wants this event.
+// Fan sends notification to every live subscription that wants this event.
 //
 // A consumer who also receives the upstream's webhooks otherwise races the
-// mirror's ingestion: the delivery reaches them first, they read the mirror,
+// mirror's ingestion: the delivery reaches them, they read the mirror,
 // and they get the state that delivery was about to replace. Telling them
 // AFTER the write lands removes the race instead of narrowing it.
 //
 // Delivery is detached from the request that triggered it: the provider is
 // waiting on the ingest response, and making them wait on a subscriber's own
-// slow endpoint turns one consumer's outage into a lost delivery for everyone.
+// slow endpoint turns consumer's outage into a lost delivery for everyone.
 func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDisposition) {
 	if n == nil {
 		return
@@ -124,7 +124,7 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 		Disposition: disp,
 		At:          time.Now().UTC(),
 	}
-	// Marshalled, never assembled: one quote in a subject reshapes a splice.
+	// Marshalled, never assembled: quote in a subject reshapes a splice.
 	body, err := marshalJSON(note)
 	if err != nil {
 		logf("notify: render notification: %v", err)
@@ -142,7 +142,7 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 }
 
 // Drain waits for notifications already in flight, so a shutdown does not drop
-// one that has been promised.
+// that has been promised.
 func (n *Notifier) Drain(timeout time.Duration) bool {
 	if n == nil {
 		return true
@@ -160,11 +160,11 @@ func (n *Notifier) Drain(timeout time.Duration) bool {
 	}
 }
 
-// deliver posts one notification, retrying a failure at a fixed cadence.
+// deliver posts notification, retrying a failure at a fixed cadence.
 //
 // The cadence is fixed rather than backing off. A subscriber that is down comes
 // back at a moment nothing here can predict, and a growing delay means the
-// first notification after they return is the one that waited longest.
+// notification after they return is the that waited longest.
 func (n *Notifier) deliver(ctx context.Context, s Subscription, body []byte) {
 	retries := n.rule.Retries
 	if retries <= 0 {
@@ -230,7 +230,7 @@ func (n *Notifier) recordSent(ctx context.Context, s Subscription) {
 //
 // Parking is loud, not quiet: the subscription stays in the store, marked
 // disabled with the reason, so an operator sees a consumer that stopped being
-// told rather than one that silently never was.
+// told rather than that silently never was.
 func (n *Notifier) recordFailure(ctx context.Context, s Subscription, cause error) {
 	limit := n.rule.DisableAfter
 	if limit <= 0 {

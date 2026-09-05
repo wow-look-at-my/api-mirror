@@ -14,7 +14,7 @@ import (
 // browseLimit stops a page killing the server by being opened.
 const browseLimit = 500
 
-// StaleKey is one key the sweep may bring up to date.
+// StaleKey is key the sweep may bring up to date.
 type StaleKey struct {
 	Key       string
 	ETag      string
@@ -22,7 +22,7 @@ type StaleKey struct {
 	ExpiresAt time.Time
 }
 
-// StaleKeys lists the keys of one kind that have aged out, oldest first.
+// StaleKeys lists the keys of kind that have aged out, oldest.
 func (s *Store) StaleKeys(ctx context.Context, kind string, now time.Time) ([]StaleKey, error) {
 	rows, err := s.q.ListStaleKeys(ctx, dbgen.ListStaleKeysParams{
 		Kind:      kind,
@@ -44,7 +44,7 @@ func (s *Store) StaleKeys(ctx context.Context, kind string, now time.Time) ([]St
 	return out, nil
 }
 
-// KindStat is what one kind holds.
+// KindStat is what kind holds.
 type KindStat struct {
 	Kind    string    `json:"kind"`
 	Rows    int64     `json:"rows"`
@@ -72,7 +72,7 @@ func (s *Store) KindStats(ctx context.Context) ([]KindStat, error) {
 	return out, nil
 }
 
-// FreshnessByKind lists one kind's keys and where each stands.
+// FreshnessByKind lists kind's keys and where each stands.
 func (s *Store) FreshnessByKind(ctx context.Context, kind string) ([]Freshness, error) {
 	rows, err := s.q.ListFreshnessByKind(ctx, dbgen.ListFreshnessByKindParams{Kind: kind, Limit: browseLimit})
 	if err != nil {
@@ -96,14 +96,14 @@ func (s *Store) FreshnessByKind(ctx context.Context, kind string) ([]Freshness, 
 	return out, nil
 }
 
-// PrincipalStanding is one caller and how much they have proven.
+// PrincipalStanding is caller and how much they have proven.
 type PrincipalStanding struct {
 	Principal string    `json:"principal"`
 	Grants    int64     `json:"grants"`
 	Newest    time.Time `json:"newest,omitempty"`
 }
 
-// Principals lists who currently holds proof, most proven first.
+// Principals lists who currently holds proof, most proven.
 func (s *Store) Principals(ctx context.Context, now time.Time) ([]PrincipalStanding, error) {
 	rows, err := s.q.ListGrantPrincipals(ctx, dbgen.ListGrantPrincipalsParams{
 		ExpiresAt: now.Unix(),
@@ -123,7 +123,7 @@ func (s *Store) Principals(ctx context.Context, now time.Time) ([]PrincipalStand
 	return out, nil
 }
 
-// Standing is one principal's whole reveal-layer position: what they have
+// Standing is principal's whole reveal-layer position: what they have
 // proven and what they have been refused.
 type Standing struct {
 	Principal string       `json:"principal"`
@@ -131,7 +131,7 @@ type Standing struct {
 	Denials   []DenyEntry  `json:"denials"`
 }
 
-// GrantEntry is one proven access.
+// GrantEntry is proven access.
 type GrantEntry struct {
 	Resource  string    `json:"resource"`
 	Key       string    `json:"key"`
@@ -139,7 +139,7 @@ type GrantEntry struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// DenyEntry is one remembered refusal.
+// DenyEntry is remembered refusal.
 type DenyEntry struct {
 	Resource  string    `json:"resource"`
 	Key       string    `json:"key"`
@@ -147,7 +147,7 @@ type DenyEntry struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// StandingOf reports one principal's grants and denials.
+// StandingOf reports principal's grants and denials.
 func (s *Store) StandingOf(ctx context.Context, principal string, now time.Time) (Standing, error) {
 	out := Standing{Principal: principal, Grants: []GrantEntry{}, Denials: []DenyEntry{}}
 	grants, err := s.q.ListGrantsByPrincipal(ctx, dbgen.ListGrantsByPrincipalParams{
@@ -190,10 +190,10 @@ func (s *Store) CountDenials(ctx context.Context, now time.Time) (int64, error) 
 	return n, nil
 }
 
-// Rows reads one resource's stored rows for the truth browser.
+// Rows reads resource's stored rows for the truth browser.
 //
-// The cap is applied here rather than in SQL because List is the one read path
-// a resource table has, and a second one would be a second set of rules about
+// The cap is applied here rather than in SQL because List is the read path
+// a resource table has, and a would be a set of rules about
 // what a row means.
 func (s *Store) Rows(ctx context.Context, res *Resource, limit int) ([]Row, bool, error) {
 	if limit <= 0 || limit > browseLimit {

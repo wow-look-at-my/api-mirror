@@ -17,7 +17,7 @@ import (
 
 // The background half: the sweep that keeps keys warm, the replayer that asks
 // for lost deliveries back, the fan-out that tells subscribers, and the window
-// that stops ten identical unmodelled questions costing ten answers.
+// that stops identical unmodelled questions costing answers.
 
 func TestRefreshSweepsAKeyNobodyIsReading(t *testing.T) {
 	var calls atomic.Int32
@@ -76,7 +76,7 @@ func TestRefreshStatsSayWhenTheSweepIsFailing(t *testing.T) {
 	assert.True(t, stats.Enabled)
 }
 
-// expire ages one key's freshness row out, so the sweep has something to do.
+// expire ages key's freshness row out, so the sweep has something to do.
 func expire(t *testing.T, e *Engine, kind, key string) {
 	t.Helper()
 	_, err := e.store.db.Exec(
@@ -116,7 +116,7 @@ func TestReplayAsksForEachLostDeliveryOnce(t *testing.T) {
 	require.Len(t, asked, 2)
 	assert.Contains(t, asked, "/app/hook/deliveries/101/attempts")
 
-	// A second cycle asks for nothing: twice makes recovery a duplicate source.
+	// A cycle asks for nothing: makes recovery a duplicate source.
 	e.replay.cycle()
 	assert.Len(t, asked, 2, "once per delivery, not once per cycle")
 

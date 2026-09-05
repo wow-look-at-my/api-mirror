@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// goodSpec is the smallest spec the engine will serve: one keyed resource with
-// columns and a reveal rule, one route that can key it.
+// goodSpec is the smallest spec the engine will serve: keyed resource with
+// columns and a reveal rule, route that can key it.
 func goodSpec() *Spec {
 	return &Spec{
 		Name:     "example",
@@ -427,7 +427,7 @@ func TestValidateRejectsAnAcceptThatIsNotAMediaType(t *testing.T) {
 }
 
 // A transient failure stored is an outage remembered long after it ended, so the
-// spec is not allowed to declare one authoritative.
+// spec is not allowed to declare authoritative.
 func TestValidateRejectsAbsorbingATransientStatus(t *testing.T) {
 	for _, code := range []int{429, 500, 503} {
 		s := goodSpec()

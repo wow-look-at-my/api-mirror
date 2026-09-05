@@ -18,7 +18,7 @@ type Telemetry struct {
 	upBytes int
 }
 
-// LaneTally is the running cost of one lane of traffic.
+// LaneTally is the running cost of lane of traffic.
 type LaneTally struct {
 	Lane       Lane          `json:"lane"`
 	Count      int           `json:"count"`
@@ -41,7 +41,7 @@ func NewTelemetry(rate RateHeaders) *Telemetry {
 	}
 }
 
-// Observe records one outbound exchange everywhere it belongs.
+// Observe records outbound exchange everywhere it belongs.
 func (t *Telemetry) Observe(e Exchange) {
 	if t == nil {
 		return
@@ -73,7 +73,7 @@ func (t *Telemetry) ObserveHeaders(principal string, h http.Header) {
 	t.Rates.Observe(principal, h)
 }
 
-// Lanes reports the per-lane cost, busiest first.
+// Lanes reports the per-lane cost, busiest.
 func (t *Telemetry) Lanes() []LaneTally {
 	if t == nil {
 		return nil

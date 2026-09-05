@@ -24,7 +24,7 @@ var shippedSpecs = []string{
 }
 
 // withArgs gives Run its own command line and puts the process's back. Run
-// parses the global flag set, so two tests in one binary would otherwise
+// parses the global flag set, so tests in binary would otherwise
 // redefine the same flags and panic.
 func withArgs(t *testing.T, args ...string) {
 	t.Helper()
@@ -201,7 +201,7 @@ func TestRun_ReportsASpecItCannotLoad(t *testing.T) {
 		"a spec that parses but means nothing servable is refused at start, where the author can see it")
 }
 
-// A listen address already in use is the one start-up failure a test can force
+// A listen address already in use is the start-up failure a test can force
 // without a signal. It drives everything before the socket -- the store, the
 // engine, the ingest -- and then proves the failure is returned rather than
 // logged and forgotten.
@@ -228,7 +228,7 @@ func TestRun_ReturnsAListenFailureAfterWiringEverything(t *testing.T) {
 }
 
 func TestRun_ReportsAStoreItCannotOpen(t *testing.T) {
-	// The listen address is one already in use, so this test cannot hang
+	// The listen address is already in use, so this test cannot hang
 	held, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { held.Close() })
@@ -249,7 +249,7 @@ func TestRun_ReportsAStoreItCannotOpen(t *testing.T) {
 		"the store is opened before the socket, so this is the store's failure that surfaced")
 }
 
-// A shipped spec is a runnable file, not only a loadable one. Building an engine
+// A shipped spec is a runnable file, not only a loadable. Building an engine
 // and an ingest from it is what proves the vars, the upstream and the webhook
 // secret a reader copies actually resolve at start.
 func TestShippedSpecsBuildAnEngine(t *testing.T) {

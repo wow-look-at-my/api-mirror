@@ -14,7 +14,7 @@ type Lane string
 
 const (
 	LaneFetch       Lane = "fetch"       // a cached route bringing its own key up to date
-	LaneProbe       Lane = "probe"       // the reveal layer proving one caller's access
+	LaneProbe       Lane = "probe"       // the reveal layer proving caller's access
 	LaneRefresh     Lane = "refresh"     // the periodic background sweep
 	LanePassthrough Lane = "passthrough" // a request the spec does not model, forwarded
 	LaneReplay      Lane = "replay"      // asking the upstream to re-send a lost delivery
@@ -22,7 +22,7 @@ const (
 	LaneNotify      Lane = "notify"      // an outbound subscriber notification
 )
 
-// Exchange is one completed request, inbound or outbound, as reported to the
+// Exchange is completed request, inbound or outbound, as reported to the
 // telemetry sink. Everything the mirror exchanges lands here: a request nobody
 // can see is a request nobody can account for.
 type Exchange struct {
@@ -41,7 +41,7 @@ type Exchange struct {
 	Err    error
 }
 
-// laneKey carries a lane into the transport, the one place that sees every request.
+// laneKey carries a lane into the transport, the place that sees every request.
 type laneKey struct{}
 
 type laneTag struct {
@@ -79,7 +79,7 @@ type observeTransport struct {
 	timeNow func() time.Time
 }
 
-// observedClient derives a reporting client from one that is not, keeping the
+// observedClient derives a reporting client from that is not, keeping the
 // original's deadline. Observation lives in the TRANSPORT rather than at the
 // call sites, because call sites only ever cover the calls somebody remembered
 // to instrument. A client built here cannot make an invisible request.
@@ -135,7 +135,7 @@ func (t *observeTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	// Read now: by the time the body is done the window may have rolled over.
 	t.obs.ObserveHeaders(tag.principal, resp.Header)
 
-	// Reported once the body is done: a count taken before the read is zero.
+	// Reported the body is done: a count taken before the read is.
 	resp.Body = &reportingBody{
 		ReadCloser: resp.Body,
 		emit: func(n int) {
@@ -148,7 +148,7 @@ func (t *observeTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	return resp, nil
 }
 
-// reportingBody reports once, on Close: the one call no consumer skips.
+// reportingBody reports, on Close: the call no consumer skips.
 type reportingBody struct {
 	io.ReadCloser
 	emit func(n int)

@@ -20,7 +20,7 @@ const (
 	PassNoIdentity PassReason = "unverified-identity"
 )
 
-// match is one request resolved against a route.
+// match is request resolved against a route.
 type match struct {
 	route *Route
 	// key is the resource key this request addresses, path parameters and

@@ -12,14 +12,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store is the derived SQLite database: the engine's own tables plus one table
+// Store is the derived SQLite database: the engine's own tables plus table
 // per declared resource.
 type Store struct {
 	db   *sql.DB
 	path string
 	q    *dbgen.Queries
 	spec *Spec
-	// byName resolves a resource once, so no hot path does a linear scan.
+	// byName resolves a resource, so no hot path does a linear scan.
 	byName map[string]*Resource
 }
 
@@ -143,7 +143,7 @@ func (s *Store) Resource(name string) (*Resource, bool) {
 	return r, ok
 }
 
-// Meta reads one engine setting. A missing key reads as "".
+// Meta reads engine setting. A missing key reads as "".
 func (s *Store) Meta(ctx context.Context, key string) (string, error) {
 	v, err := s.q.GetMeta(ctx, key)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -155,7 +155,7 @@ func (s *Store) Meta(ctx context.Context, key string) (string, error) {
 	return v, nil
 }
 
-// SetMeta writes one engine setting.
+// SetMeta writes engine setting.
 func (s *Store) SetMeta(ctx context.Context, key, value string) error {
 	if err := s.q.SetMeta(ctx, dbgen.SetMetaParams{Key: key, Value: value}); err != nil {
 		return fmt.Errorf("write meta %q: %w", key, err)
@@ -163,7 +163,7 @@ func (s *Store) SetMeta(ctx context.Context, key, value string) error {
 	return nil
 }
 
-// tx runs fn inside one transaction, so a multi-statement change either lands
+// tx runs fn inside transaction, so a multi-statement change either lands
 // whole or not at all.
 func (s *Store) tx(ctx context.Context, fn func(*dbgen.Queries) error) error {
 	t, err := s.db.BeginTx(ctx, nil)
@@ -177,7 +177,7 @@ func (s *Store) tx(ctx context.Context, fn func(*dbgen.Queries) error) error {
 	return t.Commit()
 }
 
-// Freshness is the fetch bookkeeping for one resource key. A zero time means
+// Freshness is the fetch bookkeeping for resource key. A time means
 // that moment never happened.
 type Freshness struct {
 	Kind       string
@@ -193,7 +193,7 @@ type Freshness struct {
 	Status int
 }
 
-// Freshness reads one key's bookkeeping. A key never fetched is (nil, nil):
+// Freshness reads key's bookkeeping. A key never fetched is (nil, nil):
 // absent is an answer here, not an error.
 func (s *Store) Freshness(ctx context.Context, kind, key string) (*Freshness, error) {
 	row, err := s.q.GetFreshness(ctx, dbgen.GetFreshnessParams{Kind: kind, Key: key})
@@ -219,7 +219,7 @@ func (s *Store) Freshness(ctx context.Context, kind, key string) (*Freshness, er
 
 // RecordFetched stores the result of a fetch that answered. It clears any error
 // and the backoff with it: holding a fetch off over a failure that already
-// healed is the same outage twice.
+// healed is the same outage.
 func (s *Store) RecordFetched(ctx context.Context, f Freshness) error {
 	err := s.q.RecordFetched(ctx, dbgen.RecordFetchedParams{
 		Kind:      f.Kind,
@@ -245,7 +245,7 @@ func (s *Store) MarkFetching(ctx context.Context, kind, key string) error {
 	return nil
 }
 
-// MarkError records a failed fetch and the moment another one may start. A
+// MarkError records a failed fetch and the moment another may start. A
 // caller inside that window reads the stored error instead of asking a failing
 // upstream again on every request.
 func (s *Store) MarkError(ctx context.Context, kind, key, msg string, retryAfter time.Time) error {
@@ -261,7 +261,7 @@ func (s *Store) MarkError(ctx context.Context, kind, key, msg string, retryAfter
 	return nil
 }
 
-// DeleteFreshness forgets one key's bookkeeping and reports how many rows went.
+// DeleteFreshness forgets key's bookkeeping and reports how many rows went.
 func (s *Store) DeleteFreshness(ctx context.Context, kind, key string) (int64, error) {
 	n, err := s.q.DeleteFreshness(ctx, dbgen.DeleteFreshnessParams{Kind: kind, Key: key})
 	if err != nil {
@@ -284,10 +284,10 @@ func (s *Store) Watermark(ctx context.Context, subject string) (time.Time, bool,
 }
 
 // ApplyWatermark advances a subject's watermark to at and reports whether it
-// applied. A view older than the stored one restates superseded state, so it is
+// applied. A view older than the stored restates superseded state, so it is
 // refused.
 //
-// An EQUAL time applies. The clock is a second, and two genuinely distinct
+// An EQUAL time applies. The clock is a, and genuinely distinct
 func (s *Store) ApplyWatermark(ctx context.Context, subject string, at time.Time) (bool, error) {
 	n, err := s.q.ApplyWatermark(ctx, dbgen.ApplyWatermarkParams{
 		Subject:   subject,
@@ -309,7 +309,7 @@ func (s *Store) PruneWatermarks(ctx context.Context, before time.Time) (int64, e
 	return n, nil
 }
 
-// Grant is proof that one principal read one resource key upstream.
+// Grant is proof that principal read resource key upstream.
 type Grant struct {
 	Principal string
 	Resource  string
@@ -337,7 +337,7 @@ func (s *Store) HasGrant(ctx context.Context, principal, resource, key string, n
 
 // RecordGrant stores proof and drops this principal's cached denial of the same
 // key in the same transaction. Upstream just said yes; a cached no beside it
-// answers one question two ways.
+// answers question ways.
 func (s *Store) RecordGrant(ctx context.Context, g Grant) error {
 	if err := s.tx(ctx, func(q *dbgen.Queries) error { return recordGrant(ctx, q, g) }); err != nil {
 		return fmt.Errorf("record grant %s %s/%s: %w", g.Principal, g.Resource, g.Key, err)
@@ -345,7 +345,7 @@ func (s *Store) RecordGrant(ctx context.Context, g Grant) error {
 	return nil
 }
 
-// ReplaceGrants replace-syncs one source's grants for a principal and resource:
+// ReplaceGrants replace-syncs source's grants for a principal and resource:
 // what the list no longer names is gone. Merging instead would keep proof alive
 // for a key upstream stopped listing, which is access the caller lost.
 func (s *Store) ReplaceGrants(ctx context.Context, principal, resource, source string, keys []string, expires time.Time) error {
@@ -372,7 +372,7 @@ func (s *Store) ReplaceGrants(ctx context.Context, principal, resource, source s
 	return nil
 }
 
-// recordGrant writes one grant and clears the denial it contradicts.
+// recordGrant writes grant and clears the denial it contradicts.
 func recordGrant(ctx context.Context, q *dbgen.Queries, g Grant) error {
 	err := q.RecordGrant(ctx, dbgen.RecordGrantParams{
 		Principal: g.Principal,
@@ -392,7 +392,7 @@ func recordGrant(ctx context.Context, q *dbgen.Queries, g Grant) error {
 	return err
 }
 
-// RevokeGrant drops one principal's proof for one key and reports whether there
+// RevokeGrant drops principal's proof for key and reports whether there
 // was any.
 func (s *Store) RevokeGrant(ctx context.Context, principal, resource, key string) (bool, error) {
 	n, err := s.q.RevokeGrant(ctx, dbgen.RevokeGrantParams{
@@ -435,7 +435,7 @@ func (s *Store) Denial(ctx context.Context, principal, resource, key string, now
 }
 
 // RecordDenial caches an authoritative refusal until expires. Only an
-// authoritative status belongs here: caching a transient failure turns one bad
+// authoritative status belongs here: caching a transient failure turns bad
 // minute upstream into a caller who cannot read what they own.
 func (s *Store) RecordDenial(ctx context.Context, principal, resource, key string, status int, expires time.Time) error {
 	err := s.q.RecordDenial(ctx, dbgen.RecordDenialParams{
@@ -461,7 +461,7 @@ func (s *Store) PruneDenials(ctx context.Context, now time.Time) (int64, error) 
 	return n, nil
 }
 
-// nullUnix stores a time as a Unix second, and a zero time as NULL.
+// nullUnix stores a time as a Unix, and a time as NULL.
 func nullUnix(t time.Time) sql.NullInt64 {
 	if t.IsZero() {
 		return sql.NullInt64{}
@@ -469,7 +469,7 @@ func nullUnix(t time.Time) sql.NullInt64 {
 	return sql.NullInt64{Int64: t.Unix(), Valid: true}
 }
 
-// unixTime reads a stored second back, and NULL as the zero time.
+// unixTime reads a stored back, and NULL as the time.
 func unixTime(n sql.NullInt64) time.Time {
 	if !n.Valid {
 		return time.Time{}

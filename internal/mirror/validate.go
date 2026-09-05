@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"slices"
 	"strings"
 	"time"
@@ -59,7 +60,7 @@ func (s *Spec) validate() error {
 
 // validateOps checks the operational half.
 //
-// Each rule here is one an operator would otherwise discover from behaviour: a
+// Each rule here is an operator would otherwise discover from behaviour: a
 // window that adds latency to everything, a sweep that names a kind no route
 // serves, a replayer that lists failures and cannot ask for any of them back.
 func (s *Spec) validateOps(byName map[string]*Resource) error {
@@ -69,7 +70,7 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 			s.Upstream.Debounce, maxDebounceWindow)
 	}
 	if s.Dashboard.Path == "" {
-		// Here, not at load: a Spec built in code is one read off disk.
+		// Here, not at load: a Spec built in code is read off disk.
 		s.Dashboard.Path = defaultDashboardPath
 	}
 	if !strings.HasPrefix(s.Dashboard.Path, "/") {
@@ -79,12 +80,12 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		if s.Refresh.Interval <= 0 {
 			return fmt.Errorf("<refresh> needs a positive interval")
 		}
-		kinds := make([]string, 0, len(s.Routes))
+		kinds := set.New[string]()
 		for _, rt := range s.Routes {
-			kinds = append(kinds, routeKind(rt))
+			kinds.Add(routeKind(rt))
 		}
 		for _, k := range s.Refresh.Kinds {
-			if !slices.Contains(kinds, k) {
+			if !kinds.Contains(k) {
 				return fmt.Errorf("<refresh><kind>%s</kind> names nothing any route serves", k)
 			}
 		}
@@ -121,16 +122,16 @@ func (r *Resource) validate() error {
 	if len(r.Keys) == 0 {
 		return fmt.Errorf("resource %q needs at least one <key>: a fact with no identity cannot be stored once", r.Name)
 	}
-	seen := make([]string, 0, len(r.Keys)+len(r.Fields))
+	seen := set.New[string]()
 	hasCredentialKey := false
 	for _, k := range r.Keys {
 		if k.Name == "" {
 			return fmt.Errorf("resource %q: <key> needs a name", r.Name)
 		}
-		if slices.Contains(seen, k.Name) {
+		if seen.Contains(k.Name) {
 			return fmt.Errorf("resource %q: %q declared twice", r.Name, k.Name)
 		}
-		seen = append(seen, k.Name)
+		seen.Add(k.Name)
 		if k.Credential {
 			if k.From != "" {
 				return fmt.Errorf("resource %q: key %q is credential=\"true\" and also declares from=%q; pick one", r.Name, k.Name, k.From)
@@ -154,10 +155,10 @@ func (r *Resource) validate() error {
 		if f.Name == "" {
 			return fmt.Errorf("resource %q: <field> needs a name", r.Name)
 		}
-		if slices.Contains(seen, f.Name) {
+		if seen.Contains(f.Name) {
 			return fmt.Errorf("resource %q: %q declared twice", r.Name, f.Name)
 		}
-		seen = append(seen, f.Name)
+		seen.Add(f.Name)
 		switch f.Type {
 		case FieldText, FieldInt, FieldBool, FieldTime, FieldJSON:
 		default:
@@ -224,21 +225,21 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	}
 	if rt.Method != "GET" && rt.Method != "HEAD" {
 		// A credential-gated mint replays a still-valid answer, so it is
-		// the one write worth caching. Everything else is passthrough or <purge>.
+		// the write worth caching. Everything else is passthrough or <purge>.
 		if rt.Method != "POST" || !res.Reveal.Credential {
 			return fmt.Errorf("route %s %s: only reads and credential-gated mints are cached; a write belongs in passthrough or <purge>", rt.Method, rt.Path)
 		}
 	}
 	params := pathParams(rt.Path)
-	supplied := make([]string, 0, len(params))
+	supplied := set.New[string]()
 	for _, p := range params {
 		name := p
 		if mapped, ok := rt.Params[p]; ok {
 			name = mapped
 		}
-		supplied = append(supplied, name)
+		supplied.Add(name)
 	}
-	supplied = append(supplied, rt.queryKeys()...)
+	supplied.AddRange(rt.queryKeys()...)
 	if rt.Complete && !rt.List {
 		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
 	}
@@ -248,7 +249,7 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 				// The engine fills this from the request, not a route param.
 				continue
 			}
-			if !slices.Contains(supplied, k.Name) {
+			if !supplied.Contains(k.Name) {
 				return fmt.Errorf("route %s cannot key resource %q: nothing supplies %q", rt.Path, res.Name, k.Name)
 			}
 		}
@@ -276,15 +277,15 @@ func (rt *Route) column(param string) string {
 }
 
 func (rt *Route) validateQuery() error {
-	seen := make([]string, 0, len(rt.Query))
+	seen := set.New[string]()
 	for _, q := range rt.Query {
 		if q.Name == "" {
 			return fmt.Errorf("route %s: <param> needs a name", rt.Path)
 		}
-		if slices.Contains(seen, q.Name) {
+		if seen.Contains(q.Name) {
 			return fmt.Errorf("route %s: parameter %q declared twice", rt.Path, q.Name)
 		}
-		seen = append(seen, q.Name)
+		seen.Add(q.Name)
 		switch q.Type {
 		case FieldText, FieldInt, FieldBool:
 		case "":
@@ -295,8 +296,8 @@ func (rt *Route) validateQuery() error {
 		if q.Type == FieldInt && q.Max < q.Min {
 			return fmt.Errorf("route %s parameter %q: max %d is below min %d", rt.Path, q.Name, q.Max, q.Min)
 		}
-		// An unkeyed parameter with no default would let two different
-		// questions share one row, which is the same answer served twice.
+		// An unkeyed parameter with no default would let different
+		// questions share row, which is the same answer served.
 		if !q.Key && q.Default == "" {
 			return fmt.Errorf("route %s parameter %q: give it a default or mark it key=\"true\" -- an unkeyed parameter with no default lets two different requests share one cached answer", rt.Path, q.Name)
 		}
@@ -368,15 +369,15 @@ func (e *Events) validate(resources map[string]*Resource) error {
 	if e.TypeHeader == "" {
 		return fmt.Errorf("<events> needs a type header")
 	}
-	seen := make([]string, 0, len(e.List))
+	seen := set.New[string]()
 	for _, ev := range e.List {
 		if ev.Type == "" {
 			return fmt.Errorf("<event> needs a type")
 		}
-		if slices.Contains(seen, ev.Type) {
+		if seen.Contains(ev.Type) {
 			return fmt.Errorf("event %q declared twice", ev.Type)
 		}
-		seen = append(seen, ev.Type)
+		seen.Add(ev.Type)
 		res, ok := resources[ev.Resource]
 		if !ok {
 			return fmt.Errorf("event %q names resource %q, which is not declared", ev.Type, ev.Resource)
@@ -402,15 +403,15 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		if res.Store == StoreDocument && len(ev.Sets) > 0 {
 			return fmt.Errorf("event %q writes fields into resource %q, which stores a document", ev.Type, res.Name)
 		}
-		known := make([]string, 0, len(res.Fields)+len(res.Keys))
+		known := set.New[string]()
 		for _, f := range res.Fields {
-			known = append(known, f.Name)
+			known.Add(f.Name)
 		}
 		for _, k := range res.Keys {
-			known = append(known, k.Name)
+			known.Add(k.Name)
 		}
 		for _, st := range ev.Sets {
-			if !slices.Contains(known, st.Field) {
+			if !known.Contains(st.Field) {
 				return fmt.Errorf("event %q sets %q, which resource %q does not declare", ev.Type, st.Field, res.Name)
 			}
 			if (st.From == "") == (st.Expr == "") {
@@ -429,8 +430,8 @@ func (e *Events) validate(resources map[string]*Resource) error {
 // A resource's from= names a path in the UPSTREAM document, and a delivery
 // wraps that document in an envelope, so the same path finds nothing at the
 // payload root. The event has to say where the delivery carries each key
-// column. Left to run time it is one error per delivery, forever, on a mirror
-// whose dashboard reports every one of them accepted.
+// column. Left to run time it is error per delivery, forever, on a mirror
+// whose dashboard reports every of them accepted.
 func validateEventKeys(ev *Event, res *Resource) error {
 	for _, k := range ev.Keys {
 		if !slices.ContainsFunc(res.Keys, func(rk Key) bool { return rk.Name == k.Field }) {

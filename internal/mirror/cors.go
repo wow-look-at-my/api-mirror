@@ -16,7 +16,7 @@ import (
 // answerPreflight handles an OPTIONS request, and reports whether it did.
 //
 // A preflight is answered without authentication on purpose. It carries no
-// credential by definition, so requiring one would refuse every cross-origin
+// credential by definition, so requiring would refuse every cross-origin
 // request before the real request was ever made.
 func (e *Engine) answerPreflight(w *recorder, r *http.Request) bool {
 	e.setCORS(w, r)
@@ -41,7 +41,7 @@ func (e *Engine) answerPreflight(w *recorder, r *http.Request) bool {
 // Expose-Headers is the half that is easy to forget and impossible to work
 // around: without it a browser hides every X-Mirror-* header, so a page cannot
 // tell a hit from a passthrough and cannot read the budget it is spending. A
-// rebuilt answer has no upstream list to inherit one from either.
+// rebuilt answer has no upstream list to inherit from either.
 func (e *Engine) setCORS(w http.ResponseWriter, r *http.Request) {
 	rule := e.spec.CORS
 	if rule == nil {

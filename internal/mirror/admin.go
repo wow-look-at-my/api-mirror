@@ -21,7 +21,7 @@ type Admin struct {
 }
 
 // NewAdmin builds the operator surface, always. A spec chooses where it lives
-// and what gates it, never whether it exists: an optional view is one nobody
+// and what gates it, never whether it exists: an optional view is nobody
 // has when they need it.
 func NewAdmin(e *Engine) *Admin {
 	d := e.spec.Dashboard
@@ -135,7 +135,7 @@ func (a *Admin) keepToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authorized checks the token in constant time. Four carriers: a human opens a
+// authorized checks the token in constant time. carriers: a human opens a
 // URL, the page fetches with a header, a script uses what it already has, and
 // the browser sends back the cookie for a subresource it fetches itself.
 func (a *Admin) authorized(r *http.Request) bool {

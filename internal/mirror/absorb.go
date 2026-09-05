@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// absorb projects one upstream document onto a resource's declared columns.
+// absorb projects upstream document onto a resource's declared columns.
 //
 // A field the spec does not declare is a field the mirror does not keep, and so
 // a field it never serves. That is the whole point of rebuilding rather than
@@ -47,9 +47,9 @@ func foldKey(k Key, v string) string {
 	return v
 }
 
-// fieldValue reads one declared field out of a document and coerces it to the
-// column's type. A value the type cannot hold is an error, not a zero: a zero
-// written here is indistinguishable from a real zero upstream.
+// fieldValue reads declared field out of a document and coerces it to the
+// column's type. A value the type cannot hold is an error, not a: a
+// written here is indistinguishable from a real upstream.
 func fieldValue(f Field, doc any) (any, error) {
 	var raw any
 	if f.Expr != "" {
@@ -138,9 +138,9 @@ func toInt(v any) (any, error) {
 	}
 }
 
-// toUnix reads a time as a Unix second. Both encodings an API plausibly uses
-// are accepted -- an RFC 3339 string and a numeric epoch -- because one upstream
-// uses both, sometimes for the same field, and a reader that handles only one
+// toUnix reads a time as a Unix. Both encodings an API plausibly uses
+// are accepted -- an RFC 3339 string and a numeric epoch -- because upstream
+// uses both, sometimes for the same field, and a reader that handles only
 // silently loses every value in the other shape.
 func toUnix(v any) (any, error) {
 	switch x := v.(type) {

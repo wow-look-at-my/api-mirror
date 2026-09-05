@@ -11,11 +11,11 @@ import (
 )
 
 // wholeSpec exercises every element and attribute the loader understands, in
-// one file. A parse test per element would pass while the elements refused to
+// file. A parse test per element would pass while the elements refused to
 // sit beside each other, which is the only way an author ever writes them.
 //
 // The XML declaration is omitted the way the shipped files are not: the loader
-// strips it, so an inline snippet does not need one. Indentation is TABS.
+// strips it, so an inline snippet does not need. Indentation is TABS.
 const wholeSpec = `
 <mirror name="example">
 	<description>Prose for a human. The engine reads none of it.</description>
@@ -266,7 +266,7 @@ func TestParseSpec_WholeVocabularyAlsoValidates(t *testing.T) {
 	require.NoError(t, mustParse(t, wholeSpec).validate())
 }
 
-// The two shipped specs are the project's own documentation. If either stops
+// The shipped specs are the project's own documentation. If either stops
 // loading, the file a reader is told to copy no longer works.
 func TestLoad_ShippedSpecs(t *testing.T) {
 	for _, path := range shippedSpecs {

@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The operator surface, and the two properties that make it worth having: it is
+// The operator surface, and the properties that make it worth having: it is
 // there without being asked for, and it is not open to whoever guesses the
 // prefix.
 
-// adminGet drives one dashboard request, carrying the token the surface minted.
+// adminGet drives dashboard request, carrying the token the surface minted.
 func adminGet(t *testing.T, e *Engine, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -94,9 +94,9 @@ func TestDashboardServesItsOwnAssets(t *testing.T) {
 }
 
 // A browser fetches a stylesheet and a module ITSELF, with no header and no
-// query string, so the two assets were refused and the page loaded unstyled
+// query string, so the assets were refused and the page loaded unstyled
 // and inert. Every existing asset test passed, because each wired the token
-// the way the PAGE does. This one is the sequence a browser performs.
+// the way the PAGE does. This is the sequence a browser performs.
 func TestABrowserCanLoadTheAssetsTheShellAsksFor(t *testing.T) {
 	e, _ := newTestEngine(t, http.NotFoundHandler())
 

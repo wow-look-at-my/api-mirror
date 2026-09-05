@@ -8,12 +8,12 @@ import (
 // Rebuilding a request from a stored key.
 //
 // The freshness row records a kind and a key string, not a URL. That is
-// deliberate -- a stored URL would be a second spelling of the same fact, free
+// deliberate -- a stored URL would be a spelling of the same fact, free
 // to drift from the route that produced it. The sweep therefore reverses the
 // key back through the route, which means the route stays the only place a
 // path is described.
 
-// planFor rebuilds the fetch plan for one stored key of one kind.
+// planFor rebuilds the fetch plan for stored key of kind.
 //
 // It reports false rather than guessing when the key cannot be turned back into
 // a request. A sweep that fetched the wrong path would write a real answer into
@@ -82,9 +82,9 @@ func (rt *Route) fillPath(key map[string]string) (string, bool) {
 
 // parseKeyString reverses keyString.
 //
-// The two are each other's inverse and must stay so: a sweep that decoded a key
+// The are each other's inverse and must stay so: a sweep that decoded a key
 // differently from the way a read encoded it would refresh a row nobody reads
-// and leave the one they do read stale. The declared components come first in
+// and leave the they do read stale. The declared components come in
 // declaration order, then the sorted name=value extras.
 func parseKeyString(res *Resource, s string) (map[string]string, bool) {
 	parts := strings.Split(s, "/")

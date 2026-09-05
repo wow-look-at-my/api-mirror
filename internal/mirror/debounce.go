@@ -10,7 +10,7 @@ import (
 // maxDebounceWindow caps the hold, since every eligible read waits it out.
 const maxDebounceWindow = 30 * time.Second
 
-// Debouncer makes identical concurrent passthrough READS share one call.
+// Debouncer makes identical concurrent passthrough READS share call.
 type Debouncer struct {
 	window time.Duration
 
@@ -18,7 +18,7 @@ type Debouncer struct {
 	flight map[string]*shared
 }
 
-// shared is one upstream call several callers are waiting on.
+// shared is upstream call several callers are waiting on.
 type shared struct {
 	done   chan struct{}
 	status int
@@ -26,7 +26,7 @@ type shared struct {
 	body   []byte
 }
 
-// NewDebouncer returns a coalescer, or nil for a zero window: forwarding
+// NewDebouncer returns a coalescer, or nil for a window: forwarding
 // immediately is a real choice, and nil has nothing to hold with.
 func NewDebouncer(window time.Duration) *Debouncer {
 	if window <= 0 {
@@ -35,14 +35,14 @@ func NewDebouncer(window time.Duration) *Debouncer {
 	return &Debouncer{window: window, flight: map[string]*shared{}}
 }
 
-// Share lets an identical concurrent request wait for one answer instead of
-// making its own. Passthrough is the traffic nothing else protects, and ten
-// consumers asking the same unmodelled question at once should cost the budget
-// one answer rather than ten.
+// Share lets an identical concurrent request wait for answer instead of
+// making its own. Passthrough is the traffic nothing else protects, and
+// consumers asking the same unmodelled question at should cost the budget
+// answer rather than.
 //
 // Only a safe method with no credential of its own qualifies:
-// two callers holding different credentials ask different questions even at
-// the same URL, and answering one with the other's data is the reveal layer
+// callers holding different credentials ask different questions even at
+// the same URL, and answering with the other's data is the reveal layer
 // defeated by a cache key.
 func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.ResponseWriter, *http.Request)) {
 	if d == nil || !shareable(r) {
@@ -88,7 +88,7 @@ func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.Respon
 	})
 }
 
-// shareable reports whether two callers asking this are asking the same thing.
+// shareable reports whether callers asking this are asking the same thing.
 func shareable(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
@@ -113,7 +113,7 @@ func replay(w http.ResponseWriter, s *shared) {
 	}
 }
 
-// bufferedWriter collects one answer so it can be handed to every waiter.
+// bufferedWriter collects answer so it can be handed to every waiter.
 type bufferedWriter struct {
 	header http.Header
 	status int

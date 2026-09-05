@@ -106,7 +106,7 @@ func Run() error {
 
 // Drain waits for work a shutdown must not interrupt: fetches that would write
 // to a closed database, and notifications already promised. Background jobs
-// stop FIRST -- a sweep starting a fetch mid-drain is one nothing waits for.
+// stop -- a sweep starting a fetch mid-drain is nothing waits for.
 func (e *Engine) Drain(timeout time.Duration) bool {
 	e.refresh.Stop()
 	e.replay.Stop()
@@ -149,7 +149,7 @@ func report(spec *Spec, out *os.File) error {
 }
 
 // reportOps prints the operational half, saying plainly which parts a spec
-// leaves out. A mirror with no replay and no refresh is a valid mirror; one
+// leaves out. A mirror with no replay and no refresh is a valid mirror;
 // whose author did not realise those were choices is not.
 func reportOps(spec *Spec, out *os.File) {
 	say := func(name string, on bool, detail string) {

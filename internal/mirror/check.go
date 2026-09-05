@@ -7,34 +7,34 @@ import (
 	"time"
 )
 
-// CheckVerdict is what one key's comparison came to, from a closed vocabulary.
+// CheckVerdict is what key's comparison came to, from a closed vocabulary.
 type CheckVerdict string
 
 const (
 	CheckAgrees  CheckVerdict = "agrees"  // every stored column matched
-	CheckDrifted CheckVerdict = "drifted" // the two sides disagree
+	CheckDrifted CheckVerdict = "drifted" // the sides disagree
 	CheckRaced   CheckVerdict = "raced"   // a write landed mid-fetch, so it may not be drift
 	CheckGone    CheckVerdict = "gone"    // the upstream no longer has it
 	// CheckUnreachable is never drift: a 5xx says nothing about the stored row.
 	CheckUnreachable CheckVerdict = "unreachable"
-	// CheckUnsupported is named, never skipped: one left out reads as agreed.
+	// CheckUnsupported is named, never skipped: left out reads as agreed.
 	CheckUnsupported CheckVerdict = "unsupported"
 )
 
-// Difference is one column the two sides disagree about.
+// Difference is column the sides disagree about.
 type Difference struct {
 	Field    string `json:"field"`
 	Stored   string `json:"stored"`
 	Upstream string `json:"upstream"`
 }
 
-// KeyCheck is one key's verdict, as the page and the NDJSON stream carry it.
+// KeyCheck is key's verdict, as the page and the NDJSON stream carry it.
 //
 // Every other view here reports what THIS PROCESS has seen: what it fetched,
 // what was delivered, what it answered. None of that shows a fact the mirror
 // never learned was wrong -- a delivery that never arrived leaves a row that is
 // well-formed, recent-looking and stale. Asking the upstream again is the only
-// thing that surfaces one.
+// thing that surfaces.
 type KeyCheck struct {
 	Kind     string       `json:"kind"`
 	Key      string       `json:"key"`
@@ -44,14 +44,14 @@ type KeyCheck struct {
 	Repaired bool         `json:"repaired,omitempty"`
 }
 
-// checkKeyTimeout stops one wedged response holding a whole check open.
+// checkKeyTimeout stops wedged response holding a whole check open.
 const checkKeyTimeout = 30 * time.Second
 
-// Check re-asks the upstream about every stored key of one kind and reports
+// Check re-asks the upstream about every stored key of kind and reports
 // where the cache and the upstream disagree.
 //
 // It uses the mirror's own credential, which is what makes it an operator tool
-// rather than a consumer one: a caller's token would answer for that caller,
+// rather than a consumer: a caller's token would answer for that caller,
 // and the question here is whether the SHARED row is right. repair writes the
 // upstream's answer over a row that drifted.
 func (e *Engine) Check(ctx context.Context, kind string, repair bool, emit func(KeyCheck)) error {
@@ -80,7 +80,7 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 	}
 	if plan.route.List {
 		// A list key stands for a set, and the upstream's page boundaries are
-		// not the mirror's. Comparing one page to one key would report drift
+		// not the mirror's. Comparing page to key would report drift
 		// wherever pagination differs, which is worse than reporting nothing.
 		out.Verdict = CheckUnsupported
 		out.Detail = "a list route holds a set under one key; comparing it needs the whole set, not one page"
@@ -131,7 +131,7 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 	}
 
 	// A delivery that landed mid-fetch is a write, not drift. Re-reading the
-	// bookkeeping is what tells the two apart, and calling a race drift would
+	// bookkeeping is what tells the apart, and calling a race drift would
 	// send an operator hunting a bug that just corrected itself.
 	if after, err := e.store.Freshness(ctx, kind, f.Key); err == nil && after != nil &&
 		after.ChangedAt.After(f.ChangedAt) {
@@ -211,7 +211,7 @@ func diffRows(res *Resource, stored, fresh Row) []Difference {
 }
 
 // displayValue renders a column for comparison and for the page. Both sides go
-// through it, so a difference is a real difference and not two spellings.
+// through it, so a difference is a real difference and not spellings.
 func displayValue(v any) string {
 	switch t := v.(type) {
 	case nil:
@@ -230,7 +230,7 @@ func displayValue(v any) string {
 	}
 }
 
-// CheckSummary tallies one run, so a page can say "12 keys, 2 drifted" without
+// CheckSummary tallies run, so a page can say "12 keys, 2 drifted" without
 // the reader counting rows.
 type CheckSummary struct {
 	Kind     string               `json:"kind"`
@@ -243,7 +243,7 @@ type CheckSummary struct {
 	tally map[CheckVerdict]int
 }
 
-// add files one verdict into the summary.
+// add files verdict into the summary.
 func (s *CheckSummary) add(k KeyCheck) {
 	if s.tally == nil {
 		s.tally = map[CheckVerdict]int{}

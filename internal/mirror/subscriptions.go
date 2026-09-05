@@ -12,13 +12,13 @@ import (
 )
 
 // The subscription store, in a SEPARATE database file from the cache. That
-// separation is why this file exists instead of two more tables in schema.sql:
+// separation is why this file exists instead of more tables in schema.sql:
 // the cache is nuked whenever a resource changes, which is safe only because
 // every row in it is a copy of something upstream still has. A registration is
-// a copy of nothing, and nuking one stops telling somebody who asked, silently.
+// a copy of nothing, and nuking stops telling somebody who asked, silently.
 
 // subscriptionSchema has no fingerprint and nothing nukes it: a change here has
-// to be one an existing file survives.
+// to be an existing file survives.
 const subscriptionSchema = `
 CREATE TABLE IF NOT EXISTS subscription (
 	id           TEXT PRIMARY KEY,
@@ -35,12 +35,12 @@ CREATE TABLE IF NOT EXISTS subscription (
 CREATE INDEX IF NOT EXISTS subscription_principal ON subscription (principal);
 `
 
-// Subscription is one consumer asking to be told.
+// Subscription is consumer asking to be told.
 type Subscription struct {
 	ID        string `json:"id"`
 	Principal string `json:"principal"`
 	URL       string `json:"url"`
-	// Secret is never rendered. Create returns it once, the only chance to.
+	// Secret is never rendered. Create returns it, the only chance to.
 	Secret    string    `json:"-"`
 	Events    []string  `json:"events"`
 	CreatedAt time.Time `json:"created_at"`
@@ -57,7 +57,7 @@ type Subscriptions struct {
 }
 
 // subscriptionsPath keeps the config database beside the cache unless a spec
-// names one: a bare working-directory default splits the pair, or fails.
+// names: a bare working-directory default splits the pair, or fails.
 func subscriptionsPath(declared, cacheDB string) string {
 	if strings.TrimSpace(declared) != "" {
 		return declared
@@ -92,10 +92,10 @@ func (s *Subscriptions) Close() error {
 	return s.db.Close()
 }
 
-// Create registers one subscription and returns it with its secret.
+// Create registers subscription and returns it with its secret.
 //
 // The secret is minted here rather than accepted from the caller. A subscriber
-// choosing their own would be free to choose a weak one, and the signature is
+// choosing their own would be free to choose a weak, and the signature is
 // the only thing that tells their endpoint a notification came from this mirror.
 func (s *Subscriptions) Create(ctx context.Context, principal, url string, events []string) (Subscription, error) {
 	sub := Subscription{
@@ -115,7 +115,7 @@ func (s *Subscriptions) Create(ctx context.Context, principal, url string, event
 	return sub, nil
 }
 
-// Delete removes one subscription belonging to a principal.
+// Delete removes subscription belonging to a principal.
 //
 // The principal is part of the predicate, not checked afterwards: a caller must
 // not be able to delete somebody else's registration by naming its id.
@@ -128,7 +128,7 @@ func (s *Subscriptions) Delete(ctx context.Context, principal, id string) (bool,
 	return n > 0, err
 }
 
-// ByPrincipal lists one caller's own subscriptions.
+// ByPrincipal lists caller's own subscriptions.
 func (s *Subscriptions) ByPrincipal(ctx context.Context, principal string) ([]Subscription, error) {
 	return s.query(ctx, `SELECT id, principal, url, events, created_at, last_ok, failures, disabled, last_error
 		FROM subscription WHERE principal = ? ORDER BY created_at`, principal)
@@ -181,7 +181,7 @@ func (s *Subscriptions) MarkDelivered(ctx context.Context, id string) error {
 	return err
 }
 
-// MarkFailed counts one failure and parks the subscription at the limit.
+// MarkFailed counts failure and parks the subscription at the limit.
 func (s *Subscriptions) MarkFailed(ctx context.Context, id, cause string, limit int) (int, error) {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE subscription SET failures = failures + 1, last_error = ?,
@@ -244,7 +244,7 @@ func newID() string     { return randomHex(8) }
 func newSecret() string { return randomHex(32) }
 
 // randomHex returns n random bytes as hex. A failed read panics: a predictable
-// secret is worse than no subscription, and a fallback would return one.
+// secret is worse than no subscription, and a fallback would return.
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

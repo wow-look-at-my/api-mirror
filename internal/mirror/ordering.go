@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Delivery is one received webhook, after signature verification.
+// Delivery is received webhook, after signature verification.
 type Delivery struct {
 	ID      string
 	Type    string
@@ -24,7 +24,7 @@ type Delivery struct {
 //
 // The clock must be a field the PROVIDER sets and that describes the SUBJECT.
 // A user-settable timestamp fails both ways: it survives a rebase and it can be
-// in the future, so a payload carrying one orders itself ahead of the truth.
+// in the future, so a payload carrying orders itself ahead of the truth.
 // The spec chooses the field; the engine only refuses to guess when it is
 // missing.
 func orderOf(ev *Event, payload any) (string, time.Time, error) {
@@ -67,11 +67,11 @@ const (
 	DeliveryHeld DeliveryDisposition = "accepted"
 )
 
-// applyFunc applies one delivery to the store.
+// applyFunc applies delivery to the store.
 type applyFunc func(ctx context.Context, d *Delivery) (DeliveryDisposition, error)
 
 // Reorderer sorts deliveries that land close together for the SAME subject and
-// applies them oldest-first.
+// applies them oldest-.
 type Reorderer struct {
 	window time.Duration
 	apply  applyFunc
@@ -88,7 +88,7 @@ type batch struct {
 	timer *time.Timer
 }
 
-// NewReorderer returns a reorderer. A zero window applies on arrival and leaves
+// NewReorderer returns a reorderer. A window applies on arrival and leaves
 // ordering entirely to the watermark.
 func NewReorderer(window time.Duration, apply applyFunc) *Reorderer {
 	return &Reorderer{
@@ -99,7 +99,7 @@ func NewReorderer(window time.Duration, apply applyFunc) *Reorderer {
 	}
 }
 
-// Submit hands one delivery to the reorderer.
+// Submit hands delivery to the reorderer.
 //
 // With a window it returns immediately and the delivery applies later, so the
 // caller answers the provider before the write lands. That is deliberate: a
@@ -133,7 +133,7 @@ func (r *Reorderer) close(subject string) {
 	r.run(b.items)
 }
 
-// run sorts one subject's batch by its payload clocks and applies it in order.
+// run sorts subject's batch by its payload clocks and applies it in order.
 func (r *Reorderer) run(items []*Delivery) {
 	defer r.wg.Done()
 	sort.SliceStable(items, func(i, j int) bool { return items[i].At.Before(items[j].At) })
@@ -147,7 +147,7 @@ func (r *Reorderer) run(items []*Delivery) {
 	}
 }
 
-// applyTimeout bounds one batch's writes. It exists so a wedged store cannot
+// applyTimeout bounds batch's writes. It exists so a wedged store cannot
 const applyTimeout = 2 * time.Minute
 
 // Drain waits for held and in-flight deliveries, so a shutdown does not drop a

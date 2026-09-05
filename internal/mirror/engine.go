@@ -103,7 +103,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 // Telemetry exposes what the mirror knows about its own traffic.
 func (e *Engine) Telemetry() *Telemetry { return e.tel }
 
-// resolveVars renders the spec's vars once, in declaration order, each seeing
+// resolveVars renders the spec's vars, in declaration order, each seeing
 // the ones before it.
 //
 // It returns the whole template context, not just the vars, because that
@@ -145,7 +145,7 @@ func (e *Engine) ttlFor(kind string) time.Duration {
 // defaultTTL backs a route that names no TTL anywhere.
 const defaultTTL = time.Hour
 
-// routeKind names one route's freshness bookkeeping. A list and a single read
+// routeKind names route's freshness bookkeeping. A list and a single read
 func routeKind(rt *Route) string {
 	if rt.List {
 		return rt.Resource + ":list"
@@ -159,7 +159,7 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.dispatch(rec, r)
 }
 
-// dispatch picks who answers one request. Every branch ends by telling the
+// dispatch picks who answers request. Every branch ends by telling the
 // recorder what it did, because a disposition the log cannot name is traffic
 // nobody can account for.
 func (e *Engine) dispatch(rec *recorder, r *http.Request) {
@@ -213,7 +213,7 @@ func (e *Engine) matchPurge(r *http.Request) (*Purge, map[string]string, bool) {
 }
 
 // forwardAndPurge forwards a write verbatim, then drops the row it changed
-// once the upstream confirms the write actually happened. A write is never
+// the upstream confirms the write actually happened. A write is never
 // cached itself; this only clears what it made stale.
 func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, p *Purge, params map[string]string) {
 	res, ok := e.store.Resource(p.Resource)
@@ -250,7 +250,7 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, p *Purge, params 
 	}
 }
 
-// serve answers one declared route.
+// serve answers declared route.
 func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	ctx := withForward(r.Context(), r.Header)
 	res, ok := e.store.Resource(m.route.Resource)
@@ -331,10 +331,10 @@ func dispositionOf(o Outcome) Disposition {
 	}
 }
 
-// rememberedRefusal reports the stored non-success status for a key, or zero.
+// rememberedRefusal reports the stored non-success status for a key, or.
 //
 // A read error here reports no refusal: the freshness row is bookkeeping, and
-// failing to read it must not turn a servable answer into one.
+// failing to read it must not turn a servable answer into.
 func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
 	meta, err := e.store.Freshness(ctx, kind, key)
 	if err != nil {
@@ -347,11 +347,11 @@ func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
 	return meta.Status
 }
 
-// read rebuilds the answer for one request from what is stored.
+// read rebuilds the answer for request from what is stored.
 //
 // Hit and miss both come through here, so a route's shape cannot change with
 // cache state. A consumer that works against a warm cache and breaks against a
-// cold one is the bug this shape prevents.
+// cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
 	if m.route.List {
 		rows, err := e.store.List(ctx, res, m.key)
@@ -378,7 +378,7 @@ func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error)
 	return rebuildRow(res, row)
 }
 
-// rebuildRow renders one stored row as the document a consumer receives.
+// rebuildRow renders stored row as the document a consumer receives.
 func rebuildRow(res *Resource, row Row) (any, error) {
 	if res.Store == StoreDocument {
 		s, _ := row["document"].(string)
@@ -416,12 +416,12 @@ func (e *Engine) passthrough(w *recorder, r *http.Request, reason PassReason) {
 		e.proxy.ServeHTTP(w, r)
 		return
 	}
-	// A read already in flight is one the upstream is already answering.
+	// A read already in flight is the upstream is already answering.
 	e.debounce.Share(w, r, e.proxy.ServeHTTP)
 }
 
 // shapeOf reduces a passthrough path to something an operator can act on. A
-// raw path per caller makes the uncached table a list of one-offs; a shape
+// raw path per caller makes the uncached table a list of -offs; a shape
 // says "this family is still leaving", which names what to model next.
 func (e *Engine) shapeOf(r *http.Request) string {
 	for _, rt := range e.spec.Routes {
@@ -433,7 +433,7 @@ func (e *Engine) shapeOf(r *http.Request) string {
 }
 
 // stripUpstreamCORS removes the upstream's CORS headers from a forwarded
-// answer. The mirror is the origin a browser talks to, and two
+// answer. The mirror is the origin a browser talks to, and
 func stripUpstreamCORS(resp *http.Response) error {
 	for h := range resp.Header {
 		if strings.HasPrefix(strings.ToLower(h), "access-control-allow-") {

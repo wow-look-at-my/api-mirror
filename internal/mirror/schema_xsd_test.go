@@ -17,9 +17,9 @@ import (
 // and every operations element were missing, and the sample went on validating
 // against nobody. This walks the specs and demands the XSD know each name.
 //
-// One direction only. A name the XSD declares and no spec uses is not drift;
+// direction only. A name the XSD declares and no spec uses is not drift;
 // a name a spec uses and the XSD does not know is the editor lying to whoever
-// writes the next one.
+// writes the next.
 
 func TestReferenceSchemaKnowsEveryNameTheShippedSpecsUse(t *testing.T) {
 	elements, attributes := declaredNames(t)
@@ -73,7 +73,7 @@ func declaredNames(t *testing.T) (elements, attributes []string) {
 		append(attributes, "test", "eq", "each", "expr", "as", "default")
 }
 
-// namesUsedBy reads every element and attribute name one spec actually uses.
+// namesUsedBy reads every element and attribute name spec actually uses.
 func namesUsedBy(t *testing.T, path string) (elements, attributes []string) {
 	t.Helper()
 	body, err := os.ReadFile(path)

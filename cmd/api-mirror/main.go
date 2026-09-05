@@ -1,4 +1,4 @@
-// Command api-mirror serves a caching mirror of the API one XML spec declares.
+// Command api-mirror serves a caching mirror of the API XML spec declares.
 package main
 
 import (

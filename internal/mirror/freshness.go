@@ -13,7 +13,7 @@ const fetchSafetyTimeout = 5 * time.Minute
 // defaultErrorRetry is how long a failed fetch is left alone when the spec
 const defaultErrorRetry = time.Minute
 
-// FetchState is where one cached key stands.
+// FetchState is where cached key stands.
 type FetchState string
 
 const (
@@ -41,12 +41,12 @@ type FetchResult struct {
 	Status int
 }
 
-// Fetcher performs one refresh. The engine supplies it; this file knows nothing
+// Fetcher performs refresh. The engine supplies it; this file knows nothing
 type Fetcher func(ctx context.Context, kind, key, etag string) (FetchResult, error)
 
 // Fresh keeps cached keys current.
 //
-// It holds three properties that are easy to lose and expensive to debug: a
+// It holds properties that are easy to lose and expensive to debug: a
 type Fresh struct {
 	store *Store
 	fetch Fetcher
@@ -68,7 +68,7 @@ func NewFresh(store *Store, fetch Fetcher, ttl func(kind string) time.Duration) 
 func (f *Fresh) Busy() bool { return f.inflight.Load() > 0 }
 
 // Drain waits for in-flight fetches, so a shutdown does not close the database
-// under one of them.
+// under of them.
 func (f *Fresh) Drain(timeout time.Duration) bool {
 	done := make(chan struct{})
 	go func() {
@@ -83,7 +83,7 @@ func (f *Fresh) Drain(timeout time.Duration) bool {
 	}
 }
 
-// Ensure brings one key up to date and reports what it took.
+// Ensure brings key up to date and reports what it took.
 //
 // A fresh row returns immediately. A row inside its error backoff returns the
 // STORED error rather than re-fetching: an upstream that is failing does not
@@ -139,7 +139,7 @@ func (e *StoredError) Error() string {
 		e.Until.Format(time.RFC3339) + ": " + e.Message
 }
 
-// doFetch runs one refresh under this key's lock.
+// doFetch runs refresh under this key's lock.
 func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) (Outcome, error) {
 	// The fetch is detached from the caller's context. A consumer that hangs
 	detached := context.WithoutCancel(ctx)
@@ -203,7 +203,7 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 	return OutcomeMiss, nil
 }
 
-// lockFor returns the mutex guarding one key, creating it once.
+// lockFor returns the mutex guarding key, creating it.
 func (f *Fresh) lockFor(kind, key string) *sync.Mutex {
 	actual, _ := f.locks.LoadOrStore(kind+"\x00"+key, &sync.Mutex{})
 	return actual.(*sync.Mutex)

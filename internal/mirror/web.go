@@ -13,7 +13,7 @@ var webFS embed.FS
 // page serves the dashboard shell.
 //
 // The page is plain HTML, CSS and ES modules with no build step. A toolchain
-// between the source in this repo and the bytes that ship is one more thing
+// between the source in this repo and the bytes that ship is more thing
 // that can be stale in a way nothing checks.
 func (a *Admin) page(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != a.prefix+"/" {
@@ -32,7 +32,7 @@ func (a *Admin) page(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
-// asset serves one of the page's own files.
+// asset serves of the page's own files.
 func (a *Admin) asset(name, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		body, err := webFS.ReadFile("web/" + name)
