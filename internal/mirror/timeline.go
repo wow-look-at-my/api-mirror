@@ -12,7 +12,7 @@ const (
 	timelineMax    = 100000
 )
 
-// Frame is one timed event on the chart: what the mirror exchanged, when, and
+// Frame is timed event on the chart: what the mirror exchanged, when, and
 // what it cost.
 type Frame struct {
 	Lane      Lane          `json:"lane"`
@@ -48,7 +48,7 @@ func NewTimeline() *Timeline {
 	}
 }
 
-// Observe records one exchange. It never blocks on anything but its own lock,
+// Observe records exchange. It never blocks on anything but its own lock,
 // because the caller is on the path of the request being measured.
 func (t *Timeline) Observe(e Exchange) {
 	if t == nil {
@@ -87,7 +87,7 @@ func (t *Timeline) Observe(e Exchange) {
 	t.size++
 }
 
-// Frames returns what is still inside the window, oldest first.
+// Frames returns what is still inside the window, oldest.
 //
 // Eviction is lazy, here, rather than on a timer: a background goroutine that
 // only ever deletes is a moving part with nothing to gain from moving.

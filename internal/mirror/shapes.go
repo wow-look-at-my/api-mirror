@@ -2,10 +2,11 @@ package mirror
 
 import (
 	"html/template"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // Shapes: turning "this request left" into "this family of requests is still
@@ -26,16 +27,16 @@ func generalize(path string) string {
 
 // generalizeWith shapes a path by the spec's vocabulary and segment position.
 //
-// A declared word stays. So do the first and last segments unless they look
+// A declared word stays. So do the and last segments unless they look
 // like identities -- losing the last names nothing to model. The rest are
 // identities, which is a guess, so a brief item carries real sample paths.
-func generalizeWith(vocab []string, path string) string {
-	if len(vocab) == 0 {
+func generalizeWith(vocab set.Set[string], path string) string {
+	if vocab.Len() == 0 {
 		return generalize(path)
 	}
 	segs := strings.Split(strings.Trim(path, "/"), "/")
 	for i, s := range segs {
-		if slices.Contains(vocab, strings.ToLower(s)) {
+		if vocab.Contains(strings.ToLower(s)) {
 			continue
 		}
 		if looksLikeIdentity(s) {
@@ -51,16 +52,14 @@ func generalizeWith(vocab []string, path string) string {
 }
 
 // pathVocabulary collects every literal path segment the spec declares.
-func pathVocabulary(spec *Spec) []string {
-	var vocab []string
+func pathVocabulary(spec *Spec) set.Set[string] {
+	vocab := set.New[string]()
 	add := func(pattern string) {
 		for _, s := range strings.Split(strings.Trim(pattern, "/"), "/") {
 			if s == "" || (strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}")) {
 				continue
 			}
-			if word := strings.ToLower(s); !slices.Contains(vocab, word) {
-				vocab = append(vocab, word)
-			}
+			vocab.Add(strings.ToLower(s))
 		}
 	}
 	for _, rt := range spec.Routes {
@@ -96,13 +95,13 @@ func isHex(s string) bool {
 	return true
 }
 
-// BriefItem is one family of requests the spec does not model yet, with the
+// BriefItem is family of requests the spec does not model yet, with the
 // declaration that would model it.
 type BriefItem struct {
 	Method string `json:"method"`
 	Shape  string `json:"shape"`
 	Count  int    `json:"count"`
-	// Reasons is why these left; two reasons need two different fixes.
+	// Reasons is why these left; reasons need different fixes.
 	Reasons map[string]int `json:"reasons"`
 	Bytes   int            `json:"bytes"`
 	// Samples are real paths, so an author can check the guess the shape made.
@@ -111,9 +110,9 @@ type BriefItem struct {
 	Sketch string `json:"sketch"`
 }
 
-// Brief reports what is still leaving, worst first, with a sketch for each.
+// Brief reports what is still leaving, worst, with a sketch for each.
 // This is why a passthrough reason is named: "some traffic is uncached" is a
-// mood, "this shape left 412 times, here is the route" is a task.
+// mood, "this shape left times, here is the route" is a task.
 func (e *Engine) Brief() []BriefItem {
 	groups := e.tel.Requests.Groups()
 	out := make([]BriefItem, 0, len(groups))
@@ -170,7 +169,7 @@ func sketchRoute(method, shape string) string {
 }
 
 // nameShape names each identity segment distinctly, so a sketch does not
-// declare three parameters all called {id}.
+// declare parameters all called {id}.
 func nameShape(shape string) (string, []string) {
 	segs := strings.Split(strings.Trim(shape, "/"), "/")
 	var keys []string
@@ -195,7 +194,7 @@ func nameShape(shape string) (string, []string) {
 	return "/" + strings.Join(segs, "/"), keys
 }
 
-// singular trims one trailing "s", so /repos/{x} names its key "repo".
+// singular trims trailing "s", so /repos/{x} names its key "repo".
 func singular(s string) string {
 	if len(s) > 1 && strings.HasSuffix(s, "s") {
 		return s[:len(s)-1]

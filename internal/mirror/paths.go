@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// Reading one declared field out of a decoded document. These sit beside
+// Reading declared field out of a decoded document. These sit beside
 // lookupPath because they carry the engine's reading of an absent value:
-// absent, never zero. A zero written for a missing value stores an outage as
+// absent, never. A written for a missing value stores an outage as
 // a fact.
 
 // stringAt reads a path as text. Empty means "not there", never a value.

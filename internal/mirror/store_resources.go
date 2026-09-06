@@ -10,10 +10,10 @@ import (
 
 // The per-resource half of the store.
 
-// Row is one stored fact: column name to value, as read back from SQLite.
+// Row is stored fact: column name to value, as read back from SQLite.
 type Row map[string]any
 
-// Put writes one row of a resource, replacing what is there.
+// Put writes row of a resource, replacing what is there.
 func (s *Store) Put(ctx context.Context, r *Resource, row Row, at time.Time) error {
 	if _, err := s.db.ExecContext(ctx, insertStmt(r), rowArgs(r, row, at)...); err != nil {
 		return fmt.Errorf("store %s: %w", r.Name, err)
@@ -21,7 +21,7 @@ func (s *Store) Put(ctx context.Context, r *Resource, row Row, at time.Time) err
 	return nil
 }
 
-// PutMany writes a whole list answer in one transaction. A partially written
+// PutMany writes a whole list answer in transaction. A partially written
 // list is a list that reads as complete and is not.
 func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -44,8 +44,8 @@ func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Ti
 	return tx.Commit()
 }
 
-// ReplaceMany makes the rows under one partial key exactly the rows given, in
-// one transaction.
+// ReplaceMany makes the rows under partial key exactly the rows given, in
+// transaction.
 //
 // An upsert alone cannot express a DELETION. A list answer that no longer
 // mentions an item is the upstream saying the item is gone, and a store that
@@ -80,7 +80,7 @@ func (s *Store) ReplaceMany(ctx context.Context, r *Resource, key map[string]str
 	return tx.Commit()
 }
 
-// Get reads one row by its full key. A missing row is (nil, nil): absent is an
+// Get reads row by its full key. A missing row is (nil, nil): absent is an
 // answer here, not an error.
 func (s *Store) Get(ctx context.Context, r *Resource, key map[string]string) (Row, error) {
 	where, args := keyPredicate(r, key)
@@ -143,14 +143,14 @@ func (s *Store) Delete(ctx context.Context, r *Resource, key map[string]string) 
 	return res.RowsAffected()
 }
 
-// insertStmt builds the one write statement every resource write uses.
+// insertStmt builds the write statement every resource write uses.
 func insertStmt(r *Resource) string {
 	cols := columnsOf(r)
 	return fmt.Sprintf(`INSERT OR REPLACE INTO %s (%s, mirror_written_at) VALUES (%s)`,
 		resourceTable(r.Name), strings.Join(cols, ", "), placeholders(len(cols)+1))
 }
 
-// selectStmt builds the one read statement every resource read uses. An empty
+// selectStmt builds the read statement every resource read uses. An empty
 // where reads the whole table; ordered adds the key order a list answer needs.
 func selectStmt(r *Resource, where string, ordered bool) string {
 	stmt := fmt.Sprintf(`SELECT %s FROM %s`,
@@ -164,14 +164,14 @@ func selectStmt(r *Resource, where string, ordered bool) string {
 	return stmt
 }
 
-// deleteStmt builds the one delete statement. The where is never optional here
-// -- Delete refuses an empty one before it gets this far.
+// deleteStmt builds the delete statement. The where is never optional here
+// -- Delete refuses an empty before it gets this far.
 func deleteStmt(r *Resource, where string) string {
 	return fmt.Sprintf(`DELETE FROM %s WHERE %s`, resourceTable(r.Name), where)
 }
 
 // rowArgs lays a row out in the order insertStmt names the columns, with the
-// write time last. Both read columnsOf, so the two cannot disagree.
+// write time last. Both read columnsOf, so the cannot disagree.
 func rowArgs(r *Resource, row Row, at time.Time) []any {
 	cols := columnsOf(r)
 	args := make([]any, 0, len(cols)+1)

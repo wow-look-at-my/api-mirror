@@ -21,7 +21,7 @@ func collect(t *testing.T, e *Engine, kind string, repair bool) []KeyCheck {
 	return out
 }
 
-// seedWidget stores one row from the upstream, the way a consumer's read does.
+// seedWidget stores row from the upstream, the way a consumer's read does.
 func seedWidget(t *testing.T, e *Engine) {
 	t.Helper()
 	require.Equal(t, http.StatusOK, get(t, e, "/widgets/7").Code)
@@ -46,8 +46,7 @@ func TestCheckFindsAFactTheMirrorNeverLearnedWasWrong(t *testing.T) {
 	first := "hi"
 	title.Store(&first)
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Marshalled, never spliced: the title under test carries whatever the
-		// upstream renamed it to.
+		// Marshalled, never spliced.
 		w.Write(deliveryBody(t, map[string]any{"id": "7", "title": *title.Load()}))
 	}))
 	seedWidget(t, e)
@@ -113,8 +112,8 @@ func TestCheckReportsWhatTheUpstreamNoLongerHas(t *testing.T) {
 	assert.Equal(t, CheckGone, got[0].Verdict)
 }
 
-// A key that cannot be checked is named, never skipped: one quietly left out
-// reads as one that agreed.
+// A key that cannot be checked is named, never skipped: quietly left out
+// reads as that agreed.
 func TestCheckNamesAKeyItCannotCheck(t *testing.T) {
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`[{"id":"1","title":"a"}]`))
@@ -163,8 +162,7 @@ func TestCheckRepairsOnlyOnAPost(t *testing.T) {
 	rec := adminGet(t, e, defaultDashboardPath+"/api/check")
 	assert.Equal(t, http.StatusBadRequest, rec.Code, "a check with no kind has nothing to ask about")
 
-	// apply=true on a GET is still a read: a request that rewrites rows
-	// depending on a query parameter is one nobody can run safely.
+	// apply=true on a GET is still a read.
 	seedWidget(t, e)
 	var summary CheckSummary
 	body := adminGet(t, e, defaultDashboardPath+"/api/check?kind=widget&apply=true")

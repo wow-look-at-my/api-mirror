@@ -2,7 +2,7 @@ package mirror
 
 import "time"
 
-// Spec is one mirror declaration: the whole contents of a mirror XML file.
+// Spec is mirror declaration: the whole contents of a mirror XML file.
 type Spec struct {
 	Name      string
 	Vars      []Var
@@ -28,9 +28,9 @@ type Spec struct {
 // Dashboard is the operator surface: the tabs, the admin JSON, and the token
 // that gates them.
 type Dashboard struct {
-	// Path is the one prefix everything admin hangs off, gateable in one rule.
+	// Path is the prefix everything admin hangs off, gateable in rule.
 	Path string
-	// Token is template source for the secret. Empty mints one and logs the URL.
+	// Token is template source for the secret. Empty mints and logs the URL.
 	Token string
 	// Title is what the page calls this mirror.
 	Title string
@@ -56,7 +56,7 @@ type Notify struct {
 	DB string
 	// SignatureHeader carries the HMAC digest of each notification body.
 	SignatureHeader string
-	// Timeout bounds one delivery attempt.
+	// Timeout bounds delivery attempt.
 	Timeout time.Duration
 	// Retries is how many times a failed delivery is retried.
 	Retries int
@@ -65,7 +65,7 @@ type Notify struct {
 }
 
 // Refresh is the periodic sweep that keeps declared kinds warm without a
-// consumer having to ask first.
+// consumer having to ask.
 type Refresh struct {
 	Interval time.Duration
 	// Kinds names the resources swept. Empty means every routed resource.
@@ -82,7 +82,7 @@ type Replay struct {
 	Interval time.Duration
 	// List is the upstream path returning failed deliveries.
 	List string
-	// Redeliver asks for one to be re-sent; template source over `.delivery`.
+	// Redeliver asks for to be re-sent; template source over `.delivery`.
 	Redeliver string
 	// Method is how a redelivery is asked for.
 	Method string
@@ -92,7 +92,7 @@ type Replay struct {
 	At string
 	// Lookback bounds how far back a cycle will ask.
 	Lookback time.Duration
-	// Max bounds how many redeliveries one cycle asks for.
+	// Max bounds how many redeliveries cycle asks for.
 	Max int
 	// Requires names a value without which every cycle can only fail.
 	Requires string
@@ -119,13 +119,13 @@ type Upstream struct {
 	Forward []string
 	// Rate names the budget headers. Their spelling is the upstream's, not ours.
 	Rate RateHeaders
-	// Debounce holds an eligible passthrough READ so identical reads share one call.
+	// Debounce holds an eligible passthrough READ so identical reads share call.
 	Debounce time.Duration
 	// RetryAfter names the header saying a refusal is about waiting, not access.
 	RetryAfter string
 }
 
-// Header is one header sent upstream.
+// Header is header sent upstream.
 type Header struct {
 	Name  string
 	Value string // template source
@@ -141,9 +141,9 @@ const (
 	StoreDocument StoreMode = "document"
 )
 
-// Resource is one kind of stored fact: one derived SQLite table, one row per
-// key. There is deliberately no actor column and no way to declare one -- one
-// true state upstream is one row here, and who may SEE that row is the reveal
+// Resource is kind of stored fact: derived SQLite table, row per
+// key. There is deliberately no actor column and no way to declare --
+// true state upstream is row here, and who may SEE that row is the reveal
 // layer's question, never the storage layer's.
 type Resource struct {
 	Name   string
@@ -155,11 +155,11 @@ type Resource struct {
 	Drop []string
 	// Keep rescues exact key names from Drop. Every entry is a claim that some
 	Keep []Keep
-	// Reveal gates every read of this resource. A resource without one cannot
+	// Reveal gates every read of this resource. A resource without cannot
 	Reveal *Reveal
 }
 
-// Key is one component of a resource's identity.
+// Key is component of a resource's identity.
 type Key struct {
 	Name string
 	// From is the path into an absorbed document that yields this key's value,
@@ -181,7 +181,7 @@ const (
 	FieldJSON FieldType = "json"
 )
 
-// Field is one stored column.
+// Field is stored column.
 type Field struct {
 	Name string
 	Type FieldType
@@ -191,13 +191,13 @@ type Field struct {
 	Expr string
 }
 
-// Keep rescues one document key from a resource's Drop patterns.
+// Keep rescues document key from a resource's Drop patterns.
 type Keep struct {
 	Name   string
 	Reason string
 }
 
-// QueryParam is one query parameter a route models. A request carrying a
+// QueryParam is query parameter a route models. A request carrying a
 // parameter the route does not declare is passed through rather than answered
 // from a row keyed on a shape the spec never described.
 type QueryParam struct {
@@ -212,13 +212,13 @@ type QueryParam struct {
 
 // Route binds an HTTP path the consumer asks for to a resource that answers it.
 // A path the spec does not declare is a passthrough: forwarded verbatim and
-// reported as uncached. There is no third state and no "correctly uncached"
+// reported as uncached. There is no state and no "correctly uncached"
 // verdict.
 type Route struct {
 	Method   string
 	Path     string // "/repos/{owner}/{repo}"
 	Resource string
-	TTL      time.Duration // zero means the resource's own TTL
+	TTL      time.Duration // means the resource's own TTL
 	// Params maps a path parameter to the resource key it supplies. Empty means
 	Params map[string]string
 	// List marks a route whose answer is an ARRAY of the resource's rows rather
@@ -277,7 +277,7 @@ type Events struct {
 	List          []*Event
 }
 
-// Event maps one delivery to stored rows.
+// Event maps delivery to stored rows.
 type Event struct {
 	Type     string
 	Resource string
@@ -296,8 +296,8 @@ type Event struct {
 	Invalidate *Invalidate
 }
 
-// Set writes one column from the delivery payload. A write touches only the
-// columns its event names; an absent field never blanks one.
+// Set writes column from the delivery payload. A write touches only the
+// columns its event names; an absent field never blanks.
 type Set struct {
 	Field string
 	From  string // path into the payload

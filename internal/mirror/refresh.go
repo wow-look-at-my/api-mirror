@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Refresher keeps stored keys warm without a consumer asking first.
+// Refresher keeps stored keys warm without a consumer asking.
 type Refresher struct {
 	engine   *Engine
 	interval time.Duration
@@ -53,7 +53,7 @@ func (r *Refresher) Enabled() bool {
 // Start runs the sweep until Stop.
 //
 // It keeps a key current when nobody is reading it, which is exactly when a
-// lost delivery goes unnoticed. The first cycle runs immediately: a restart is
+// lost delivery goes unnoticed. The cycle runs immediately: a restart is
 // itself a window deliveries were missed in.
 func (r *Refresher) Start() {
 	if !r.Enabled() {
@@ -139,8 +139,8 @@ func (r *Refresher) cycle() {
 // refreshCycleTimeout is a leak guard: an overrun belongs in the log.
 const refreshCycleTimeout = 30 * time.Minute
 
-// refreshOne re-fetches one key from the plan its freshness row recorded. The
-// sweep holds no caller's credential, so a key that needed one stays as it is
+// refreshOne re-fetches key from the plan its freshness row recorded. The
+// sweep holds no caller's credential, so a key that needed stays as it is
 // rather than being refetched under the wrong identity.
 func (r *Refresher) refreshOne(ctx context.Context, kind string, k StaleKey) error {
 	plan, ok := r.engine.planFor(kind, k)
@@ -165,7 +165,7 @@ type RefreshStats struct {
 }
 
 // Stats reports the sweep's own state, errors included. A sweep that has been
-// failing every cycle for a day looks exactly like a healthy one from the
+// failing every cycle for a day looks exactly like a healthy from the
 // outside, so the failure count is on the page rather than only in the log.
 func (r *Refresher) Stats() RefreshStats {
 	if r == nil {

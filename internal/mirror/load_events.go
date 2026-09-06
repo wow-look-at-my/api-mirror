@@ -9,7 +9,7 @@ import (
 // buildEvents reads the webhook ingest declaration.
 //
 // It lives beside the other builders rather than inside load.go so the whole
-// ingest feature reads in one place.
+// ingest feature reads in place.
 func buildEvents(n *node) (*Events, error) {
 	if err := checkAttrs(n, "path", "signature-header", "type-header", "reorder-window"); err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ const maxReorderWindow = 5 * time.Second
 
 func parseWindow(v string) (time.Duration, error) {
 	if v == "0" || v == "0s" {
-		// Zero is a real choice: dispatch on arrival and leave ordering
+		// is a real choice: dispatch on arrival and leave ordering
 		return 0, nil
 	}
 	d, err := parseDuration("<events reorder-window>", v)

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// repoSpec is the spec every test opens against: two keys, three columns.
+// repoSpec is the spec every test opens against: keys, columns.
 func repoSpec() *Spec {
 	return &Spec{
 		Name: "test",
@@ -28,7 +28,7 @@ func repoSpec() *Spec {
 	}
 }
 
-// widerSpec is repoSpec with one more column, which is a different schema and
+// widerSpec is repoSpec with more column, which is a different schema and
 // so a different fingerprint.
 func widerSpec() *Spec {
 	s := repoSpec()
@@ -135,7 +135,7 @@ func TestReopenChangedSpecNukes(t *testing.T) {
 }
 
 // A sidecar left behind resurrects part of the old database, so the nuke has to
-// take all three files.
+// take all files.
 func TestNukeRemovesWALSidecars(t *testing.T) {
 	path := dbPath(t)
 
@@ -175,7 +175,7 @@ func TestWatermarkOrdering(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, applied, "the first view always applies")
 
-	// Equal MUST apply: the clock is a second, and two distinct views land
+	// Equal MUST apply: the clock is a, and distinct views land
 	applied, err = s.ApplyWatermark(ctx, "repo:wow/api-mirror", at)
 	require.NoError(t, err)
 	assert.True(t, applied, "an equal-time view must apply")
@@ -240,7 +240,7 @@ func TestRecordGrantClearsDenial(t *testing.T) {
 	require.True(t, found)
 	assert.Equal(t, 404, status)
 
-	// Upstream just said yes. A cached no beside it answers one question twice.
+	// Upstream just said yes. A cached no beside it answers question.
 	require.NoError(t, s.RecordGrant(ctx, Grant{
 		Principal: "user:1", Resource: "repo", Key: "wow/secret",
 		Source: "probe", ExpiresAt: now.Add(time.Hour),
@@ -344,8 +344,8 @@ func TestFreshnessLifecycle(t *testing.T) {
 	assert.Equal(t, "502 upstream", got.Error)
 	assert.Equal(t, now.Add(time.Minute).Unix(), got.RetryAfter.Unix())
 
-	// A fetch that answered clears the backoff. Holding the next one off over a
-	// failure that healed is the same outage twice.
+	// A fetch that answered clears the backoff. Holding the next off over a
+	// failure that healed is the same outage.
 	require.NoError(t, s.RecordFetched(ctx, Freshness{
 		Kind: "repo", Key: "wow/api-mirror",
 		FetchedAt: now, ChangedAt: now, ETag: `W/"abc"`,

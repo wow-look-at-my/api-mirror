@@ -65,8 +65,8 @@ func TestCoerceAndPresent_RoundTripEveryType(t *testing.T) {
 	}
 }
 
-// Both encodings of a time land on the same second. An upstream uses both,
-// sometimes for the same field, so a reader that handles one silently loses
+// Both encodings of a time land on the same. An upstream uses both,
+// sometimes for the same field, so a reader that handles silently loses
 // every value in the other shape.
 func TestCoerceTime_StringAndEpochAgree(t *testing.T) {
 	fromString, err := coerce(FieldTime, jsonValue(t, `"2026-01-02T03:04:05Z"`))
@@ -85,8 +85,8 @@ func TestCoerce_NilStaysNilSoTheCallerDecides(t *testing.T) {
 	}
 }
 
-// A value the column cannot hold is an error, never a zero. A zero written here
-// is indistinguishable from a real zero upstream, which is the quietest way a
+// A value the column cannot hold is an error, never a. A written here
+// is indistinguishable from a real upstream, which is the quietest way a
 // mirror serves a wrong number.
 func TestCoerce_RefusesWhatTheTypeCannotHold(t *testing.T) {
 	cases := []struct {
@@ -205,7 +205,7 @@ func TestRebuild_RefusesADocumentResource(t *testing.T) {
 }
 
 // A URL in a stored document is a way around the mirror: a consumer follows it,
-// and that request is one the mirror did not cache, did not gate and cannot see.
+// and that request is the mirror did not cache, did not gate and cannot see.
 func TestTrim_DropsBySuffixAndByExactName(t *testing.T) {
 	res := &Resource{
 		Drop: []string{"*url", "node_id"},
@@ -259,7 +259,7 @@ func TestDropped_MatchesTheTwoDeclaredPatternForms(t *testing.T) {
 	assert.False(t, dropped("identifier", drop), "an exact pattern does not match a longer name")
 }
 
-// One marshaller writes every document the mirror stores, so bytes written by a
+// marshaller writes every document the mirror stores, so bytes written by a
 // fetch, rewritten by a delivery, and served on a hit are the same bytes.
 func TestMarshalJSON_DoesNotEscapeHTMLAndDropsTheTrailingNewline(t *testing.T) {
 	b, err := marshalJSON(map[string]any{"name": "tom & jerry <b>"})

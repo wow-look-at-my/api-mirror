@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-// The dashboard's JSON. One handler per tab, each answering the whole of what
-// that tab shows so the page makes one request per view rather than stitching
+// The dashboard's JSON. handler per tab, each answering the whole of what
+// that tab shows so the page makes request per view rather than stitching
 // several together.
 
-// writeJSON renders one admin answer.
+// writeJSON renders admin answer.
 //
 // It marshals. A JSON literal built with string concatenation guesses about
 // every value it interpolates, and a path or a subject carries whatever the
@@ -33,7 +33,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 type RequestsView struct {
 	Recent []Request       `json:"recent"`
 	Groups []*RequestGroup `json:"groups"`
-	// Means: a total with no average hides one slow shape inside a busy one.
+	// Means: a total with no average hides slow shape inside a busy.
 	Means map[string]int64 `json:"means_ns"`
 }
 
@@ -88,7 +88,7 @@ func (a *Admin) rates(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// BriefView is the implementation brief: what is still leaving, worst first.
+// BriefView is the implementation brief: what is still leaving, worst.
 type BriefView struct {
 	Items []BriefItem `json:"items"`
 	Total int         `json:"total"`
@@ -133,7 +133,7 @@ func (a *Admin) principals(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
-// ResourceView describes one declared resource and, on request, its rows.
+// ResourceView describes declared resource and, on request, its rows.
 type ResourceView struct {
 	Name      string      `json:"name"`
 	Store     StoreMode   `json:"store"`
@@ -144,13 +144,11 @@ type ResourceView struct {
 	Reveal    RevealView  `json:"reveal"`
 	Rows      []Row       `json:"rows,omitempty"`
 	Truncated bool        `json:"truncated,omitempty"`
-	// Keyed is where each stored key stands. The overview counts errored keys
-	// per kind, and a count with no way to see WHICH keys errored, and why, is
-	// a number an operator cannot act on.
+	// Keyed is where each stored key stands, so an errored count is actionable.
 	Keyed []KeyState `json:"keyed,omitempty"`
 }
 
-// KeyState is one stored key on the resources tab.
+// KeyState is stored key on the resources tab.
 type KeyState struct {
 	Key        string    `json:"key"`
 	State      string    `json:"state"`
@@ -161,7 +159,7 @@ type KeyState struct {
 	RetryAfter time.Time `json:"retry_after,omitempty"`
 }
 
-// FieldView is one stored column as the page shows it.
+// FieldView is stored column as the page shows it.
 type FieldView struct {
 	Name string    `json:"name"`
 	Type FieldType `json:"type"`
@@ -252,7 +250,7 @@ type EventsView struct {
 	Configured bool          `json:"configured"`
 }
 
-// EventView is one declared event and how it is ordered.
+// EventView is declared event and how it is ordered.
 type EventView struct {
 	Type      string `json:"type"`
 	Resource  string `json:"resource"`
@@ -301,7 +299,7 @@ func (a *Admin) specReport(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// runRefresh triggers one sweep by hand, for an operator who does not want to
+// runRefresh triggers sweep by hand, for an operator who does not want to
 // wait for the next tick.
 func (a *Admin) runRefresh(w http.ResponseWriter, _ *http.Request) {
 	if !a.engine.refresh.Enabled() {

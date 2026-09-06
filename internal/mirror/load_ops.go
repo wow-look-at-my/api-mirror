@@ -12,7 +12,7 @@ import (
 //
 // They check SHAPE only -- an unknown attribute, a missing name. What a
 // declaration MEANS is validate.go's job, so a rule that is well-formed and
-// wrong still fails at load rather than at three in the morning.
+// wrong still fails at load rather than at in the morning.
 
 func buildDashboard(n *node) (Dashboard, error) {
 	if err := checkAttrs(n, "path", "title"); err != nil {

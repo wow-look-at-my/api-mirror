@@ -54,7 +54,7 @@ func ingestSpec() *Spec {
 				Sets: []Set{
 					{Field: "visibility", From: "repository.visibility"},
 					{Field: "stars", From: "repository.stargazers_count"},
-					// A cleared topic and an absent one are different answers
+					// A cleared topic and an absent are different answers
 					{Field: "topic", From: "repository.topic", AllowNull: true},
 				},
 			}, {
@@ -88,7 +88,7 @@ func newIngest(t *testing.T, spec *Spec) (*Ingest, *Store) {
 	return in, store
 }
 
-// repoDelivery builds one repository payload. The extra fields overlay the
+// repoDelivery builds repository payload. The extra fields overlay the
 // base, so a test states only what it is about.
 func repoDelivery(owner, name string, updated int64, extra map[string]any) map[string]any {
 	repo := map[string]any{
@@ -222,8 +222,8 @@ func TestEqualClockApplies(t *testing.T) {
 
 	deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "private"}))
-	// A clock is a second, and two distinct views of one subject land inside
-	// the same second often. Refusing on equality drops the second one.
+	// A clock is a, and distinct views of subject land inside
+	// the same often. Refusing on equality drops the.
 	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
 		map[string]any{"visibility": "public"}))
 
@@ -242,7 +242,7 @@ func TestSupersededDeliveryStillAbsorbsWhenDeclared(t *testing.T) {
 	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
-	// The verdict is still superseded: this view is not the newest one.
+	// The verdict is still superseded: this view is not the newest.
 	assert.Equal(t, string(DeliverySuperseded), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
 }
@@ -291,7 +291,7 @@ func TestInvalidateDeletesTheRow(t *testing.T) {
 
 func TestWatermarkFailureStillApplies(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
-	// The ordering gate is now broken. A provider sends a delivery once, so the
+	// The ordering gate is now broken. A provider sends a delivery, so the
 	_, err := store.db.Exec(`DROP TABLE mirror_watermark`)
 	require.NoError(t, err)
 
@@ -349,7 +349,7 @@ func TestWindowedDeliveryAnswersBeforeItApplies(t *testing.T) {
 }
 
 // A resource's from= describes the upstream DOCUMENT, and a delivery wraps that
-// document in an envelope. The event's own <key> is what bridges the two.
+// document in an envelope. The event's own <key> is what bridges the.
 func TestAnEventAddressesItsRowThroughItsOwnKeys(t *testing.T) {
 	spec := ingestSpec()
 	spec.Resources[0].Keys = []Key{
@@ -394,7 +394,7 @@ func TestReorderWindowAppliesOldestFirst(t *testing.T) {
 		return DeliveryApplied, nil
 	})
 
-	// Both deliveries are about one subject and land inside the window, newest
+	// Both deliveries are about subject and land inside the window, newest
 	r.Submit(&Delivery{ID: "newer", Subject: "acme/widget", At: time.Unix(2000, 0)})
 	r.Submit(&Delivery{ID: "older", Subject: "acme/widget", At: time.Unix(1000, 0)})
 	require.True(t, r.Drain(2*time.Second))

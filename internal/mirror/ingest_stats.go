@@ -14,8 +14,8 @@ func (i *Ingest) SetTelemetry(tel *Telemetry) { i.tel = tel }
 // SetNotifier installs the fan-out that runs after a delivery is applied.
 func (i *Ingest) SetNotifier(n *Notifier) { i.notifier = n }
 
-// ServeHTTP receives one delivery and records what it cost. The disposition is
-// read back off the response, so a path answering early counts the same as one
+// ServeHTTP receives delivery and records what it cost. The disposition is
+// read back off the response, so a path answering early counts the same as
 // running to the end: an uncounted refusal is the delivery an operator needs.
 func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
@@ -23,7 +23,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	i.serve(probe, r)
 
 	disp := probe.disposition()
-	// A held delivery is counted by applyAndRecord, once it has an outcome.
+	// A held delivery is counted by applyAndRecord, it has an outcome.
 	if disp != DeliveryHeld {
 		i.stats.record(r.Header.Get(i.events.TypeHeader), disp)
 	}
@@ -112,12 +112,12 @@ type DeliveryStats struct {
 	Dispositions map[DeliveryDisposition]int `json:"dispositions"`
 	Last         time.Time                   `json:"last,omitempty"`
 	Since        time.Time                   `json:"since,omitempty"`
-	// Declared shows a type that never arrived as a zero, not an absent row.
+	// Declared shows a type that never arrived as a, not an absent row.
 	Declared []string `json:"declared"`
 	Window   string   `json:"reorder_window"`
 }
 
-// TypeCount is how many deliveries of one type arrived.
+// TypeCount is how many deliveries of type arrived.
 type TypeCount struct {
 	Type  string `json:"type"`
 	Count int    `json:"count"`
@@ -152,7 +152,7 @@ func (i *Ingest) Stats() DeliveryStats {
 	return out
 }
 
-// applyAndNotify applies one delivery and then tells the subscribers.
+// applyAndNotify applies delivery and then tells the subscribers.
 //
 // The order is the point. A subscriber told before the write lands would come
 // back and read the state the delivery was about to replace, which is the exact

@@ -32,7 +32,7 @@ func TestResourceRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, missing, "an absent row is an answer, not an error")
 
-	// A partial key lists one owner, in key order, and nobody else's rows.
+	// A partial key lists owner, in key order, and nobody else's rows.
 	list, err := s.List(ctx, r, map[string]string{"owner": "wow"})
 	require.NoError(t, err)
 	require.Len(t, list, 2)
@@ -96,7 +96,7 @@ func TestGetRequiresAKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "no key supplied")
 }
 
-// A document resource stores the body itself, so its table has one payload
+// A document resource stores the body itself, so its table has payload
 // column instead of the declared fields.
 func TestDocumentResourceRoundTrip(t *testing.T) {
 	ctx := context.Background()

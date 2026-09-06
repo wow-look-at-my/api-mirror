@@ -255,8 +255,7 @@ func addResourceChild(r *Resource, child *node) error {
 		if err := checkAttrs(child, "key"); err != nil {
 			return err
 		}
-		// An empty pattern matches nothing, so a <drop> that named its pattern
-		// as text would load, store an empty string, and quietly drop nothing.
+		// An empty pattern matches nothing, so a <drop> naming it as text drops nothing.
 		pattern := strings.TrimSpace(child.Attr("key"))
 		if pattern == "" {
 			if text, err := textOf(child); err == nil && strings.TrimSpace(text) != "" {

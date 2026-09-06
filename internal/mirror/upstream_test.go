@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// swapUpstreamClient points the one outbound client at a test's own, and puts
+// swapUpstreamClient points the outbound client at a test's own, and puts
 func swapUpstreamClient(t *testing.T, c *http.Client) {
 	t.Helper()
 	saved := upstreamClient
@@ -20,7 +20,7 @@ func swapUpstreamClient(t *testing.T, c *http.Client) {
 	t.Cleanup(func() { upstreamClient = saved })
 }
 
-// upstreamSpec declares two static headers and one forwarded one, which is the
+// upstreamSpec declares static headers and forwarded, which is the
 // whole outbound header story in a single fixture.
 func upstreamSpec(base string) *Spec {
 	return &Spec{
@@ -171,7 +171,7 @@ func TestUpstreamCall_RejectsAnUnusableMethod(t *testing.T) {
 
 // A body past the cap is relayed and not stored. The mirror declines to hold
 // what it cannot hold, out loud, rather than storing a truncated document that
-// reads to every later consumer as a complete one.
+// reads to every later consumer as a complete.
 func TestUpstreamCall_BodyPastTheCapIsFlaggedAsOverflow(t *testing.T) {
 	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(strings.Repeat("x", maxBodyBytes+64)))

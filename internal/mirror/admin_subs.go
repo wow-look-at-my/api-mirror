@@ -17,10 +17,10 @@ type subscriptionRequest struct {
 	Events []string `json:"events"`
 }
 
-// subscriptionCreated is the one and only time the secret is returned.
+// subscriptionCreated is the and only time the secret is returned.
 type subscriptionCreated struct {
 	Subscription
-	// Secret signs every notification, and is shown here exactly once.
+	// Secret signs every notification, and is shown here exactly.
 	Secret string `json:"secret"`
 }
 
@@ -98,7 +98,7 @@ func (a *Admin) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 // checkCallbackURL refuses a destination the mirror must not be made to post to.
 //
 // A registration names where this server will send a signed request, which
-// makes an unchecked one a request forgery with the mirror's own network
+// makes an unchecked a request forgery with the mirror's own network
 // position behind it. The scheme check is the part that matters: file: and
 // gopher: are not endpoints, they are ways to make a client do something else.
 func checkCallbackURL(raw string) error {

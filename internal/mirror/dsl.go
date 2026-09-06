@@ -12,7 +12,7 @@ var (
 	envMap       = apidsl.EnvMap
 )
 
-// node is one parsed XML element.
+// node is parsed XML element.
 type node = apidsl.Node
 
 // checkAttrs rejects an attribute the element does not declare, which is what

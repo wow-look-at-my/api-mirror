@@ -29,7 +29,7 @@ func planFrom(ctx context.Context) *fetchPlan {
 	return p
 }
 
-// fetch refreshes one key from the upstream and absorbs the answer.
+// fetch refreshes key from the upstream and absorbs the answer.
 //
 // It stores state, never bytes. What a consumer receives is rebuilt from that
 // state, so the shape of an answer is the spec's and cannot drift with whatever
@@ -87,7 +87,7 @@ func (p *fetchPlan) upstreamPath() string {
 	return p.path + "?" + q.Encode()
 }
 
-// storable reports whether an answer is one the route said to keep.
+// storable reports whether an answer is the route said to keep.
 //
 // A 2xx is always kept. A 4xx is kept only when the route names it, which is
 func storable(up *Upstreamer, rt *Route, a *Answer) bool {
@@ -170,7 +170,7 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 
 // requireKeys refuses a row whose identity is incomplete. A row filed under a
 // missing key is a row nothing ever finds again, and a webhook naming the real
-// key would write a second one beside it.
+// key would write a beside it.
 func requireKeys(res *Resource, row Row) error {
 	for _, k := range res.Keys {
 		v, ok := row[k.Name]
@@ -181,7 +181,7 @@ func requireKeys(res *Resource, row Row) error {
 	return nil
 }
 
-// A resource key becomes text in exactly one place, keyString in reveal.go.
+// A resource key becomes text in exactly place, keyString in reveal.go.
 
 // fingerprint reduces a credential to a stable, non-reversible identifier. The
 func fingerprint(secret string) string {

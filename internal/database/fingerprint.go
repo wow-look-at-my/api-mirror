@@ -15,12 +15,12 @@ func Fingerprint(ddl string) string {
 // Scrub reduces DDL to the tables it builds: comments dropped, formatting
 // normalized. Normalizing keeps the decision honest in both directions.
 // Hashing raw text rebuilds a fleet's cache over a reworded comment. Dropping
-// too much is worse: two different schemas that scrub alike deploy a new
+// too much is worse: different schemas that scrub alike deploy a new
 // column against an old table.
 //
 // So the bytes that are load-bearing stay exactly as written. A quoted run is
-// copied verbatim, spacing included, and a gap between two ordinary tokens
-// becomes one space.
+// copied verbatim, spacing included, and a gap between ordinary tokens
+// becomes space.
 func Scrub(sql string) string {
 	var out scrubbed
 	for i := 0; i < len(sql); {
@@ -88,7 +88,7 @@ func selfDelimiting(c byte) bool {
 }
 
 // endOfQuoted returns the index just past the quoted run opening at
-// sql[start]. A doubled closing quote is an escaped one. An unterminated run
+// sql[start]. A doubled closing quote is an escaped. An unterminated run
 func endOfQuoted(sql string, start int, closer byte) int {
 	for i := start + 1; i < len(sql); i++ {
 		if sql[i] != closer {

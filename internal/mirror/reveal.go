@@ -3,9 +3,9 @@ package mirror
 import (
 	"context"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"net/http"
 	"net/url"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -26,12 +26,12 @@ const (
 	DenyUpstream DenyReason = "probe-inconclusive"
 )
 
-// Verdict is the reveal decision for one read.
+// Verdict is the reveal decision for read.
 type Verdict struct {
 	Allowed bool
 	// Status is the answer when the read is refused. It is the upstream's own
 	Status int
-	// Cached reports a refusal replayed from the deny cache rather than one a
+	// Cached reports a refusal replayed from the deny cache rather than a
 	Cached bool
 	// Reason names the rung that refused, for the dashboard's refusal tally.
 	Reason DenyReason
@@ -53,7 +53,7 @@ func NewRevealer(store *Store, up *Upstreamer, vars map[string]any) *Revealer {
 // Allow decides whether this principal may be shown this resource key.
 //
 // The ladder is public, then grant, then cached denial, then probe, and each
-// rung is a different mechanism rather than a shortcut for the one below it. A
+// rung is a different mechanism rather than a shortcut for the below it. A
 // failure anywhere refuses: a store error, a template that cannot render and a
 // row that is not there all mean the engine has no proof, and no proof is a
 // refusal.
@@ -80,7 +80,7 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 
 	// A caller the engine could not name holds no proof and can be given none.
 	// Their probe still runs -- their own credential answers it -- but nothing
-	// remembers the answer, so every request pays for one.
+	// remembers the answer, so every request pays for.
 	if principal != "" {
 		ok, err := rv.store.HasGrant(ctx, principal, res.Name, k, now)
 		if err != nil {
@@ -113,7 +113,7 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 	}
 	var row Row
 	if completeKey(res, key) {
-		// A partial key names many rows, and one row's visibility is not the
+		// A partial key names many rows, and row's visibility is not the
 		var err error
 		if row, err = rv.store.Get(ctx, res, key); err != nil {
 			return false, fmt.Errorf("reveal: read %s: %w", res.Name, err)
@@ -132,7 +132,7 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 // probe asks the upstream, with the CALLER's own forwarded credential, whether
 // this caller may read this key.
 //
-// The answer is sorted into three kinds, and the kind decides what is
+// The answer is sorted into kinds, and the kind decides what is
 // remembered. A 2xx earns a grant. An authoritative refusal is cached for the
 // deny window. Everything else -- a server failure, a rate-limit refusal, a
 // transport error, a status that says nothing about access -- is remembered
@@ -173,7 +173,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 		return Verdict{Allowed: true}, nil
 
 	case rv.up.Transient(ans):
-		// Checked before the authoritative case on purpose: a rate-limited 403
+		// Checked before the authoritative case on purpose: a rate-limited
 		// wears the same status as a real refusal and means the opposite.
 		return refuse(http.StatusBadGateway),
 			fmt.Errorf("reveal probe %s: upstream answered %d, which states nothing about access", res.Name, ans.Status)
@@ -188,15 +188,15 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 	}
 }
 
-// remember caches one authoritative refusal, and on a 403 drops the proof it
+// remember caches authoritative refusal, and on a drops the proof it
 // contradicts.
 //
-// A 403 is the upstream stating that this caller may not read this. A 404 is
+// A is the upstream stating that this caller may not read this. A is
 // not: it cannot be told apart from a missing thing inside something the caller
 // CAN see, so it never revokes.
 //
 // A bookkeeping failure here does not change the verdict. The upstream proved
-// the refusal; failing to write it down costs one extra probe next time, and
+// the refusal; failing to write it down costs extra probe next time, and
 // the log says so.
 func (rv *Revealer) remember(ctx context.Context, principal string, res *Resource, k string, status int, expires time.Time) {
 	if principal == "" {
@@ -239,10 +239,10 @@ func (rv *Revealer) RenewOn2xx(ctx context.Context, principal string, res *Resou
 	}
 }
 
-// probePath renders the probe's path for one key.
+// probePath renders the probe's path for key.
 //
 // Both spellings a spec plausibly uses work: the {name} placeholders route
-// paths already use, and a template over .key.<name> and .var.<name>. A
+// paths already use, and a template over.key.<name> and.var.<name>. A
 // placeholder left over after both means a key nothing supplied, which is an
 // error rather than a request to a path with a brace in it.
 func (rv *Revealer) probePath(res *Resource, key map[string]string) (string, error) {
@@ -287,24 +287,24 @@ func refuse(status int) Verdict {
 	return Verdict{Status: status, Reason: DenyUpstream}
 }
 
-// keyString renders a resource key as the one string every path names it by:
+// keyString renders a resource key as the string every path names it by:
 // the grant, the denial and the freshness marker.
 //
 // A key becomes text here and nowhere else, so a grant recorded by a probe and
 // a grant looked up by a read agree. Components hold their DECLARED position
 // and are escaped, which keeps an absent component and a component containing
-// the separator distinguishable: two different keys cannot render one string.
+// the separator distinguishable: different keys cannot render string.
 func keyString(res *Resource, key map[string]string) string {
 	parts := make([]string, 0, len(key)+len(res.Keys))
-	named := make([]string, 0, len(res.Keys))
+	named := set.New[string]()
 	for _, k := range res.Keys {
 		parts = append(parts, url.PathEscape(key[k.Name]))
-		named = append(named, k.Name)
+		named.Add(k.Name)
 	}
 	// A list route may also select by a stored FIELD -- every post by an
 	extra := make([]string, 0, len(key))
 	for name := range key {
-		if !slices.Contains(named, name) {
+		if !named.Contains(name) {
 			extra = append(extra, name)
 		}
 	}

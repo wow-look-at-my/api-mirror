@@ -13,10 +13,10 @@ import (
 	"time"
 )
 
-// maxDeliveryBytes caps one delivery. A body past the cap is refused rather
+// maxDeliveryBytes caps delivery. A body past the cap is refused rather
 const maxDeliveryBytes = 8 << 20
 
-// deliverTimeout bounds the writes of one delivery answered in the request.
+// deliverTimeout bounds the writes of delivery answered in the request.
 const deliverTimeout = 30 * time.Second
 
 // dispositionHeader reports what the mirror did with a delivery. The provider
@@ -37,12 +37,12 @@ type Ingest struct {
 	events  *Events
 	store   *Store
 	reorder *Reorderer
-	// secret is the resolved HMAC key. An empty one refuses every delivery: an
+	// secret is the resolved HMAC key. An empty refuses every delivery: an
 	secret []byte
 	byType map[string]*Event
 	window time.Duration
 	now    func() time.Time
-	// lastPrune stamps the last watermark sweep, as a Unix second.
+	// lastPrune stamps the last watermark sweep, as a Unix.
 	lastPrune atomic.Int64
 	// tel puts every delivery on the chart. Nil-safe, so a test can skip it.
 	tel      *Telemetry
@@ -92,7 +92,7 @@ func (i *Ingest) Reorderer() *Reorderer { return i.reorder }
 // Drain waits for held and in-flight deliveries at shutdown. A provider sends a
 func (i *Ingest) Drain(timeout time.Duration) bool { return i.reorder.Drain(timeout) }
 
-// ServeHTTP receives one delivery.
+// ServeHTTP receives delivery.
 //
 // Every branch fails closed. A delivery whose authenticity the mirror cannot
 // establish is refused, never treated as harmless.
@@ -179,7 +179,7 @@ func (i *Ingest) reply(w http.ResponseWriter, status int, body string) {
 
 // deliveryStatus maps a disposition to the status the provider records.
 //
-// Every non-error is 2xx, so a healthy hook stays enabled. The 200/202 split
+// Every non-error is 2xx, so a healthy hook stays enabled.
 func deliveryStatus(d DeliveryDisposition) int {
 	switch d {
 	case DeliveryApplied:
@@ -194,7 +194,7 @@ func deliveryStatus(d DeliveryDisposition) int {
 // verifyDelivery checks the HMAC over the RAW body.
 //
 // The comparison is constant time. A byte-by-byte comparison tells a sender how
-// far their guess got, which is enough to forge a signature one byte at a time.
+// far their guess got, which is enough to forge a signature byte at a time.
 func verifyDelivery(secret []byte, header string, body []byte) bool {
 	const prefix = "sha256="
 	if !strings.HasPrefix(header, prefix) {
@@ -209,14 +209,14 @@ func verifyDelivery(secret []byte, header string, body []byte) bool {
 	return hmac.Equal(sig, mac.Sum(nil))
 }
 
-// deliveryID names one delivery in the log.
+// deliveryID names delivery in the log.
 func deliveryID(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:6])
 }
 
-// apply writes one delivery to the store. It is the whole ingest contract:
-// order first, then write only the fields the event names.
+// apply writes delivery to the store. It is the whole ingest contract:
+// order, then write only the fields the event names.
 func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, error) {
 	ev := d.Event
 	res, ok := i.store.Resource(ev.Resource)
@@ -254,7 +254,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 // order asks the watermark whether this view postdates what is already applied,
 // and reports whether the watermark refused it.
 //
-// A failure APPLIES the delivery, loudly. A provider sends a delivery once, so
+// A failure APPLIES the delivery, loudly. A provider sends a delivery, so
 func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 	if d.Event.Unordered {
 		return false
@@ -270,10 +270,10 @@ func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 // ingestKey resolves every key component of a resource from the delivery
 // payload.
 //
-// A write needs the whole key: a partial one matches rows the delivery is not
-// about, so a write under it lands on the wrong row. An invalidate is the one
+// A write needs the whole key: a partial matches rows the delivery is not
+// about, so a write under it lands on the wrong row. An invalidate is the
 // case where a partial key is the right answer -- a payload names a commit, not
-// one page of a paginated answer -- and there it deletes every row beneath it.
+// page of a paginated answer -- and there it deletes every row beneath it.
 func ingestKey(res *Resource, ev *Event, payload any) (map[string]string, error) {
 	key := make(map[string]string, len(res.Keys))
 	for _, k := range res.Keys {
@@ -299,7 +299,7 @@ func ingestKey(res *Resource, ev *Event, payload any) (map[string]string, error)
 	return key, nil
 }
 
-// keyValue reads one key component out of a delivery, from the event's own
+// keyValue reads key component out of a delivery, from the event's own
 // <key> or from the <set> that writes that column. It also reports which of
 // them it read, so a failure names a path the spec contains.
 //
@@ -355,7 +355,7 @@ func (i *Ingest) merge(ctx context.Context, res *Resource, ev *Event, key map[st
 	return i.store.Put(ctx, res, merged, i.now())
 }
 
-// setValue reads one declared write out of the payload and coerces it to the
+// setValue reads declared write out of the payload and coerces it to the
 // column's type.
 //
 // A path that finds nothing yields nil, and the caller decides whether to write

@@ -9,7 +9,7 @@ import (
 // requestLogMax bounds a live view: oldest out, never newest refused.
 const requestLogMax = 2000
 
-// Disposition is what the mirror DID with one request. The vocabulary is closed.
+// Disposition is what the mirror DID with request. The vocabulary is closed.
 type Disposition string
 
 const (
@@ -23,7 +23,7 @@ const (
 	DispAdmin       Disposition = "admin"       // the dashboard's own surface
 )
 
-// Request is one inbound request as the mirror handled it.
+// Request is inbound request as the mirror handled it.
 type Request struct {
 	At          time.Time     `json:"at"`
 	Method      string        `json:"method"`
@@ -48,7 +48,7 @@ type RequestLog struct {
 	now     func() time.Time
 }
 
-// RequestGroup is every request that shared one route shape.
+// RequestGroup is every request that shared route shape.
 type RequestGroup struct {
 	Shape        string                 `json:"shape"`
 	Method       string                 `json:"method"`
@@ -64,7 +64,7 @@ type RequestGroup struct {
 }
 
 // MeanDuration is the average shown beside the count. A total with no count
-// behind it is a division, not a measurement, so it reports zero.
+// behind it is a division, not a measurement, so it reports.
 func (g *RequestGroup) MeanDuration() time.Duration {
 	if g.Count == 0 {
 		return 0
@@ -81,9 +81,9 @@ func NewRequestLog() *RequestLog {
 	}
 }
 
-// Record files one handled request.
+// Record files handled request.
 //
-// The SHAPE is the point. One line per request answers "what happened just
+// The SHAPE is the point. line per request answers "what happened just
 // now"; the tally per shape answers "what is this mirror actually asked for",
 // which is the question that decides what to model next.
 func (l *RequestLog) Record(r Request) {
@@ -106,7 +106,7 @@ func (l *RequestLog) Record(r Request) {
 	l.entries[(l.head+l.size)%len(l.entries)] = r
 	l.size++
 
-	// Tallies outlive the ring: the question is the whole run, not the last 2000.
+	// Tallies outlive the ring: the question is the whole run, not the last.
 	key := r.Method + " " + r.Shape
 	g, ok := l.groups[key]
 	if !ok {
@@ -132,7 +132,7 @@ func (l *RequestLog) Record(r Request) {
 	}
 }
 
-// Recent returns the newest entries first, at most n of them.
+// Recent returns the newest entries, at most n of them.
 func (l *RequestLog) Recent(n int) []Request {
 	if l == nil {
 		return nil
@@ -149,7 +149,7 @@ func (l *RequestLog) Recent(n int) []Request {
 	return out
 }
 
-// Groups returns the per-shape tallies, busiest first.
+// Groups returns the per-shape tallies, busiest.
 func (l *RequestLog) Groups() []*RequestGroup {
 	if l == nil {
 		return nil

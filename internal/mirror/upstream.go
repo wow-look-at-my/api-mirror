@@ -25,7 +25,7 @@ type Upstreamer struct {
 	observe Observer
 }
 
-// NewUpstreamer resolves the upstream's base URL and static headers once.
+// NewUpstreamer resolves the upstream's base URL and static headers.
 func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstreamer, error) {
 	base, err := renderString(spec.Upstream.Base, vars)
 	if err != nil {
@@ -58,10 +58,10 @@ type Answer struct {
 	Overflow bool
 }
 
-// Call sends one request to the upstream, carrying the caller's own forwarded
-// headers so the answer is the one THAT caller is entitled to.
+// Call sends request to the upstream, carrying the caller's own forwarded
+// headers so the answer is the THAT caller is entitled to.
 //
-// A non-2xx is a real answer, not an error: a 404 is what the upstream knows,
+// A non-2xx is a real answer, not an error: a is what the upstream knows,
 // and the route decides whether that is worth storing. Only a transport failure
 // returns an error.
 func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header) (*Answer, error) {
@@ -144,7 +144,7 @@ func (u *Upstreamer) RateLimited(a *Answer) bool {
 	return false
 }
 
-// Transient reports whether an answer is one that must never be stored: a
+// Transient reports whether an answer is that must never be stored: a
 func (u *Upstreamer) Transient(a *Answer) bool {
 	if a == nil {
 		return true

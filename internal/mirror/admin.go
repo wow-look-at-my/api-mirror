@@ -21,7 +21,7 @@ type Admin struct {
 }
 
 // NewAdmin builds the operator surface, always. A spec chooses where it lives
-// and what gates it, never whether it exists: an optional view is one nobody
+// and what gates it, never whether it exists: an optional view is nobody
 // has when they need it.
 func NewAdmin(e *Engine) *Admin {
 	d := e.spec.Dashboard
@@ -110,17 +110,11 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
 }
 
-// sessionCookie carries the token for the requests a BROWSER makes on the
-// page's behalf.
+// sessionCookie carries the token for a BROWSER's own subresource fetches.
 const sessionCookie = "mirror_admin"
 
-// keepToken hands the browser back the token the caller just proved.
-//
-// A stylesheet and a module are fetched by the browser, not by the page, so
-// they carry no header and no query string: without this the shell loads, both
-// subresources are refused, and the operator gets an unstyled page that never
-// runs. Strict same-site keeps the cookie off a cross-site request, so it
-// cannot answer for a POST somebody else's page made.
+// keepToken hands the browser back the token the caller just proved. Strict
+// same-site keeps it off a cross-site request.
 func (a *Admin) keepToken(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value == a.token {
 		return
@@ -135,7 +129,7 @@ func (a *Admin) keepToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authorized checks the token in constant time. Four carriers: a human opens a
+// authorized checks the token in constant time. carriers: a human opens a
 // URL, the page fetches with a header, a script uses what it already has, and
 // the browser sends back the cookie for a subresource it fetches itself.
 func (a *Admin) authorized(r *http.Request) bool {

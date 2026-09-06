@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// What an events declaration MEANS, rather than what ingest does with one.
+// What an events declaration MEANS, rather than what ingest does with.
 // Each case names a delivery the engine could not handle honestly if the spec
 // were accepted.
 

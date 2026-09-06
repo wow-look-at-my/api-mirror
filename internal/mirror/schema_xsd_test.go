@@ -11,15 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The reference XSD is not enforced at load time and CI only checks that it
-// parses, so nothing stopped it describing a grammar the shipped specs had
-// already outgrown. It had: <purge>, <key credential=>, <reveal><credential>
-// and every operations element were missing, and the sample went on validating
-// against nobody. This walks the specs and demands the XSD know each name.
-//
-// One direction only. A name the XSD declares and no spec uses is not drift;
-// a name a spec uses and the XSD does not know is the editor lying to whoever
-// writes the next one.
+// A name a spec uses and the XSD does not know is the editor lying. The
+// reverse is not drift, so this walk runs in that direction only.
 
 func TestReferenceSchemaKnowsEveryNameTheShippedSpecsUse(t *testing.T) {
 	elements, attributes := declaredNames(t)
@@ -73,7 +66,7 @@ func declaredNames(t *testing.T) (elements, attributes []string) {
 		append(attributes, "test", "eq", "each", "expr", "as", "default")
 }
 
-// namesUsedBy reads every element and attribute name one spec actually uses.
+// namesUsedBy reads every element and attribute name spec actually uses.
 func namesUsedBy(t *testing.T, path string) (elements, attributes []string) {
 	t.Helper()
 	body, err := os.ReadFile(path)
@@ -102,7 +95,7 @@ func namesUsedBy(t *testing.T, path string) (elements, attributes []string) {
 	return removeString(elements, "mirror"), removeString(attributes, "schema")
 }
 
-// stripDecl drops an XML 1.1 declaration, which the stdlib decoder refuses.
+// stripDecl drops the XML declaration, which the stdlib decoder refuses.
 func stripDecl(s string) string {
 	if !strings.HasPrefix(s, "<?xml") {
 		return s

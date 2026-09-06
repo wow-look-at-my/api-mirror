@@ -54,7 +54,7 @@ func (r *Replayer) missing() string {
 	return r.rule.Requires
 }
 
-// Start runs the replayer until Stop. The first cycle runs immediately: a
+// Start runs the replayer until Stop. The cycle runs immediately: a
 // restart is itself a window deliveries were missed in.
 func (r *Replayer) Start() {
 	if !r.declared() {
@@ -109,7 +109,7 @@ func (r *Replayer) Stop() {
 // cycle reads the failure log and asks for what is still missing.
 //
 // A lost delivery is the quietest failure a mirror has. The provider sends
-// once, nothing retries, and every cache that delivery would have moved serves
+// , nothing retries, and every cache that delivery would have moved serves
 // its last answer for the whole TTL -- well-formed, recent-looking and wrong.
 // A shorter TTL shrinks that window and hides it; it does not close it.
 func (r *Replayer) cycle() {
@@ -145,7 +145,7 @@ func (r *Replayer) cycle() {
 	cutoff := time.Now().Add(-r.lookback())
 	for _, item := range items {
 		if sent >= r.max() {
-			// Stated, never silent: a quiet stop at 25 reads as a find of 25.
+			// Stated, never silent: a quiet stop at reads as a find of.
 			logf("replay: stopped at the %d-per-cycle cap with %d still listed", r.max(), len(items)-found)
 			break
 		}
@@ -158,7 +158,7 @@ func (r *Replayer) cycle() {
 			continue
 		}
 		if r.alreadyAsked(id) {
-			// Once per delivery: asking twice makes recovery a source of duplicates.
+			// per delivery: asking makes recovery a source of duplicates.
 			continue
 		}
 		if err := r.ask(ctx, item, id); err != nil {
@@ -174,7 +174,7 @@ func (r *Replayer) cycle() {
 	}
 }
 
-// replayCycleTimeout bounds one cycle.
+// replayCycleTimeout bounds cycle.
 const replayCycleTimeout = 5 * time.Minute
 
 func (r *Replayer) identify(item any) (string, time.Time, bool) {
@@ -213,7 +213,7 @@ func (r *Replayer) ask(ctx context.Context, item any, id string) error {
 	return nil
 }
 
-// replayRefused is the upstream declining to re-send one delivery.
+// replayRefused is the upstream declining to re-send delivery.
 type replayRefused struct {
 	Status int
 	ID     string

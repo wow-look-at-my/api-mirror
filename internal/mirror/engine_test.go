@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testSpec is a two-resource mirror: one public single-row resource and one
+// testSpec is a -resource mirror: public single-row resource and
 // list. Both are public, so these tests exercise serving rather than the reveal
 // ladder, which reveal_test.go covers on its own.
 func testSpec(base string) *Spec {
@@ -74,7 +74,7 @@ func newTestEngine(t *testing.T, h http.Handler, tweaks ...func(*Spec)) (*Engine
 	return engine, srv
 }
 
-// get drives one request through the engine.
+// get drives request through the engine.
 func get(t *testing.T, e *Engine, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()

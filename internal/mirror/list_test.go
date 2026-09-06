@@ -13,7 +13,7 @@ import (
 
 // A list answer that stops mentioning an item is the upstream saying the item
 // is gone. Whether the mirror may act on that is the route's declaration, not a
-// guess: one page of a paginated list is not the set.
+// guess: page of a paginated list is not the set.
 func TestCompleteListDropsWhatVanishedUpstream(t *testing.T) {
 	var round atomic.Int32
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +24,7 @@ func TestCompleteListDropsWhatVanishedUpstream(t *testing.T) {
 		w.Write([]byte(`[{"id":"a","name":"first"}]`))
 	}), func(s *Spec) {
 		s.Routes[1].Complete = true
-		s.Routes[1].TTL = 1 // expire at once, so the second read refetches
+		s.Routes[1].TTL = 1 // expire at, so the read refetches
 	})
 
 	require.Len(t, listNames(t, e), 2)

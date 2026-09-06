@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// recorder wraps one inbound response so the log records what the caller
+// recorder wraps inbound response so the log records what the caller
 // received rather than what the handler meant to send.
 type recorder struct {
 	http.ResponseWriter
@@ -53,7 +53,7 @@ func (rec *recorder) Write(p []byte) (int, error) {
 }
 
 // Flush keeps a streaming handler streaming: swallowing it would turn a live
-// NDJSON feed into one buffered dump at the end.
+// NDJSON feed into buffered dump at the end.
 func (rec *recorder) Flush() {
 	if f, ok := rec.ResponseWriter.(http.Flusher); ok {
 		f.Flush()

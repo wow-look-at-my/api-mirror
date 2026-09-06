@@ -111,14 +111,14 @@ func TestRateMeter_DropsAnIdentityThatStoppedCalling(t *testing.T) {
 	m.Observe("token:gone", http.Header{"L": {"100"}, "R": {"7"}, "X": {itoa(int(now.Add(time.Minute).Unix()))}})
 	require.Len(t, m.Snapshot(), 1)
 
-	// A caller still calling gets a fresh reset; a past one means it stopped.
+	// A caller still calling gets a fresh reset; a past means it stopped.
 	now = now.Add(3 * time.Hour)
 	assert.Empty(t, m.Snapshot(), "a dead reading is swept lazily, with no goroutine whose only job is to delete")
 }
 
 func TestTimeline_ReportsWhatItDroppedRatherThanLosingItQuietly(t *testing.T) {
 	tl := NewTimeline()
-	// Shrink the ring: eviction is otherwise 100,000 requests away.
+	// Shrink the ring: eviction is otherwise, requests away.
 	tl.frames = make([]Frame, 2)
 
 	for i := range 5 {

@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 )
 
 // credentialResource is a resource keyed by the caller's own credential
-// fingerprint: one row per token, self-gated instead of probed.
+// fingerprint: row per token, self-gated instead of probed.
 func credentialResource() *Resource {
 	return &Resource{
 		Name:   "identity",
@@ -39,7 +40,9 @@ func TestCredentialResource_OneRowPerCaller(t *testing.T) {
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"login":"` + r.Header.Get("Authorization") + `"}`))
+		body, err := json.Marshal(map[string]string{"login": r.Header.Get("Authorization")})
+		require.NoError(t, err)
+		w.Write(body)
 	}), withCredentialResource(&Route{Method: "GET", Path: "/user", Resource: "identity"}))
 
 	getAs := func(auth string) *httptest.ResponseRecorder {
@@ -58,10 +61,10 @@ func TestCredentialResource_OneRowPerCaller(t *testing.T) {
 	assert.Equal(t, http.StatusOK, second.Code)
 	assert.Contains(t, second.Body.String(), `"login":"token bob"`)
 
-	// Two different credentials are two different rows, so both fetched.
+	// different credentials are different rows, so both fetched.
 	assert.EqualValues(t, 2, calls.Load())
 
-	// The same credential replays its own row without a second fetch.
+	// The same credential replays its own row without a fetch.
 	again := getAs("token alice")
 	assert.Contains(t, again.Body.String(), `"login":"token alice"`)
 	assert.EqualValues(t, 2, calls.Load())

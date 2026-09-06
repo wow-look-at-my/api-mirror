@@ -14,7 +14,7 @@ const rateMeterMax = 512
 // staleResetGrace is the longest window a provider publishes.
 const staleResetGrace = time.Hour
 
-// RateBudget is the latest reading of one identity's budget for one resource.
+// RateBudget is the latest reading of identity's budget for resource.
 type RateBudget struct {
 	Principal  string    `json:"principal"`
 	Resource   string    `json:"resource"`
@@ -23,7 +23,7 @@ type RateBudget struct {
 	Used       int       `json:"used"`
 	Reset      time.Time `json:"reset"`
 	ObservedAt time.Time `json:"observed_at"`
-	// Stale means the reset passed: a window that is over, not one refreshing.
+	// Stale means the reset passed: a window that is over, not refreshing.
 	Stale bool `json:"stale"`
 }
 
@@ -54,7 +54,7 @@ func NewRateMeter(headers RateHeaders) *RateMeter {
 	return &RateMeter{entries: map[string]*RateBudget{}, headers: headers, now: time.Now}
 }
 
-// Observe reads one answer's budget headers.
+// Observe reads answer's budget headers.
 //
 // Nothing here ever asks the upstream for a budget: it reads the headers of
 // answers the mirror was already getting, so the meter costs nothing and
@@ -98,7 +98,7 @@ func (m *RateMeter) Observe(principal string, h http.Header) {
 	m.capLocked()
 }
 
-// Snapshot returns the live readings, most recently observed first.
+// Snapshot returns the live readings, most recently observed.
 func (m *RateMeter) Snapshot() []RateBudget {
 	if m == nil {
 		return nil
