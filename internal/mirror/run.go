@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,18 +18,16 @@ import (
 const drainTimeout = 30 * time.Second
 
 // Run parses the command line, serves until a signal, and drains. It returns
-// the error the caller reports; nothing here calls os.Exit, so a test can drive
-// it.
+// the error the caller reports. Nothing here calls os.Exit.
 func Run() error {
-	return run(os.Args)
+	return run(os.Args, os.Stdout)
 }
 
-// run parses argv into its own flag set. Nothing here reads the process's
-// command line, so a test gives Run a command line by calling this instead of
-// assigning os.Args. That assignment was visible to every other test in the
-// binary, and a test the runner re-executes inherited flags this binary does
-// not define.
-func run(argv []string) error {
+// run parses argv into its own flag set and reports to out. Nothing here
+// reads a process global, so a test hands both in rather than assigning
+// os.Args and os.Stdout. Those assignments reached every other test in the
+// binary, which broke a re-executed test and a parallel one.
+func run(argv []string, out io.Writer) error {
 	fs := flag.NewFlagSet(argv[0], flag.ContinueOnError)
 	var (
 		specPath = fs.String("spec", "mirror.xml", "path to the mirror spec")
@@ -45,7 +44,7 @@ func run(argv []string) error {
 		return err
 	}
 	if *check {
-		return report(spec, os.Stdout)
+		return report(spec, out)
 	}
 
 	ctx := context.Background()
@@ -137,7 +136,7 @@ func (e *Engine) Drain(timeout time.Duration) bool {
 
 // report prints what a spec derives, so an author can see the schema, the
 // routes and the gates before running anything.
-func report(spec *Spec, out *os.File) error {
+func report(spec *Spec, out io.Writer) error {
 	fmt.Fprintf(out, "mirror %s\n\n", spec.Name)
 	fmt.Fprintf(out, "schema fingerprint: %s\n\n", spec.Fingerprint())
 	fmt.Fprintln(out, spec.DDL())
@@ -163,7 +162,7 @@ func report(spec *Spec, out *os.File) error {
 // reportOps prints the operational half, saying plainly which parts a spec
 // leaves out. A mirror with no replay and no refresh is a valid mirror;
 // whose author did not realise those were choices is not.
-func reportOps(spec *Spec, out *os.File) {
+func reportOps(spec *Spec, out io.Writer) {
 	say := func(name string, on bool, detail string) {
 		state := "not declared"
 		if on {

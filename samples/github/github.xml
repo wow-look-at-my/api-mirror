@@ -792,6 +792,55 @@
 	</resource>
 
 	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token"/>
+
+	<!--
+		Which installation covers a repository or an owner. An App asks this
+		before it can mint a token for them, so it is on the path of every
+		first call the App makes about a repository it has not seen.
+
+		Credential-keyed like the mint above: the answer is what THAT App can
+		see, and an App with no installation there is told so. The absorbed 404
+		is the whole point, because an App polling repositories it is not
+		installed on asks this over and over.
+	-->
+	<resource name="repo_installation" store="document" ttl="1h">
+		<key name="token_fp" credential="true"/>
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/repos/{owner}/{repo}/installation" resource="repo_installation">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<resource name="owner_installation" store="document" ttl="1h">
+		<key name="token_fp" credential="true"/>
+		<key name="kind"/>
+		<key name="owner" fold="true"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<!--
+		An org and a user are separate upstream paths that answer the same
+		shape, so they share a resource and the kind key keeps a user named
+		like an org from answering the other question.
+	-->
+	<route method="GET" path="/orgs/{owner}/installation" resource="owner_installation">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="kind" type="text" default="org" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/users/{owner}/installation" resource="owner_installation">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="kind" type="text" default="user" key="true"/>
+		<absorb status="404"/>
+	</route>
 	<resource name="identity" store="document">
 		<key name="token_fp" credential="true"/>
 		<reveal><credential/></reveal>

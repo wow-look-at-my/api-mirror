@@ -333,10 +333,9 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 	if !ok {
 		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
 	}
-	// The path may name a PREFIX of the key, and the delete then reaches
-	// everything beneath it: a write invalidates every page of a paginated
-	// answer, and no path carries a page number. A gap is refused, because a
-	// key named after a missing one widens the delete past the path.
+	// The path may name a PREFIX of the key, and the delete reaches everything
+	// beneath it. A gap is refused: a key named after a missing one would
+	// widen the delete past what the path says.
 	params := pathParams(p.Path)
 	named, missing := 0, ""
 	for _, k := range res.Keys {
@@ -360,7 +359,7 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 	return nil
 }
 
-// anyCredentialKey reports whether the caller's own credential keys res, which
+// anyCredentialKey reports whether the caller's credential keys res, which
 // makes it addressable with no path parameter.
 func anyCredentialKey(res *Resource) bool {
 	for _, k := range res.Keys {
