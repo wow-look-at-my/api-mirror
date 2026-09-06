@@ -243,8 +243,19 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 			return fmt.Errorf("route %s %s: only reads and credential-gated mints are cached; a write belongs in passthrough or <purge>", rt.Method, rt.Path)
 		}
 	}
+	if rt.BodyKey != "" {
+		if rt.Method == "GET" || rt.Method == "HEAD" {
+			return fmt.Errorf("route %s %s: a read sends no body, so body-key names nothing", rt.Method, rt.Path)
+		}
+		if !slices.ContainsFunc(res.Keys, func(k Key) bool { return k.Name == rt.BodyKey }) {
+			return fmt.Errorf("route %s: body-key %q is not a key of resource %q", rt.Path, rt.BodyKey, res.Name)
+		}
+	}
 	params := pathParams(rt.Path)
 	supplied := set.New[string]()
+	if rt.BodyKey != "" {
+		supplied.Add(rt.BodyKey)
+	}
 	for _, p := range params {
 		name := p
 		if mapped, ok := rt.Params[p]; ok {
@@ -367,7 +378,7 @@ func (rl *Relay) validate() error {
 		return fmt.Errorf("relay %s: to must be an absolute URL, got %q", rl.Path, rl.To)
 	}
 	// A relay carries a credential body, so plaintext puts it on the wire.
-	// Loopback never leaves the machine, so a local stand-in is allowed.
+	// Loopback is exempt: it never leaves the machine.
 	if u.Scheme != "https" && !isLoopbackHost(u.Hostname()) {
 		return fmt.Errorf("relay %s: to must be https unless it is loopback, got %q", rl.Path, rl.To)
 	}

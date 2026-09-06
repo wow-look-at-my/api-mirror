@@ -44,6 +44,8 @@
 		<header name="X-GitHub-Api-Version">2022-11-28</header>
 		<header name="Authorization"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
 		<forward name="Authorization"/>
+		<!-- A body-keyed route posts its question, and it has to arrive typed. -->
+		<forward name="Content-Type"/>
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
 			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"/>
 	</upstream>
@@ -1033,6 +1035,29 @@
 		GitHub filters hits to what the caller's token can see, so the query
 		text alone is not a safe key: the credential is part of it here too.
 	-->
+	<!--
+		GraphQL. Every question goes to one path as a POST, so nothing in the
+		URL distinguishes two answers and the BODY is the only key there is.
+		body-key says so, which also makes the body travel: it is replayed to
+		the upstream on a miss, and a repeat of the same query is a hit.
+
+		Credential-keyed, because GraphQL filters what it returns by the
+		caller's own token. Two callers asking the identical question are
+		entitled to different answers, so they must never share a row.
+
+		The TTL is short. A GraphQL answer spans whatever the query selected,
+		and no webhook names a query, so nothing here can be applied.
+	-->
+	<resource name="graphql" store="document" ttl="1m">
+		<key name="token_fp" credential="true"/>
+		<key name="query"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="POST" path="/graphql" resource="graphql" body-key="query">
+		<accept>application/json</accept>
+	</route>
+
 	<resource name="search_issues" store="document" ttl="1m">
 		<key name="token_fp" credential="true"/>
 		<key name="q"/>

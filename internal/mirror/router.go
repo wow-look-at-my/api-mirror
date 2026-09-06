@@ -28,6 +28,8 @@ type match struct {
 	key map[string]string
 	// query is the modelled query, defaults filled in.
 	query map[string]string
+	// body is read only for a route naming a body-key, and replayed upstream.
+	body []byte
 }
 
 // resolve finds the route that answers a request.
@@ -80,7 +82,21 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			}
 			key[k.Name] = fingerprint(auth)
 		}
-		return &match{route: rt, key: key, query: query}, "", nil
+		// The body IS the key here, and a consumed body cannot be re-read, so
+		// the match carries it for the fetch to replay.
+		var body []byte
+		if rt.BodyKey != "" {
+			b, overflow, err := readCapped(r.Body)
+			if err != nil {
+				return nil, PassQuery, fmt.Errorf("route %s: reading the request body: %w", rt.Path, err)
+			}
+			if overflow {
+				return nil, PassQuery, fmt.Errorf("route %s: the request body is over the %d byte cap", rt.Path, maxBodyBytes)
+			}
+			body = b
+			key[rt.BodyKey] = fingerprint(string(b))
+		}
+		return &match{route: rt, key: key, query: query, body: body}, "", nil
 	}
 	if pathKnown {
 		return nil, PassMethod, nil

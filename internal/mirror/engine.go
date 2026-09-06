@@ -214,8 +214,7 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 
 // rewritePath applies the earliest <rewrite> whose prefix the path carries,
 // and reports whether anything changed. A prefix matches at a segment boundary
-// only, so /api/v3thing is left alone while /api/v3/user is not. Rules never
-// chain: a rewritten path is the answer, not an input to the next rule.
+// only, and rules never chain.
 func (e *Engine) rewritePath(path string) (string, bool) {
 	for _, rw := range e.spec.Rewrites {
 		if path == rw.From {
@@ -340,6 +339,7 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		key:   m.key,
 		query: m.query,
 		path:  r.URL.EscapedPath(),
+		body:  m.body,
 	})
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	if err != nil {

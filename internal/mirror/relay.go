@@ -6,9 +6,8 @@ import (
 	"strings"
 )
 
-// relayHeaders are what a relay forwards. Short on purpose: anything more
-// hands a foreign host what the caller meant for the upstream. Authorization
-// is deliberately absent.
+// relayHeaders are what a relay forwards. Authorization is absent on
+// purpose: a foreign host must not receive what was meant for the upstream.
 var relayHeaders = []string{"Content-Type", "Accept", "Accept-Encoding"}
 
 // matchRelay finds the declared relay this request names.

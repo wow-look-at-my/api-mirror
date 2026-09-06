@@ -16,6 +16,8 @@ type fetchPlan struct {
 	key   map[string]string
 	query map[string]string
 	path  string
+	// body is replayed to the upstream for a body-keyed route.
+	body []byte
 }
 
 type planKey struct{}
@@ -39,7 +41,7 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if plan == nil {
 		return FetchResult{}, fmt.Errorf("fetch %s/%s: no plan on the context", kind, key)
 	}
-	answer, err := e.up.Call(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx))
+	answer, err := e.up.Call(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), plan.body)
 	if err != nil {
 		return FetchResult{}, err
 	}

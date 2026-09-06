@@ -235,6 +235,10 @@ type Route struct {
 	Accept []string
 	// Absorb lists the upstream statuses whose answer is stored. A 2xx is
 	Absorb []int
+	// BodyKey names the resource key the REQUEST body fills, as a digest,
+	// for a route whose question travels in its body. Naming it also makes
+	// that body travel: the fetch replays it upstream.
+	BodyKey string
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
@@ -266,20 +270,18 @@ type Purge struct {
 	Resource string
 }
 
-// Rewrite canonicalises an inbound path prefix before anything matches it, so
-// a client insisting on its own spelling of the same API still reaches the
-// declared routes. It grants nothing: the rewritten path meets the same gates.
-// docs/design.md says why gh needs one.
+// Rewrite canonicalises an inbound path prefix before anything matches it,
+// so a client with its own spelling still reaches the declared routes. It
+// grants nothing. docs/design.md says why gh needs it.
 type Rewrite struct {
-	// From is the prefix a caller sends. To is what it becomes, and an empty
-	// To strips the prefix.
+	// From is the prefix a caller sends, and To what it becomes. An empty To
+	// strips it.
 	From string
 	To   string
 }
 
-// Relay forwards a path to a fixed URL off the upstream base and caches
-// nothing. It carries no bearer: on a login path the BODY is the credential.
-// docs/design.md says why a browser needs this.
+// Relay forwards a path to a fixed URL off the upstream base, uncached and
+// with no bearer: on a login path the BODY is the credential. docs/design.md.
 type Relay struct {
 	Method string
 	Path   string

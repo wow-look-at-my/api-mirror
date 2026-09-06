@@ -87,7 +87,7 @@ func TestUpstreamCall_SendsStaticHeadersAndTheCallersOwn(t *testing.T) {
 	forward.Set("Authorization", "Bearer caller-token")
 	forward.Set("X-Trace", "not-forwarded")
 
-	answer, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, forward)
+	answer, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, forward, nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, answer.Status)
 	assert.Equal(t, `{"ok":true}`, string(answer.Body))
@@ -108,7 +108,7 @@ func TestUpstreamCall_MissingForwardedHeaderIsNotSentEmpty(t *testing.T) {
 	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Clone()
 	})
-	_, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{})
+	_, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{}, nil)
 	require.NoError(t, err)
 	_, present := got["Authorization"]
 	assert.False(t, present,
@@ -123,7 +123,7 @@ func TestUpstreamCall_NonSuccessIsAnAnswerNotAnError(t *testing.T) {
 			w.WriteHeader(status)
 			w.Write([]byte(`{"message":"nope"}`))
 		})
-		answer, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{})
+		answer, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{}, nil)
 		require.NoErrorf(t, err, "%d is an answer; only a transport failure is an error", status)
 		assert.Equal(t, status, answer.Status)
 		assert.Equal(t, `{"message":"nope"}`, string(answer.Body), "the body of a refusal is relayed too")
@@ -142,7 +142,7 @@ func TestUpstreamCall_TransportFailureIsAnErrorAndIsStillReported(t *testing.T) 
 		funcObserver(func(e Exchange) { seen = append(seen, e) }))
 	require.NoError(t, err)
 
-	answer, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{})
+	answer, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{}, nil)
 	require.Error(t, err, "a request that never reached the upstream must not read as an answer")
 	assert.Nil(t, answer)
 	assert.Contains(t, err.Error(), "/things/1", "the message names the request that failed")
@@ -158,13 +158,13 @@ func TestUpstreamCall_CancelledContextFails(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := up.Call(ctx, http.MethodGet, "/things/1", callVars, http.Header{})
+	_, err := up.Call(ctx, http.MethodGet, "/things/1", callVars, http.Header{}, nil)
 	require.Error(t, err, "a caller that gave up must not have its request reported as answered")
 }
 
 func TestUpstreamCall_RejectsAnUnusableMethod(t *testing.T) {
 	up, _, _ := newUpstreamer(t, func(http.ResponseWriter, *http.Request) {})
-	_, err := up.Call(context.Background(), "BAD METHOD", "/x", callVars, http.Header{})
+	_, err := up.Call(context.Background(), "BAD METHOD", "/x", callVars, http.Header{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "build upstream request")
 }
@@ -176,7 +176,7 @@ func TestUpstreamCall_BodyPastTheCapIsFlaggedAsOverflow(t *testing.T) {
 	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(strings.Repeat("x", maxBodyBytes+64)))
 	})
-	answer, err := up.Call(context.Background(), http.MethodGet, "/big", callVars, http.Header{})
+	answer, err := up.Call(context.Background(), http.MethodGet, "/big", callVars, http.Header{}, nil)
 	require.NoError(t, err)
 	assert.True(t, answer.Overflow, "an oversized body must be reported, never silently truncated into the cache")
 	assert.Len(t, answer.Body, maxBodyBytes, "what is kept is exactly the cap, so the reader knows what it holds")
@@ -186,7 +186,7 @@ func TestUpstreamCall_BodyAtTheCapIsNotOverflow(t *testing.T) {
 	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(strings.Repeat("x", maxBodyBytes)))
 	})
-	answer, err := up.Call(context.Background(), http.MethodGet, "/big", callVars, http.Header{})
+	answer, err := up.Call(context.Background(), http.MethodGet, "/big", callVars, http.Header{}, nil)
 	require.NoError(t, err)
 	assert.False(t, answer.Overflow, "the cap is inclusive; a body exactly at it is complete and storable")
 }
@@ -205,7 +205,7 @@ func TestUpstreamCall_SkipsAHeaderThatRendersToNothing(t *testing.T) {
 	up, err := NewUpstreamer(spec, callVars, nil)
 	require.NoError(t, err)
 
-	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{})
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{}, nil)
 	require.NoError(t, err)
 	_, present := got["X-Optional"]
 	assert.False(t, present, "a header whose value resolves to nothing is left off rather than sent blank")
@@ -217,12 +217,12 @@ func TestUpstreamCall_ReportsAHeaderThatWillNotRender(t *testing.T) {
 	up, _, _ := newUpstreamer(t, func(http.ResponseWriter, *http.Request) {})
 
 	up.headers = []Header{{Name: "X-Broken", Value: "{{ .oops"}}
-	_, err := up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{})
+	_, err := up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "X-Broken", "the message names the header, which is what an author has to fix")
 
 	up.headers = []Header{{Name: "{{ .oops", Value: "v"}}
-	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{})
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{}, nil)
 	require.Error(t, err, "a header NAME is template source too, and an unrenderable one is the same mistake")
 	assert.Contains(t, err.Error(), "upstream header name")
 }
@@ -257,7 +257,7 @@ func TestNewUpstreamer_NilObserverBecomesANoOp(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, up.observe, "a caller that wants no observer still gets one, so Call never checks for nil")
 
-	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{})
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{}, nil)
 	require.NoError(t, err, "an unobserved upstreamer still works; the observer is optional, not load-bearing")
 }
 
@@ -338,7 +338,7 @@ func TestUpstreamCall_ObservesWhatTheExchangeCost(t *testing.T) {
 	up, _, seen := newUpstreamer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`{"ok":true}`))
 	})
-	_, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{})
+	_, err := up.Call(context.Background(), http.MethodGet, "/things/1", callVars, http.Header{}, nil)
 	require.NoError(t, err)
 
 	require.Len(t, *seen, 1, "every outbound request is reported; an unreported one spends budget invisibly")

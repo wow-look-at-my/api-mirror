@@ -100,6 +100,32 @@ until its row is evicted some other way.
 A route the spec does not declare is a passthrough: forwarded verbatim,
 uncached, and reported as uncached. There is no third state.
 
+### `body-key` — when the question is in the body
+
+A query language posts every question to one path. Nothing in the URL tells two
+answers apart, so a path parameter cannot key the row and there is nothing to
+model as a query parameter either.
+
+```xml
+<resource name="graphql" store="document" ttl="1m">
+	<key name="token_fp" credential="true"/>
+	<key name="query"/>
+	<reveal><credential/></reveal>
+</resource>
+
+<route method="POST" path="/graphql" resource="graphql" body-key="query"/>
+```
+
+`body-key` names the resource key the request body fills, as a digest. Naming
+it also makes the body TRAVEL: the fetch replays it to the upstream, which is
+the only way the upstream can answer the question at all. Declare the body's
+content type in `<upstream><forward>` so it arrives typed.
+
+Such a resource is almost always credential-keyed, because a query language
+filters what it returns by the caller's own token. Two callers asking the
+identical question are entitled to different answers, and must never share a
+row.
+
 ### `<rewrite>` — the client's spelling of the same path
 
 A client can insist on a path shape the upstream's own docs do not use, and
