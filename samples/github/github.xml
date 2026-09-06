@@ -430,6 +430,19 @@
 		<param name="page" type="int" default="1" min="1" max="100"/>
 	</route>
 
+	<!--
+		The legacy spelling of the same listing. It answers the identical
+		question, so it names the same resource and reads the same rows: a
+		caller using the old path shares the cache with one using the new, and
+		a delivery that moves those rows moves the answer to both.
+	-->
+	<route method="GET" path="/repos/{owner}/{repo}/statuses/{sha}" resource="status_post" list="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100"/>
+		<param name="page" type="int" default="1" min="1" max="100"/>
+	</route>
+
 	<route method="GET" path="/repos/{owner}/{repo}/contents/{path}" resource="contents">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
