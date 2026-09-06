@@ -1,8 +1,8 @@
 package mirror
 
 import (
+	"bytes"
 	"context"
-	"flag"
 	"io"
 	"net"
 	"os"
@@ -23,41 +23,10 @@ var shippedSpecs = []string{
 	filepath.Join(repoRoot, "samples", "github", "github.xml"),
 }
 
-// withArgs gives Run its own command line and puts the process's back. Run
-// parses the global flag set, so tests in binary would otherwise
-// redefine the same flags and panic.
-func withArgs(t *testing.T, args ...string) {
-	t.Helper()
-	savedArgs, savedFlags := os.Args, flag.CommandLine
-	t.Cleanup(func() {
-		os.Args = savedArgs
-		flag.CommandLine = savedFlags
-	})
-	flag.CommandLine = flag.NewFlagSet(args[0], flag.ContinueOnError)
-	flag.CommandLine.SetOutput(io.Discard)
-	os.Args = args
-}
-
-// captureStdout redirects os.Stdout to a file for the length of a test and
-// returns what was written. report writes to an *os.File, so a bytes.Buffer
-// cannot stand in for it.
-func captureStdout(t *testing.T) func() string {
-	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "stdout-*")
-	require.NoError(t, err)
-	saved := os.Stdout
-	os.Stdout = f
-	t.Cleanup(func() {
-		os.Stdout = saved
-		f.Close()
-	})
-	return func() string {
-		require.NoError(t, f.Sync())
-		b, err := os.ReadFile(f.Name())
-		require.NoError(t, err)
-		return string(b)
-	}
-}
+// withArgs is the command line a test hands run, returned rather than
+// assigned to os.Args. The runner re-executes a test that calls t.Setenv, and
+// that assignment gave it flags this binary does not define.
+func withArgs(_ *testing.T, args ...string) []string { return args }
 
 // writeSpec drops a spec source in this test's own directory.
 func writeSpec(t *testing.T, src string) string {
@@ -170,32 +139,32 @@ func TestReport_OmitsTheEventSectionWhenNothingIsDeclared(t *testing.T) {
 // clean, and never open a socket or a database.
 func TestRun_CheckLoadsTheSpecAndExitsClean(t *testing.T) {
 	path := writeSpec(t, runnableSpec)
-	withArgs(t, "api-mirror", "--spec", path, "--check")
-	read := captureStdout(t)
+	argv := withArgs(t, "api-mirror", "--spec", path, "--check")
+	var out bytes.Buffer
 
-	require.NoError(t, Run(), "--check on a valid spec is a clean exit")
-	assert.Contains(t, read(), "mirror runnable", "--check prints the report rather than serving")
+	require.NoError(t, run(argv, &out), "--check on a valid spec is a clean exit")
+	assert.Contains(t, out.String(), "mirror runnable", "--check prints the report rather than serving")
 }
 
 func TestRun_CheckAlsoWorksOnTheShippedExample(t *testing.T) {
-	withArgs(t, "api-mirror", "--spec", shippedSpecs[0], "--check")
-	read := captureStdout(t)
+	argv := withArgs(t, "api-mirror", "--spec", shippedSpecs[0], "--check")
+	var buf bytes.Buffer
 
-	require.NoError(t, Run(), "the shipped example is what a reader is told to run first")
-	out := read()
+	require.NoError(t, run(argv, &buf), "the shipped example is what a reader is told to run first")
+	out := buf.String()
 	assert.Contains(t, out, "mirror placeholder")
 	assert.Contains(t, out, "CREATE TABLE res_user")
 }
 
 func TestRun_ReportsASpecItCannotLoad(t *testing.T) {
-	withArgs(t, "api-mirror", "--spec", filepath.Join(t.TempDir(), "absent.xml"), "--check")
-	err := Run()
+	argv := withArgs(t, "api-mirror", "--spec", filepath.Join(t.TempDir(), "absent.xml"), "--check")
+	err := run(argv, io.Discard)
 	require.Error(t, err, "a missing spec must stop the process, not start a mirror of nothing")
 	assert.Contains(t, err.Error(), "absent.xml")
 
 	bad := writeSpec(t, `<mirror name="m"><upstream base="u"/><resource name="r"><key name="id"/></resource></mirror>`)
-	withArgs(t, "api-mirror", "--spec", bad, "--check")
-	err = Run()
+	argv = withArgs(t, "api-mirror", "--spec", bad, "--check")
+	err = run(argv, io.Discard)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "validate spec",
 		"a spec that parses but means nothing servable is refused at start, where the author can see it")
@@ -214,12 +183,12 @@ func TestRun_ReturnsAListenFailureAfterWiringEverything(t *testing.T) {
 	path := filepath.Join(dir, "mirror.xml")
 	require.NoError(t, os.WriteFile(path, []byte(runnableSpec), 0o600))
 
-	withArgs(t, "api-mirror",
+	argv := withArgs(t, "api-mirror",
 		"--spec", path,
 		"--db", filepath.Join(dir, "cache.db"),
 		"--listen", held.Addr().String())
 
-	err = Run()
+	err = run(argv, io.Discard)
 	require.Error(t, err, "a mirror that cannot listen must exit non-zero, not sit there serving nobody")
 	assert.Contains(t, strings.ToLower(err.Error()), "address already in use")
 
@@ -237,13 +206,13 @@ func TestRun_ReportsAStoreItCannotOpen(t *testing.T) {
 	path := filepath.Join(dir, "mirror.xml")
 	require.NoError(t, os.WriteFile(path, []byte(runnableSpec), 0o600))
 
-	withArgs(t, "api-mirror",
+	argv := withArgs(t, "api-mirror",
 		"--spec", path,
 		// The spec file is not a directory, so nothing can be created inside it.
 		"--db", filepath.Join(path, "cache.db"),
 		"--listen", held.Addr().String())
 
-	err = Run()
+	err = run(argv, io.Discard)
 	require.Error(t, err, "a database path that cannot be created must stop the start, not serve an empty cache")
 	assert.NotContains(t, strings.ToLower(err.Error()), "address already in use",
 		"the store is opened before the socket, so this is the store's failure that surfaced")

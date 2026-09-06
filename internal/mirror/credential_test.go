@@ -184,6 +184,59 @@ func TestPurge_SuccessfulWriteDropsTheCachedRow(t *testing.T) {
 	assert.Nil(t, row)
 }
 
+// TestPurge_OneWriteDropsEveryAnswerItChanged proves a write matching several
+// <purge> declarations clears all of them. A hook write changes the hook's own
+// row and the listing it appears in, and matching only the earliest left the
+// listing replaying a hook the write had already removed.
+func TestPurge_OneWriteDropsEveryAnswerItChanged(t *testing.T) {
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"id":"7","title":"hello","count":3,"live":true,"seen":"2024-01-01T00:00:00Z"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}), func(s *Spec) {
+		// A paginated listing of the same subject. Its page keys come from the
+		// query string, so the write's path can only ever name a key prefix.
+		s.Resources = append(s.Resources, &Resource{
+			Name: "widget_pages", Store: StoreDocument,
+			Keys:   []Key{{Name: "id"}, {Name: "page"}},
+			Reveal: &Reveal{Public: "true"},
+		})
+		s.Routes = append(s.Routes, &Route{
+			Method: "GET", Path: "/widgets/{id}/pages", Resource: "widget_pages",
+			Query: []QueryParam{{Name: "page", Type: FieldInt, Default: "1", Min: 1, Max: 100, Key: true}},
+		})
+		s.Purges = append(s.Purges,
+			&Purge{Method: "DELETE", Path: "/widgets/{id}", Resource: "widget"},
+			&Purge{Method: "DELETE", Path: "/widgets/{id}", Resource: "widget_pages"},
+		)
+	})
+
+	require.Equal(t, http.StatusOK, get(t, e, "/widgets/7").Code)
+	require.Equal(t, http.StatusOK, get(t, e, "/widgets/7/pages?page=1").Code)
+	require.Equal(t, http.StatusOK, get(t, e, "/widgets/7/pages?page=2").Code)
+
+	widget, pages := mustResource(t, e, "widget"), mustResource(t, e, "widget_pages")
+	stored := func(res *Resource, key map[string]string) bool {
+		row, err := e.store.Get(context.Background(), res, key)
+		require.NoError(t, err)
+		return row != nil
+	}
+	require.True(t, stored(widget, map[string]string{"id": "7"}))
+	require.True(t, stored(pages, map[string]string{"id": "7", "page": "1"}))
+	require.True(t, stored(pages, map[string]string{"id": "7", "page": "2"}))
+
+	del := httptest.NewRecorder()
+	e.ServeHTTP(del, httptest.NewRequest(http.MethodDelete, "/widgets/7", nil))
+	require.Equal(t, http.StatusNoContent, del.Code)
+
+	assert.False(t, stored(widget, map[string]string{"id": "7"}), "the item the write changed")
+	assert.False(t, stored(pages, map[string]string{"id": "7", "page": "1"}), "the listing it appears in")
+	assert.False(t, stored(pages, map[string]string{"id": "7", "page": "2"}), "every page of that listing")
+}
+
 func mustResource(t *testing.T, e *Engine, name string) *Resource {
 	t.Helper()
 	res, ok := e.store.Resource(name)
@@ -208,9 +261,29 @@ func TestValidatePurge(t *testing.T) {
 		require.Error(t, p.validate(resources))
 	})
 
-	t.Run("missing key param rejected", func(t *testing.T) {
+	t.Run("a path supplying no key at all is rejected", func(t *testing.T) {
 		p := &Purge{Method: "DELETE", Path: "/widgets", Resource: "widget"}
 		require.Error(t, p.validate(resources))
+	})
+
+	t.Run("a key prefix is accepted, so a paginated listing can be purged", func(t *testing.T) {
+		paged := map[string]*Resource{"pages": {
+			Name: "pages", Store: StoreDocument,
+			Keys:   []Key{{Name: "id"}, {Name: "per_page"}, {Name: "page"}},
+			Reveal: &Reveal{Public: "true"},
+		}}
+		p := &Purge{Method: "POST", Path: "/widgets/{id}/pages", Resource: "pages"}
+		require.NoError(t, p.validate(paged))
+	})
+
+	t.Run("a gap in the key is rejected", func(t *testing.T) {
+		gapped := map[string]*Resource{"pages": {
+			Name: "pages", Store: StoreDocument,
+			Keys:   []Key{{Name: "owner"}, {Name: "repo"}},
+			Reveal: &Reveal{Public: "true"},
+		}}
+		p := &Purge{Method: "DELETE", Path: "/x/{repo}", Resource: "pages"}
+		require.Error(t, p.validate(gapped))
 	})
 
 	t.Run("valid purge passes", func(t *testing.T) {

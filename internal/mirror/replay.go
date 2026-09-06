@@ -117,7 +117,7 @@ func (r *Replayer) cycle() {
 	defer cancel()
 	ctx = withLane(ctx, LaneReplay, "", "list")
 
-	answer, err := r.engine.up.Call(ctx, "GET", r.rule.List, r.engine.vars, nil)
+	answer, err := r.engine.up.Call(ctx, "GET", r.rule.List, r.engine.vars, nil, nil)
 	if err != nil {
 		r.tally(0, 0, 1)
 		logf("replay: read the failure log: %v", err)
@@ -200,7 +200,7 @@ func (r *Replayer) ask(ctx context.Context, item any, id string) error {
 	if method == "" {
 		method = "POST"
 	}
-	answer, err := r.engine.up.Call(withLane(ctx, LaneReplay, "", "redeliver"), method, path, r.engine.vars, nil)
+	answer, err := r.engine.up.Call(withLane(ctx, LaneReplay, "", "redeliver"), method, path, r.engine.vars, nil, nil)
 	if err != nil {
 		return err
 	}

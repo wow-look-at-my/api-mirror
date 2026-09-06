@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -64,12 +65,17 @@ type Answer struct {
 // A non-2xx is a real answer, not an error: a is what the upstream knows,
 // and the route decides whether that is worth storing. Only a transport failure
 // returns an error.
-func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header) (*Answer, error) {
+func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header, reqBody []byte) (*Answer, error) {
 	url := u.base + path
-	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	var send io.Reader
+	if len(reqBody) > 0 {
+		send = bytes.NewReader(reqBody)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, send)
 	if err != nil {
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
+	req.ContentLength = int64(len(reqBody))
 	for _, h := range u.headers {
 		name, err := renderString(h.Name, vars)
 		if err != nil {

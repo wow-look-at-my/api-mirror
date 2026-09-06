@@ -44,6 +44,8 @@
 		<header name="X-GitHub-Api-Version">2022-11-28</header>
 		<header name="Authorization"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
 		<forward name="Authorization"/>
+		<!-- A body-keyed route posts its question, and it has to arrive typed. -->
+		<forward name="Content-Type"/>
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
 			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"/>
 	</upstream>
@@ -428,6 +430,19 @@
 		<param name="page" type="int" default="1" min="1" max="100"/>
 	</route>
 
+	<!--
+		The legacy spelling of the same listing. It answers the identical
+		question, so it names the same resource and reads the same rows: a
+		caller using the old path shares the cache with one using the new, and
+		a delivery that moves those rows moves the answer to both.
+	-->
+	<route method="GET" path="/repos/{owner}/{repo}/statuses/{sha}" resource="status_post" list="true">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100"/>
+		<param name="page" type="int" default="1" min="1" max="100"/>
+	</route>
+
 	<route method="GET" path="/repos/{owner}/{repo}/contents/{path}" resource="contents">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
@@ -561,6 +576,33 @@
 		user-settable - it survives a rebase and it can be in the future -
 		so it is never the clock, however tempting its name.
 	-->
+	<!--
+		gh reads any host that is not github.com as GitHub Enterprise Server,
+		and puts REST under /api/v3 and GraphQL at /api/graphql. Pointing gh at
+		this mirror with GH_HOST therefore sends a spelling no route here
+		declares, and every call falls through to the upstream uncached.
+
+		Declaring the spelling keeps one route table serving both. It grants
+		nothing: a rewritten path meets the same auth and reveal gates as the
+		bare one, so /api/v3/repos/o/r is exactly as guarded as /repos/o/r.
+	-->
+	<rewrite from="/api/v3"/>
+	<rewrite from="/api/graphql" to="/graphql"/>
+
+	<!--
+		GitHub's login endpoints live on github.com, not on api.github.com, and
+		they send no CORS headers. A purely client-side app therefore cannot
+		finish a sign-in against them at all. Relaying puts this mirror's own
+		CORS policy in front of both legs: the OAuth code exchange, and the
+		device-authorization start whose polling rides the same access_token
+		path under its own grant_type.
+
+		Neither is cached and neither carries a bearer. On these paths the BODY
+		is the credential, an OAuth client_secret or a bare public client_id.
+	-->
+	<relay method="POST" path="/login/oauth/access_token" to="https://github.com/login/oauth/access_token"/>
+	<relay method="POST" path="/login/device/code" to="https://github.com/login/device/code"/>
+
 	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event" reorder-window="2s">
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>
@@ -636,23 +678,24 @@
 		</event>
 
 		<!--
-			A branch created. The payload states the ref and the sha it points
-			at, which is the whole of what a branch row holds, so this writes
-			rather than fetches.
+			A branch or tag created. The payload names the ref and its type,
+			and states NO sha for it: `repository.default_branch` is a branch
+			NAME, so writing it as the tip stores a ref pointing at a string
+			that is not a commit. There is nothing here to write.
 
-			`create` also fires for a tag, and a tag is not a branch. The set
-			below writes the ref with the heads/ prefix trimmed, and the subject
-			carries the full ref, so a tag lands under its own subject and its
-			own row rather than overwriting a branch of the same name.
+			What the delivery does say is that a ref now exists which did not
+			before, and a stored not-found verdict for it is now wrong. That is
+			the row this drops.
+
+			The subject carries the ref TYPE, so a tag and a branch of the same
+			name are ordered apart rather than superseding each other.
 		-->
 		<event type="create" resource="branch" clock="repository.pushed_at">
 			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref_type"/>:<value name="payload.ref"/></subject>
-			<apply>
-				<set field="owner">repository.owner.login</set>
-				<set field="repo">repository.name</set>
-				<set field="ref">ref</set>
-				<set field="tip_sha">repository.default_branch</set>
-			</apply>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref">ref</key>
+			<invalidate reason="the payload names the ref and no sha for it, so the tip can only be fetched, and a stored not-found verdict is now wrong"/>
 		</event>
 
 		<!--
@@ -717,6 +760,54 @@
 			<invalidate reason="the stored answer is a page of the repository's runs, and this payload states one run"/>
 		</event>
 
+		<!--
+			A check SUITE reports. A suite is the container a check run belongs
+			to, so its delivery moves the same stored answer the run's does: the
+			commit's whole set of check runs. The payload names the suite and
+			the runs inside it are not enumerated, which is why this cannot
+			write.
+
+			The subject is the suite's own, not the commit's. A suite and a run
+			are separate views that arrive independently, and sharing a subject
+			would have the later one refuse the earlier as superseded.
+		-->
+		<event type="check_suite" resource="commit_check_runs" clock="check_suite.updated_at">
+			<subject>suite:<value name="payload.repository.full_name"/>:<value name="payload.check_suite.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref">check_suite.head_sha</key>
+			<invalidate reason="a suite states its own status, and the stored answer is the set of check runs under the commit"/>
+		</event>
+
+		<!--
+			A job inside a workflow run. The stored answer is the run's page of
+			jobs, and the payload carries this job rather than the set, so the
+			membership a page asserts is not restated here.
+
+			The key stops at the run. A page number cannot come from a payload,
+			so this reaches every page of that run's jobs.
+		-->
+		<event type="workflow_job" resource="workflow_run_jobs" clock="workflow_job.started_at">
+			<subject>job:<value name="payload.repository.full_name"/>:<value name="payload.workflow_job.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="run_id">workflow_job.run_id</key>
+			<invalidate reason="the stored answer is the run's whole page of jobs, and this payload states one job"/>
+		</event>
+
+		<!--
+			A label created, edited or deleted. An `edited` action can RENAME a
+			label, so the delivery carries two names and the row under the old
+			one has to go as well. The key therefore stops at the repository and
+			reaches every label in it.
+		-->
+		<event type="label" resource="label" clock="repository.updated_at">
+			<subject>label:<value name="payload.repository.full_name"/>:<value name="payload.label.name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="an edit renames a label, so the payload names two rows and the old name is not addressable from the new one"/>
+		</event>
+
 	</events>
 
 	<!--
@@ -743,6 +834,55 @@
 	</resource>
 
 	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token"/>
+
+	<!--
+		Which installation covers a repository or an owner. An App asks this
+		before it can mint a token for them, so it is on the path of every
+		first call the App makes about a repository it has not seen.
+
+		Credential-keyed like the mint above: the answer is what THAT App can
+		see, and an App with no installation there is told so. The absorbed 404
+		is the whole point, because an App polling repositories it is not
+		installed on asks this over and over.
+	-->
+	<resource name="repo_installation" store="document" ttl="1h">
+		<key name="token_fp" credential="true"/>
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/repos/{owner}/{repo}/installation" resource="repo_installation">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<resource name="owner_installation" store="document" ttl="1h">
+		<key name="token_fp" credential="true"/>
+		<key name="kind"/>
+		<key name="owner" fold="true"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<!--
+		An org and a user are separate upstream paths that answer the same
+		shape, so they share a resource and the kind key keeps a user named
+		like an org from answering the other question.
+	-->
+	<route method="GET" path="/orgs/{owner}/installation" resource="owner_installation">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="kind" type="text" default="org" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/users/{owner}/installation" resource="owner_installation">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="kind" type="text" default="user" key="true"/>
+		<absorb status="404"/>
+	</route>
 	<resource name="identity" store="document">
 		<key name="token_fp" credential="true"/>
 		<reveal><credential/></reveal>
@@ -873,8 +1013,34 @@
 	<purge method="DELETE" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hook"/>
 	<purge method="PATCH" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook"/>
 	<purge method="DELETE" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook"/>
+
+	<!--
+		A hook write also changes the LISTING that hook appears in, and a
+		listing is what a reconciler reads before it decides to create one.
+		Leaving it served, a caller sees the hook it just deleted and creates a
+		duplicate. The path names owner and repo but no page, so the delete
+		reaches every page of that listing.
+
+		A creation is here for the same reason and is a purge rather than a
+		route: its answer is the new hook, and replaying that to the next
+		caller would report a create that already happened.
+	-->
+	<purge method="POST" path="/repos/{owner}/{repo}/hooks" resource="repo_hooks"/>
+	<purge method="PATCH" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hooks"/>
+	<purge method="DELETE" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hooks"/>
+	<purge method="POST" path="/orgs/{org}/hooks" resource="org_hooks"/>
+	<purge method="PATCH" path="/orgs/{org}/hooks/{hook_id}" resource="org_hooks"/>
+	<purge method="DELETE" path="/orgs/{org}/hooks/{hook_id}" resource="org_hooks"/>
+
 	<purge method="PATCH" path="/repos/{owner}/{repo}/labels/{name}" resource="label"/>
 	<purge method="DELETE" path="/repos/{owner}/{repo}/labels/{name}" resource="label"/>
+
+	<!--
+		PATCH is the spelling GitHub documents for this setup, so a spec that
+		purges only PUT and DELETE leaves the ordinary write serving a stale
+		GET.
+	-->
+	<purge method="PATCH" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
 	<purge method="PUT" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
 	<purge method="DELETE" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
 
@@ -882,6 +1048,29 @@
 		GitHub filters hits to what the caller's token can see, so the query
 		text alone is not a safe key: the credential is part of it here too.
 	-->
+	<!--
+		GraphQL. Every question goes to one path as a POST, so nothing in the
+		URL distinguishes two answers and the BODY is the only key there is.
+		body-key says so, which also makes the body travel: it is replayed to
+		the upstream on a miss, and a repeat of the same query is a hit.
+
+		Credential-keyed, because GraphQL filters what it returns by the
+		caller's own token. Two callers asking the identical question are
+		entitled to different answers, so they must never share a row.
+
+		The TTL is short. A GraphQL answer spans whatever the query selected,
+		and no webhook names a query, so nothing here can be applied.
+	-->
+	<resource name="graphql" store="document" ttl="1m">
+		<key name="token_fp" credential="true"/>
+		<key name="query"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="POST" path="/graphql" resource="graphql" body-key="query">
+		<accept>application/json</accept>
+	</route>
+
 	<resource name="search_issues" store="document" ttl="1m">
 		<key name="token_fp" credential="true"/>
 		<key name="q"/>

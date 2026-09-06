@@ -150,7 +150,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 	}
 
 	// Its own lane: the fetch lane would hide what proving access costs.
-	ans, err := rv.up.Call(withLane(ctx, LaneProbe, principal, res.Name), rule.Probe.Method, path, rv.context(key, nil), forward)
+	ans, err := rv.up.Call(withLane(ctx, LaneProbe, principal, res.Name), rule.Probe.Method, path, rv.context(key, nil), forward, nil)
 	if err != nil {
 		return refuse(http.StatusBadGateway), fmt.Errorf("reveal probe %s: %w", res.Name, err)
 	}

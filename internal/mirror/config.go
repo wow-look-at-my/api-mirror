@@ -10,7 +10,11 @@ type Spec struct {
 	Resources []*Resource
 	Routes    []*Route
 	Purges    []*Purge
-	Events    *Events
+	// Rewrites canonicalise an inbound path before anything matches it.
+	Rewrites []*Rewrite
+	// Relays forward a path to a fixed URL that is not the upstream base.
+	Relays []*Relay
+	Events *Events
 	// Dashboard is the operator surface. Always present: a default fills in.
 	Dashboard Dashboard
 	// CORS is the browser policy. Nil answers no preflight and sets no headers.
@@ -231,6 +235,10 @@ type Route struct {
 	Accept []string
 	// Absorb lists the upstream statuses whose answer is stored. A 2xx is
 	Absorb []int
+	// BodyKey names the resource key the REQUEST body fills, as a digest,
+	// for a route whose question travels in its body. Naming it also makes
+	// that body travel: the fetch replays it upstream.
+	BodyKey string
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
@@ -260,6 +268,25 @@ type Purge struct {
 	Method   string
 	Path     string
 	Resource string
+}
+
+// Rewrite canonicalises an inbound path prefix before anything matches it,
+// so a client with its own spelling still reaches the declared routes. It
+// grants nothing. docs/design.md says why gh needs it.
+type Rewrite struct {
+	// From is the prefix a caller sends, and To what it becomes. An empty To
+	// strips it.
+	From string
+	To   string
+}
+
+// Relay forwards a path to a fixed URL off the upstream base, uncached and
+// with no bearer: on a login path the BODY is the credential. docs/design.md.
+type Relay struct {
+	Method string
+	Path   string
+	// To is the absolute URL the body is forwarded to, verbatim.
+	To string
 }
 
 // Events is the webhook ingest declaration.

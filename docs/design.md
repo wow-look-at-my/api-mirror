@@ -100,6 +100,80 @@ until its row is evicted some other way.
 A route the spec does not declare is a passthrough: forwarded verbatim,
 uncached, and reported as uncached. There is no third state.
 
+### `body-key` — when the question is in the body
+
+A query language posts every question to one path. Nothing in the URL tells two
+answers apart, so a path parameter cannot key the row and there is nothing to
+model as a query parameter either.
+
+```xml
+<resource name="graphql" store="document" ttl="1m">
+	<key name="token_fp" credential="true"/>
+	<key name="query"/>
+	<reveal><credential/></reveal>
+</resource>
+
+<route method="POST" path="/graphql" resource="graphql" body-key="query"/>
+```
+
+`body-key` names the resource key the request body fills, as a digest. Naming
+it also makes the body TRAVEL: the fetch replays it to the upstream, which is
+the only way the upstream can answer the question at all. Declare the body's
+content type in `<upstream><forward>` so it arrives typed.
+
+Such a resource is almost always credential-keyed, because a query language
+filters what it returns by the caller's own token. Two callers asking the
+identical question are entitled to different answers, and must never share a
+row.
+
+### `<rewrite>` — the client's spelling of the same path
+
+A client can insist on a path shape the upstream's own docs do not use, and
+then every declared route misses. `gh` is the case that forces this: it reads
+any host that is not github.com as GitHub Enterprise Server, so pointing it at
+a mirror with `GH_HOST` puts REST under `/api/v3` and GraphQL at
+`/api/graphql`. Nothing matches, and the whole session forwards uncached.
+
+```xml
+<rewrite from="/api/v3"/>
+<rewrite from="/api/graphql" to="/graphql"/>
+```
+
+`from` is a prefix and `to` is what it becomes, with an empty `to` stripping
+it. The rewrite happens before anything else looks at the path, so one route
+table serves both spellings and the cache is shared between them.
+
+It grants nothing. The rewritten path meets the same auth and reveal gates the
+bare path meets, so `/api/v3/repos/o/r` is exactly as guarded as `/repos/o/r`.
+A prefix matches at a segment boundary only, and rules never chain: a
+rewritten path is the answer, not an input to the next rule.
+
+### `<relay>` — a path that is not on the upstream host
+
+An API's login endpoints usually sit on a different host from its data, and
+send no CORS headers of their own. A browser app therefore cannot complete a
+sign-in against them at all. GitHub is the case that forces this: the OAuth
+code exchange and the device-flow start live on `github.com`, not on
+`api.github.com`.
+
+```xml
+<relay method="POST" path="/login/oauth/access_token" to="https://github.com/login/oauth/access_token"/>
+```
+
+A relay forwards the body verbatim to a fixed URL and answers with what comes
+back. Nothing is stored and nothing is keyed, so it is a passthrough that
+happens to leave the upstream's host, and it is reported as uncached like any
+other.
+
+It carries no bearer. On these paths the BODY is the credential, an OAuth
+`client_secret` or a bare public `client_id`, so the caller's `Authorization`
+header is deliberately not forwarded to a foreign host. The foreign host's own
+allow-origin headers are dropped as well, because `<cors>` is the single
+authority and a duplicate makes a browser refuse the answer.
+
+`to` must be https, unless it names loopback, which is how a test points one
+at a local stand-in.
+
 ### `<events>` — the upstream telling us
 
 An event declares how one webhook payload becomes stored rows:

@@ -2,10 +2,13 @@ package mirror
 
 import (
 	"fmt"
-	"github.com/wow-look-at-my/go-containers/set"
+	"net"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // Duration parses a Go duration string, rejecting the empty and the negative.
@@ -47,6 +50,16 @@ func (s *Spec) validate() error {
 	}
 	for _, p := range s.Purges {
 		if err := p.validate(byName); err != nil {
+			return err
+		}
+	}
+	for _, rw := range s.Rewrites {
+		if err := rw.validate(); err != nil {
+			return err
+		}
+	}
+	for _, rl := range s.Relays {
+		if err := rl.validate(); err != nil {
 			return err
 		}
 	}
@@ -230,8 +243,19 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 			return fmt.Errorf("route %s %s: only reads and credential-gated mints are cached; a write belongs in passthrough or <purge>", rt.Method, rt.Path)
 		}
 	}
+	if rt.BodyKey != "" {
+		if rt.Method == "GET" || rt.Method == "HEAD" {
+			return fmt.Errorf("route %s %s: a read sends no body, so body-key names nothing", rt.Method, rt.Path)
+		}
+		if !slices.ContainsFunc(res.Keys, func(k Key) bool { return k.Name == rt.BodyKey }) {
+			return fmt.Errorf("route %s: body-key %q is not a key of resource %q", rt.Path, rt.BodyKey, res.Name)
+		}
+	}
 	params := pathParams(rt.Path)
 	supplied := set.New[string]()
+	if rt.BodyKey != "" {
+		supplied.Add(rt.BodyKey)
+	}
 	for _, p := range params {
 		name := p
 		if mapped, ok := rt.Params[p]; ok {
@@ -318,6 +342,58 @@ func (rt *Route) validateQuery() error {
 	return nil
 }
 
+// validate checks a <rewrite>. The prefix has to be a path, and it has to
+// change something: a rule mapping a prefix to itself reads as configuration
+// and does nothing.
+func (rw *Rewrite) validate() error {
+	if rw.From == "" || !strings.HasPrefix(rw.From, "/") {
+		return fmt.Errorf("<rewrite> needs an absolute from, got %q", rw.From)
+	}
+	if strings.HasSuffix(rw.From, "/") {
+		return fmt.Errorf("rewrite %s: drop the trailing slash, the prefix already matches a path under it", rw.From)
+	}
+	if rw.To != "" && !strings.HasPrefix(rw.To, "/") {
+		return fmt.Errorf("rewrite %s: to must be absolute or empty, got %q", rw.From, rw.To)
+	}
+	if rw.From == rw.To {
+		return fmt.Errorf("rewrite %s: from and to are the same, so this rule does nothing", rw.From)
+	}
+	return nil
+}
+
+// validate checks a <relay>. The destination has to be an absolute URL,
+// because the point of a relay is a host the upstream base does not cover.
+func (rl *Relay) validate() error {
+	if rl.Path == "" || !strings.HasPrefix(rl.Path, "/") {
+		return fmt.Errorf("<relay> needs an absolute path, got %q", rl.Path)
+	}
+	if rl.Method == "" {
+		return fmt.Errorf("relay %s: needs a method", rl.Path)
+	}
+	if strings.ContainsAny(rl.Path, "{}") {
+		return fmt.Errorf("relay %s: a relay forwards to a fixed URL, so its path takes no parameter", rl.Path)
+	}
+	u, err := url.Parse(rl.To)
+	if err != nil || !u.IsAbs() || u.Host == "" {
+		return fmt.Errorf("relay %s: to must be an absolute URL, got %q", rl.Path, rl.To)
+	}
+	// A relay carries a credential body, so plaintext puts it on the wire.
+	// Loopback is exempt: it never leaves the machine.
+	if u.Scheme != "https" && !isLoopbackHost(u.Hostname()) {
+		return fmt.Errorf("relay %s: to must be https unless it is loopback, got %q", rl.Path, rl.To)
+	}
+	return nil
+}
+
+// isLoopbackHost reports whether host names this machine.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // validate checks a <purge>: a write with somewhere real to land and a key
 // the path can actually supply.
 func (p *Purge) validate(resources map[string]*Resource) error {
@@ -333,16 +409,41 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 	if !ok {
 		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
 	}
+	// The path may name a PREFIX of the key, and the delete reaches everything
+	// beneath it. A gap is refused: a key named after a missing one would
+	// widen the delete past what the path says.
 	params := pathParams(p.Path)
+	named, missing := 0, ""
 	for _, k := range res.Keys {
 		if k.Credential {
 			continue
 		}
 		if !slices.Contains(params, k.Name) {
-			return fmt.Errorf("purge %s cannot key resource %q: nothing supplies %q", p.Path, res.Name, k.Name)
+			if missing == "" {
+				missing = k.Name
+			}
+			continue
 		}
+		if missing != "" {
+			return fmt.Errorf("purge %s cannot key resource %q: %q is supplied but %q before it is not", p.Path, res.Name, k.Name, missing)
+		}
+		named++
+	}
+	if named == 0 && !anyCredentialKey(res) {
+		return fmt.Errorf("purge %s cannot key resource %q: the path supplies no key, so this would delete every row", p.Path, res.Name)
 	}
 	return nil
+}
+
+// anyCredentialKey reports whether the caller's credential keys res, which
+// makes it addressable with no path parameter.
+func anyCredentialKey(res *Resource) bool {
+	for _, k := range res.Keys {
+		if k.Credential {
+			return true
+		}
+	}
+	return false
 }
 
 // pathParams returns the {name} placeholders of a route path, in order.
