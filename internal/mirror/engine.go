@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -165,6 +166,13 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // recorder what it did, because a disposition the log cannot name is traffic
 // nobody can account for.
 func (e *Engine) dispatch(rec *recorder, r *http.Request) {
+	// Canonicalise ahead of every gate below, so they see one spelling. This
+	// grants nothing: the rewritten path meets the same rules.
+	if p, ok := e.rewritePath(r.URL.EscapedPath()); ok {
+		r = r.Clone(r.Context())
+		r.URL.RawPath = ""
+		r.URL.Path = p
+	}
 	if e.spec.CORS != nil && e.answerPreflight(rec, r) {
 		return
 	}
@@ -197,6 +205,22 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 	rec.shape = m.route.Path
 	rec.resource = m.route.Resource
 	e.serve(rec, r, m)
+}
+
+// rewritePath applies the earliest <rewrite> whose prefix the path carries,
+// and reports whether anything changed. A prefix matches at a segment boundary
+// only, so /api/v3thing is left alone while /api/v3/user is not. Rules never
+// chain: a rewritten path is the answer, not an input to the next rule.
+func (e *Engine) rewritePath(path string) (string, bool) {
+	for _, rw := range e.spec.Rewrites {
+		if path == rw.From {
+			return cmp.Or(rw.To, "/"), true
+		}
+		if rest, ok := strings.CutPrefix(path, rw.From); ok && strings.HasPrefix(rest, "/") {
+			return rw.To + rest, true
+		}
+	}
+	return path, false
 }
 
 // matchPurges finds EVERY declared write this request names. A write can

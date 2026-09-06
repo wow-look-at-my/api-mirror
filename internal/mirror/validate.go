@@ -50,6 +50,11 @@ func (s *Spec) validate() error {
 			return err
 		}
 	}
+	for _, rw := range s.Rewrites {
+		if err := rw.validate(); err != nil {
+			return err
+		}
+	}
 	if s.Events != nil {
 		if err := s.Events.validate(byName); err != nil {
 			return err
@@ -314,6 +319,25 @@ func (rt *Route) validateQuery() error {
 		if code >= 500 || code == 429 {
 			return fmt.Errorf("route %s: refusing to absorb %d -- a transient failure stored is an outage remembered long after it ended", rt.Path, code)
 		}
+	}
+	return nil
+}
+
+// validate checks a <rewrite>. The prefix has to be a path, and it has to
+// change something: a rule mapping a prefix to itself reads as configuration
+// and does nothing.
+func (rw *Rewrite) validate() error {
+	if rw.From == "" || !strings.HasPrefix(rw.From, "/") {
+		return fmt.Errorf("<rewrite> needs an absolute from, got %q", rw.From)
+	}
+	if strings.HasSuffix(rw.From, "/") {
+		return fmt.Errorf("rewrite %s: drop the trailing slash, the prefix already matches a path under it", rw.From)
+	}
+	if rw.To != "" && !strings.HasPrefix(rw.To, "/") {
+		return fmt.Errorf("rewrite %s: to must be absolute or empty, got %q", rw.From, rw.To)
+	}
+	if rw.From == rw.To {
+		return fmt.Errorf("rewrite %s: from and to are the same, so this rule does nothing", rw.From)
 	}
 	return nil
 }

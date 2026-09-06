@@ -561,6 +561,19 @@
 		user-settable - it survives a rebase and it can be in the future -
 		so it is never the clock, however tempting its name.
 	-->
+	<!--
+		gh reads any host that is not github.com as GitHub Enterprise Server,
+		and puts REST under /api/v3 and GraphQL at /api/graphql. Pointing gh at
+		this mirror with GH_HOST therefore sends a spelling no route here
+		declares, and every call falls through to the upstream uncached.
+
+		Declaring the spelling keeps one route table serving both. It grants
+		nothing: a rewritten path meets the same auth and reveal gates as the
+		bare one, so /api/v3/repos/o/r is exactly as guarded as /repos/o/r.
+	-->
+	<rewrite from="/api/v3"/>
+	<rewrite from="/api/graphql" to="/graphql"/>
+
 	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event" reorder-window="2s">
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>

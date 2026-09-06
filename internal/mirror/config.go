@@ -10,7 +10,9 @@ type Spec struct {
 	Resources []*Resource
 	Routes    []*Route
 	Purges    []*Purge
-	Events    *Events
+	// Rewrites canonicalise an inbound path before anything matches it.
+	Rewrites []*Rewrite
+	Events   *Events
 	// Dashboard is the operator surface. Always present: a default fills in.
 	Dashboard Dashboard
 	// CORS is the browser policy. Nil answers no preflight and sets no headers.
@@ -260,6 +262,17 @@ type Purge struct {
 	Method   string
 	Path     string
 	Resource string
+}
+
+// Rewrite canonicalises an inbound path prefix before anything matches it, so
+// a client insisting on its own spelling of the same API still reaches the
+// declared routes. It grants nothing: the rewritten path meets the same gates.
+// docs/design.md says why gh needs one.
+type Rewrite struct {
+	// From is the prefix a caller sends. To is what it becomes, and an empty
+	// To strips the prefix.
+	From string
+	To   string
 }
 
 // Events is the webhook ingest declaration.

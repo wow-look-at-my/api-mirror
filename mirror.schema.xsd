@@ -63,6 +63,7 @@
 				<xs:element name="resource" type="resource"/>
 				<xs:element name="route" type="route"/>
 				<xs:element name="purge" type="purge"/>
+				<xs:element name="rewrite" type="rewrite"/>
 				<xs:element name="events" type="events"/>
 				<xs:element name="dashboard" type="dashboard"/>
 				<xs:element name="cors" type="cors"/>
@@ -210,6 +211,12 @@
 		<xs:attribute name="method" type="xs:string" use="required"/>
 		<xs:attribute name="path" type="xs:string" use="required"/>
 		<xs:attribute name="resource" type="xs:string" use="required"/>
+	</xs:complexType>
+
+	<!-- A path prefix a client insists on, canonicalised before anything matches it. -->
+	<xs:complexType name="rewrite">
+		<xs:attribute name="from" type="xs:string" use="required"/>
+		<xs:attribute name="to" type="xs:string"/>
 	</xs:complexType>
 
 	<xs:complexType name="events">

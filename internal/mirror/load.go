@@ -79,6 +79,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Purges = append(spec.Purges, p)
+		case "rewrite":
+			rw, err := buildRewrite(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Rewrites = append(spec.Rewrites, rw)
 		case "events":
 			ev, err := buildEvents(child)
 			if err != nil {
@@ -424,6 +430,17 @@ func addRouteChild(rt *Route, child *node) error {
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}
 	return nil
+}
+
+func buildRewrite(n *node) (*Rewrite, error) {
+	if err := checkAttrs(n, "from", "to"); err != nil {
+		return nil, err
+	}
+	rw := &Rewrite{From: n.Attr("from"), To: n.Attr("to")}
+	for _, child := range n.Children() {
+		return nil, fmt.Errorf("<rewrite from=%q>: unexpected child element <%s>", rw.From, child.Name())
+	}
+	return rw, nil
 }
 
 func buildPurge(n *node) (*Purge, error) {

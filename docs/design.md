@@ -100,6 +100,28 @@ until its row is evicted some other way.
 A route the spec does not declare is a passthrough: forwarded verbatim,
 uncached, and reported as uncached. There is no third state.
 
+### `<rewrite>` — the client's spelling of the same path
+
+A client can insist on a path shape the upstream's own docs do not use, and
+then every declared route misses. `gh` is the case that forces this: it reads
+any host that is not github.com as GitHub Enterprise Server, so pointing it at
+a mirror with `GH_HOST` puts REST under `/api/v3` and GraphQL at
+`/api/graphql`. Nothing matches, and the whole session forwards uncached.
+
+```xml
+<rewrite from="/api/v3"/>
+<rewrite from="/api/graphql" to="/graphql"/>
+```
+
+`from` is a prefix and `to` is what it becomes, with an empty `to` stripping
+it. The rewrite happens before anything else looks at the path, so one route
+table serves both spellings and the cache is shared between them.
+
+It grants nothing. The rewritten path meets the same auth and reveal gates the
+bare path meets, so `/api/v3/repos/o/r` is exactly as guarded as `/repos/o/r`.
+A prefix matches at a segment boundary only, and rules never chain: a
+rewritten path is the answer, not an input to the next rule.
+
 ### `<events>` — the upstream telling us
 
 An event declares how one webhook payload becomes stored rows:
