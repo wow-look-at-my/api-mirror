@@ -12,7 +12,9 @@ type Spec struct {
 	Purges    []*Purge
 	// Rewrites canonicalise an inbound path before anything matches it.
 	Rewrites []*Rewrite
-	Events   *Events
+	// Relays forward a path to a fixed URL that is not the upstream base.
+	Relays []*Relay
+	Events *Events
 	// Dashboard is the operator surface. Always present: a default fills in.
 	Dashboard Dashboard
 	// CORS is the browser policy. Nil answers no preflight and sets no headers.
@@ -273,6 +275,16 @@ type Rewrite struct {
 	// To strips the prefix.
 	From string
 	To   string
+}
+
+// Relay forwards a path to a fixed URL off the upstream base and caches
+// nothing. It carries no bearer: on a login path the BODY is the credential.
+// docs/design.md says why a browser needs this.
+type Relay struct {
+	Method string
+	Path   string
+	// To is the absolute URL the body is forwarded to, verbatim.
+	To string
 }
 
 // Events is the webhook ingest declaration.

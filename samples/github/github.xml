@@ -574,6 +574,20 @@
 	<rewrite from="/api/v3"/>
 	<rewrite from="/api/graphql" to="/graphql"/>
 
+	<!--
+		GitHub's login endpoints live on github.com, not on api.github.com, and
+		they send no CORS headers. A purely client-side app therefore cannot
+		finish a sign-in against them at all. Relaying puts this mirror's own
+		CORS policy in front of both legs: the OAuth code exchange, and the
+		device-authorization start whose polling rides the same access_token
+		path under its own grant_type.
+
+		Neither is cached and neither carries a bearer. On these paths the BODY
+		is the credential, an OAuth client_secret or a bare public client_id.
+	-->
+	<relay method="POST" path="/login/oauth/access_token" to="https://github.com/login/oauth/access_token"/>
+	<relay method="POST" path="/login/device/code" to="https://github.com/login/device/code"/>
+
 	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event" reorder-window="2s">
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>

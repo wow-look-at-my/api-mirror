@@ -85,6 +85,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Rewrites = append(spec.Rewrites, rw)
+		case "relay":
+			rl, err := buildRelay(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Relays = append(spec.Relays, rl)
 		case "events":
 			ev, err := buildEvents(child)
 			if err != nil {
@@ -441,6 +447,21 @@ func buildRewrite(n *node) (*Rewrite, error) {
 		return nil, fmt.Errorf("<rewrite from=%q>: unexpected child element <%s>", rw.From, child.Name())
 	}
 	return rw, nil
+}
+
+func buildRelay(n *node) (*Relay, error) {
+	if err := checkAttrs(n, "method", "path", "to"); err != nil {
+		return nil, err
+	}
+	rl := &Relay{
+		Method: strings.ToUpper(n.Attr("method")),
+		Path:   n.Attr("path"),
+		To:     n.Attr("to"),
+	}
+	for _, child := range n.Children() {
+		return nil, fmt.Errorf("<relay path=%q>: unexpected child element <%s>", rl.Path, child.Name())
+	}
+	return rl, nil
 }
 
 func buildPurge(n *node) (*Purge, error) {

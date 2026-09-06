@@ -18,6 +18,7 @@ const (
 	PassQuery      PassReason = "unmodeled-query"
 	PassResponse   PassReason = "unmodeled-response" // the route models the request, not what came back
 	PassNoIdentity PassReason = "unverified-identity"
+	PassRelay      PassReason = "relayed" // a declared forward to a foreign host
 )
 
 // match is request resolved against a route.

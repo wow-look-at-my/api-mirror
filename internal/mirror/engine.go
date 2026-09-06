@@ -189,6 +189,11 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		e.ingest.ServeHTTP(rec, r)
 		return
 	}
+	// Ahead of the route table, because a relay carries no bearer to resolve.
+	if rl, ok := e.matchRelay(r); ok {
+		e.relay(rec, r, rl)
+		return
+	}
 	if purges, params, ok := e.matchPurges(r); ok {
 		rec.note(DispMiss, purges[0].Path, purges[0].Resource, "purge")
 		e.forwardAndPurge(rec, r, purges, params)

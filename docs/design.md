@@ -122,6 +122,32 @@ bare path meets, so `/api/v3/repos/o/r` is exactly as guarded as `/repos/o/r`.
 A prefix matches at a segment boundary only, and rules never chain: a
 rewritten path is the answer, not an input to the next rule.
 
+### `<relay>` — a path that is not on the upstream host
+
+An API's login endpoints usually sit on a different host from its data, and
+send no CORS headers of their own. A browser app therefore cannot complete a
+sign-in against them at all. GitHub is the case that forces this: the OAuth
+code exchange and the device-flow start live on `github.com`, not on
+`api.github.com`.
+
+```xml
+<relay method="POST" path="/login/oauth/access_token" to="https://github.com/login/oauth/access_token"/>
+```
+
+A relay forwards the body verbatim to a fixed URL and answers with what comes
+back. Nothing is stored and nothing is keyed, so it is a passthrough that
+happens to leave the upstream's host, and it is reported as uncached like any
+other.
+
+It carries no bearer. On these paths the BODY is the credential, an OAuth
+`client_secret` or a bare public `client_id`, so the caller's `Authorization`
+header is deliberately not forwarded to a foreign host. The foreign host's own
+allow-origin headers are dropped as well, because `<cors>` is the single
+authority and a duplicate makes a browser refuse the answer.
+
+`to` must be https, unless it names loopback, which is how a test points one
+at a local stand-in.
+
 ### `<events>` — the upstream telling us
 
 An event declares how one webhook payload becomes stored rows:

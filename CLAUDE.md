@@ -19,6 +19,7 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `freshness.go` — the TTL state machine, detached fetches, per-key singleflight, the shutdown drain.
 - `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary.
 - `<rewrite>` — a client's own spelling of a path, canonicalised in `dispatch` before any gate sees it. `gh` needs one, because it puts REST under `/api/v3` on a non-github.com host. It grants nothing.
+- `relay.go` — `<relay>`: an uncached forward to a fixed URL off the upstream base, for login endpoints on another host that send no CORS headers. It forwards no bearer, because the body is the credential there.
 - `engine.go` / `fetch.go` — serving a declared route: reveal, ensure fresh, read, rebuild. And the fetch that absorbs.
 - `absorb.go` — document to columns and back, the drop patterns, the one JSON marshaller.
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe.

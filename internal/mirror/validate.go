@@ -2,10 +2,13 @@ package mirror
 
 import (
 	"fmt"
-	"github.com/wow-look-at-my/go-containers/set"
+	"net"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // Duration parses a Go duration string, rejecting the empty and the negative.
@@ -52,6 +55,11 @@ func (s *Spec) validate() error {
 	}
 	for _, rw := range s.Rewrites {
 		if err := rw.validate(); err != nil {
+			return err
+		}
+	}
+	for _, rl := range s.Relays {
+		if err := rl.validate(); err != nil {
 			return err
 		}
 	}
@@ -340,6 +348,39 @@ func (rw *Rewrite) validate() error {
 		return fmt.Errorf("rewrite %s: from and to are the same, so this rule does nothing", rw.From)
 	}
 	return nil
+}
+
+// validate checks a <relay>. The destination has to be an absolute URL,
+// because the point of a relay is a host the upstream base does not cover.
+func (rl *Relay) validate() error {
+	if rl.Path == "" || !strings.HasPrefix(rl.Path, "/") {
+		return fmt.Errorf("<relay> needs an absolute path, got %q", rl.Path)
+	}
+	if rl.Method == "" {
+		return fmt.Errorf("relay %s: needs a method", rl.Path)
+	}
+	if strings.ContainsAny(rl.Path, "{}") {
+		return fmt.Errorf("relay %s: a relay forwards to a fixed URL, so its path takes no parameter", rl.Path)
+	}
+	u, err := url.Parse(rl.To)
+	if err != nil || !u.IsAbs() || u.Host == "" {
+		return fmt.Errorf("relay %s: to must be an absolute URL, got %q", rl.Path, rl.To)
+	}
+	// A relay carries a credential body, so plaintext puts it on the wire.
+	// Loopback never leaves the machine, so a local stand-in is allowed.
+	if u.Scheme != "https" && !isLoopbackHost(u.Hostname()) {
+		return fmt.Errorf("relay %s: to must be https unless it is loopback, got %q", rl.Path, rl.To)
+	}
+	return nil
+}
+
+// isLoopbackHost reports whether host names this machine.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // validate checks a <purge>: a write with somewhere real to land and a key

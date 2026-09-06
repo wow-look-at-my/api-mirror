@@ -64,6 +64,7 @@
 				<xs:element name="route" type="route"/>
 				<xs:element name="purge" type="purge"/>
 				<xs:element name="rewrite" type="rewrite"/>
+				<xs:element name="relay" type="relay"/>
 				<xs:element name="events" type="events"/>
 				<xs:element name="dashboard" type="dashboard"/>
 				<xs:element name="cors" type="cors"/>
@@ -217,6 +218,13 @@
 	<xs:complexType name="rewrite">
 		<xs:attribute name="from" type="xs:string" use="required"/>
 		<xs:attribute name="to" type="xs:string"/>
+	</xs:complexType>
+
+	<!-- An uncached forward to a fixed URL off the upstream base, for a login host. -->
+	<xs:complexType name="relay">
+		<xs:attribute name="method" type="xs:string" use="required"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="to" type="xs:string" use="required"/>
 	</xs:complexType>
 
 	<xs:complexType name="events">
