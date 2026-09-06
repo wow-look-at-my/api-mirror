@@ -181,9 +181,9 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		e.ingest.ServeHTTP(rec, r)
 		return
 	}
-	if p, params, ok := e.matchPurge(r); ok {
-		rec.note(DispMiss, p.Path, p.Resource, "purge")
-		e.forwardAndPurge(rec, r, p, params)
+	if purges, params, ok := e.matchPurges(r); ok {
+		rec.note(DispMiss, purges[0].Path, purges[0].Resource, "purge")
+		e.forwardAndPurge(rec, r, purges, params)
 		return
 	}
 	m, reason, err := e.resolve(r)
@@ -199,44 +199,48 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 	e.serve(rec, r, m)
 }
 
-// matchPurge finds the declared write, if any, this request names.
-func (e *Engine) matchPurge(r *http.Request) (*Purge, map[string]string, bool) {
+// matchPurges finds EVERY declared write this request names. A write can
+// invalidate several answers: creating a webhook changes the hook's own row
+// and the listing it now appears in. Matching only until the earliest hit
+// leaves the rest serving what the write made stale.
+func (e *Engine) matchPurges(r *http.Request) ([]*Purge, map[string]string, bool) {
+	var found []*Purge
+	var params map[string]string
 	for _, p := range e.spec.Purges {
 		if p.Method != r.Method {
 			continue
 		}
-		params, ok := matchPath(p.Path, r.URL.EscapedPath())
+		got, ok := matchPath(p.Path, r.URL.EscapedPath())
 		if !ok {
 			continue
 		}
-		return p, params, true
+		if params == nil {
+			params = got
+		}
+		found = append(found, p)
 	}
-	return nil, nil, false
+	return found, params, len(found) > 0
 }
 
-// forwardAndPurge forwards a write verbatim, then drops the row it changed
-// the upstream confirms the write actually happened. A write is never
-// cached itself; this only clears what it made stale.
-func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, p *Purge, params map[string]string) {
-	res, ok := e.store.Resource(p.Resource)
-	if !ok {
-		e.passthrough(w, r, PassUnrouted)
-		return
-	}
-	key := make(map[string]string, len(params)+1)
-	for param, value := range params {
-		key[param] = foldFor(res, param, value)
-	}
-	for _, k := range res.Keys {
-		if !k.Credential {
-			continue
+// forwardAndPurge forwards a write verbatim, then drops the rows it changed
+// after the upstream confirms the write actually happened. A write is never
+// cached itself. This only clears what it made stale.
+func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, params map[string]string) {
+	keys := make([]map[string]string, 0, len(purges))
+	resources := make([]*Resource, 0, len(purges))
+	for _, p := range purges {
+		res, ok := e.store.Resource(p.Resource)
+		if !ok {
+			e.passthrough(w, r, PassUnrouted)
+			return
 		}
-		auth := r.Header.Get("Authorization")
-		if auth == "" {
+		key, ok := purgeKey(res, params, r.Header.Get("Authorization"))
+		if !ok {
 			e.passthrough(w, r, PassNoIdentity)
 			return
 		}
-		key[k.Name] = fingerprint(auth)
+		resources = append(resources, res)
+		keys = append(keys, key)
 	}
 
 	w.Header().Set("X-Mirror-Cache", "purge")
@@ -247,9 +251,31 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, p *Purge, params 
 	if w.status < 200 || w.status >= 300 {
 		return
 	}
-	if _, err := e.store.Delete(r.Context(), res, key); err != nil {
-		logf("purge %s: %v", p.Path, err)
+	for i, res := range resources {
+		if _, err := e.store.Delete(r.Context(), res, keys[i]); err != nil {
+			logf("purge %s: %v", purges[i].Path, err)
+		}
 	}
+}
+
+// purgeKey builds the row key a write addresses. A path parameter the
+// resource does not key on is dropped, so a write on the single item can
+// still name the listing it belongs to, which keys on fewer columns.
+func purgeKey(res *Resource, params map[string]string, auth string) (map[string]string, bool) {
+	key := make(map[string]string, len(res.Keys))
+	for _, k := range res.Keys {
+		if k.Credential {
+			if auth == "" {
+				return nil, false
+			}
+			key[k.Name] = fingerprint(auth)
+			continue
+		}
+		if value, ok := params[k.Name]; ok {
+			key[k.Name] = foldFor(res, k.Name, value)
+		}
+	}
+	return key, true
 }
 
 // serve answers declared route.

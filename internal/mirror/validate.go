@@ -333,16 +333,42 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 	if !ok {
 		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
 	}
+	// The path may name a PREFIX of the key, and the delete then reaches
+	// everything beneath it: a write invalidates every page of a paginated
+	// answer, and no path carries a page number. A gap is refused, because a
+	// key named after a missing one widens the delete past the path.
 	params := pathParams(p.Path)
+	named, missing := 0, ""
 	for _, k := range res.Keys {
 		if k.Credential {
 			continue
 		}
 		if !slices.Contains(params, k.Name) {
-			return fmt.Errorf("purge %s cannot key resource %q: nothing supplies %q", p.Path, res.Name, k.Name)
+			if missing == "" {
+				missing = k.Name
+			}
+			continue
 		}
+		if missing != "" {
+			return fmt.Errorf("purge %s cannot key resource %q: %q is supplied but %q before it is not", p.Path, res.Name, k.Name, missing)
+		}
+		named++
+	}
+	if named == 0 && !anyCredentialKey(res) {
+		return fmt.Errorf("purge %s cannot key resource %q: the path supplies no key, so this would delete every row", p.Path, res.Name)
 	}
 	return nil
+}
+
+// anyCredentialKey reports whether the caller's own credential keys res, which
+// makes it addressable with no path parameter.
+func anyCredentialKey(res *Resource) bool {
+	for _, k := range res.Keys {
+		if k.Credential {
+			return true
+		}
+	}
+	return false
 }
 
 // pathParams returns the {name} placeholders of a route path, in order.

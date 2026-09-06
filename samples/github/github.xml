@@ -636,23 +636,24 @@
 		</event>
 
 		<!--
-			A branch created. The payload states the ref and the sha it points
-			at, which is the whole of what a branch row holds, so this writes
-			rather than fetches.
+			A branch or tag created. The payload names the ref and its type,
+			and states NO sha for it: `repository.default_branch` is a branch
+			NAME, so writing it as the tip stores a ref pointing at a string
+			that is not a commit. There is nothing here to write.
 
-			`create` also fires for a tag, and a tag is not a branch. The set
-			below writes the ref with the heads/ prefix trimmed, and the subject
-			carries the full ref, so a tag lands under its own subject and its
-			own row rather than overwriting a branch of the same name.
+			What the delivery does say is that a ref now exists which did not
+			before, and a stored not-found verdict for it is now wrong. That is
+			the row this drops.
+
+			The subject carries the ref TYPE, so a tag and a branch of the same
+			name are ordered apart rather than superseding each other.
 		-->
 		<event type="create" resource="branch" clock="repository.pushed_at">
 			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref_type"/>:<value name="payload.ref"/></subject>
-			<apply>
-				<set field="owner">repository.owner.login</set>
-				<set field="repo">repository.name</set>
-				<set field="ref">ref</set>
-				<set field="tip_sha">repository.default_branch</set>
-			</apply>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref">ref</key>
+			<invalidate reason="the payload names the ref and no sha for it, so the tip can only be fetched, and a stored not-found verdict is now wrong"/>
 		</event>
 
 		<!--
@@ -715,6 +716,54 @@
 			<key field="owner">repository.owner.login</key>
 			<key field="repo">repository.name</key>
 			<invalidate reason="the stored answer is a page of the repository's runs, and this payload states one run"/>
+		</event>
+
+		<!--
+			A check SUITE reports. A suite is the container a check run belongs
+			to, so its delivery moves the same stored answer the run's does: the
+			commit's whole set of check runs. The payload names the suite and
+			the runs inside it are not enumerated, which is why this cannot
+			write.
+
+			The subject is the suite's own, not the commit's. A suite and a run
+			are separate views that arrive independently, and sharing a subject
+			would have the later one refuse the earlier as superseded.
+		-->
+		<event type="check_suite" resource="commit_check_runs" clock="check_suite.updated_at">
+			<subject>suite:<value name="payload.repository.full_name"/>:<value name="payload.check_suite.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref">check_suite.head_sha</key>
+			<invalidate reason="a suite states its own status, and the stored answer is the set of check runs under the commit"/>
+		</event>
+
+		<!--
+			A job inside a workflow run. The stored answer is the run's page of
+			jobs, and the payload carries this job rather than the set, so the
+			membership a page asserts is not restated here.
+
+			The key stops at the run. A page number cannot come from a payload,
+			so this reaches every page of that run's jobs.
+		-->
+		<event type="workflow_job" resource="workflow_run_jobs" clock="workflow_job.started_at">
+			<subject>job:<value name="payload.repository.full_name"/>:<value name="payload.workflow_job.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="run_id">workflow_job.run_id</key>
+			<invalidate reason="the stored answer is the run's whole page of jobs, and this payload states one job"/>
+		</event>
+
+		<!--
+			A label created, edited or deleted. An `edited` action can RENAME a
+			label, so the delivery carries two names and the row under the old
+			one has to go as well. The key therefore stops at the repository and
+			reaches every label in it.
+		-->
+		<event type="label" resource="label" clock="repository.updated_at">
+			<subject>label:<value name="payload.repository.full_name"/>:<value name="payload.label.name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="an edit renames a label, so the payload names two rows and the old name is not addressable from the new one"/>
 		</event>
 
 	</events>
@@ -873,8 +922,34 @@
 	<purge method="DELETE" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hook"/>
 	<purge method="PATCH" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook"/>
 	<purge method="DELETE" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook"/>
+
+	<!--
+		A hook write also changes the LISTING that hook appears in, and a
+		listing is what a reconciler reads before it decides to create one.
+		Leaving it served, a caller sees the hook it just deleted and creates a
+		duplicate. The path names owner and repo but no page, so the delete
+		reaches every page of that listing.
+
+		A creation is here for the same reason and is a purge rather than a
+		route: its answer is the new hook, and replaying that to the next
+		caller would report a create that already happened.
+	-->
+	<purge method="POST" path="/repos/{owner}/{repo}/hooks" resource="repo_hooks"/>
+	<purge method="PATCH" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hooks"/>
+	<purge method="DELETE" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hooks"/>
+	<purge method="POST" path="/orgs/{org}/hooks" resource="org_hooks"/>
+	<purge method="PATCH" path="/orgs/{org}/hooks/{hook_id}" resource="org_hooks"/>
+	<purge method="DELETE" path="/orgs/{org}/hooks/{hook_id}" resource="org_hooks"/>
+
 	<purge method="PATCH" path="/repos/{owner}/{repo}/labels/{name}" resource="label"/>
 	<purge method="DELETE" path="/repos/{owner}/{repo}/labels/{name}" resource="label"/>
+
+	<!--
+		PATCH is the spelling GitHub documents for this setup, so a spec that
+		purges only PUT and DELETE leaves the ordinary write serving a stale
+		GET.
+	-->
+	<purge method="PATCH" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
 	<purge method="PUT" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
 	<purge method="DELETE" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup"/>
 

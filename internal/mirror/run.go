@@ -20,13 +20,25 @@ const drainTimeout = 30 * time.Second
 // the error the caller reports; nothing here calls os.Exit, so a test can drive
 // it.
 func Run() error {
+	return run(os.Args)
+}
+
+// run parses argv into its own flag set. Nothing here reads the process's
+// command line, so a test gives Run a command line by calling this instead of
+// assigning os.Args. That assignment was visible to every other test in the
+// binary, and a test the runner re-executes inherited flags this binary does
+// not define.
+func run(argv []string) error {
+	fs := flag.NewFlagSet(argv[0], flag.ContinueOnError)
 	var (
-		specPath = flag.String("spec", "mirror.xml", "path to the mirror spec")
-		dbPath   = flag.String("db", "mirror.db", "path to the cache database")
-		addr     = flag.String("listen", ":8080", "listen address")
-		check    = flag.Bool("check", false, "load the spec, report what it derives, and exit")
+		specPath = fs.String("spec", "mirror.xml", "path to the mirror spec")
+		dbPath   = fs.String("db", "mirror.db", "path to the cache database")
+		addr     = fs.String("listen", ":8080", "listen address")
+		check    = fs.Bool("check", false, "load the spec, report what it derives, and exit")
 	)
-	flag.Parse()
+	if err := fs.Parse(argv[1:]); err != nil {
+		return err
+	}
 
 	spec, err := Load(*specPath)
 	if err != nil {
