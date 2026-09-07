@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,13 +109,37 @@ func TestValidateRefusesAnInvalidateThatNamesNoKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalidates every row")
 }
 
-func TestValidateRejectsAnEventDeclaredTwice(t *testing.T) {
+func TestValidateRejectsAnEventDeclaredTwiceForOneResource(t *testing.T) {
 	s := eventSpec()
 	s.Events.List = append(s.Events.List, s.Events.List[0])
 	err := s.validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "declared twice",
-		"two handlers for one type means only one of them ever runs, silently")
+		"two handlers for one type and one resource means the second silently decides the row")
+}
+
+// A delivery moves several resources. A push states a branch tip AND makes the
+// repo's file-derived answers wrong, so the type fans out per resource.
+func TestValidateAcceptsATypeThatFansOutAcrossResources(t *testing.T) {
+	s := eventSpec()
+	s.Resources = append(s.Resources, &Resource{
+		Name:   "readme",
+		Store:  StoreDocument,
+		TTL:    time.Hour,
+		Keys:   []Key{{Name: "owner"}, {Name: "name"}},
+		Reveal: &Reveal{Public: `{{ true }}`},
+	})
+	s.Routes = append(s.Routes, &Route{
+		Method: "GET", Path: "/repos/{owner}/{name}/readme", Resource: "readme",
+	})
+
+	other := *s.Events.List[0]
+	other.Resource = "readme"
+	other.Sets = nil
+	other.Invalidate = &Invalidate{Reason: "the payload names the changed files and never their content"}
+	s.Events.List = append(s.Events.List, &other)
+
+	require.NoError(t, s.validate())
 }
 
 func TestValidateAcceptsAnEventSettingAKeyComponent(t *testing.T) {

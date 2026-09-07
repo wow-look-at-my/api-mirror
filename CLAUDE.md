@@ -39,6 +39,8 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 
 ## Invariants
 
+- **A delivery type reaches every resource it moves.** A push states a branch tip. It also makes the repo's file-derived answers wrong. The type is therefore declared per resource. The engine runs every handler of it. Each handler carries its own subject, so they order apart. On a shared subject the watermark refuses all but the earliest. The answer is the worst of their outcomes. A failed handler is thus never hidden behind a sibling that applied. The same type against the SAME resource stays refused, because the later declaration silently decides the row.
+
 - **Storage is global; authorization is at the READ.** One row per fact, no actor column, and no way for a spec to declare one. Grants and denials are the only per-principal tables.
 - **Apply the payload. Invalidation is the last resort.** A delivery carries the new value; the engine writes it. `<invalidate>` needs a stated reason, and `validate.go` rejects one without.
 - **A write touches only the fields its event names.** A payload that does not carry a field cannot blank it. `null="allow"` is the explicit opt-in where absent and empty differ.

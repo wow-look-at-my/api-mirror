@@ -169,6 +169,74 @@
 		</reveal>
 	</resource>
 
+	<!--
+		The README read. GitHub answers the same content object the contents
+		resource holds, and the absent verdict is stored with it: a fleet that
+		polls every repo's README spends a large minority of those calls on
+		repos that have none.
+
+		The root read and the /readme/{dir} subtree read get a resource each. A
+		dir key the root route filled from a query parameter would be a key a
+		caller can forge: ?dir=docs would key the subtree's row and store the
+		ROOT answer under it.
+
+		The answer's own path names the resolved FILE, which the request never
+		does.
+	-->
+	<resource name="readme" store="document" ttl="6h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="readme_dir" store="document" ttl="6h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="dir"/>
+		<key name="ref"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		The Actions WORKFLOW definitions, listing and single read. A definition
+		is not a run: it changes only when a push edits .github/workflows.
+
+		The id key is whatever the caller asked with, a numeric id or a file
+		name. Resolving between the spellings needs the very answer this holds,
+		so each keys its own row.
+	-->
+	<resource name="workflows_list" store="document" ttl="6h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="workflow" store="document" ttl="6h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="id"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
 	<!-- A git commit object is immutable (content-addressed by sha), so a long TTL approximates gsm's no-TTL-plus-LRU stance. -->
 	<resource name="git_commit" ttl="720h">
 		<key name="owner" fold="true"/>
@@ -450,6 +518,32 @@
 		<absorb status="404"/>
 	</route>
 
+	<route method="GET" path="/repos/{owner}/{repo}/readme" resource="readme">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="ref" type="text" default="" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir}" resource="readme_dir">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="ref" type="text" default="" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/actions/workflows" resource="workflows_list">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/actions/workflows/{id}" resource="workflow">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+	</route>
+
 	<route method="GET" path="/repos/{owner}/{repo}/git/commits/{sha}" resource="git_commit">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
@@ -638,6 +732,73 @@
 				<set field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
 				<set field="tip_sha">after</set>
 			</apply>
+		</event>
+
+		<!--
+			The same push also makes every file-derived answer for the repo
+			wrong. Each of those resources gets its own handler: a type reaches
+			as many resources as it moves, and before that the rest of them sat
+			behind a TTL with nothing reporting the gap.
+
+			Each handler carries its own subject, so it orders against its own
+			history rather than against the branch tip's.
+		-->
+		<event type="push" resource="contents" clock="repository.pushed_at">
+			<subject>contents:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the payload names the files each commit added, modified and removed, and never their content, which is the whole of what this answer holds"/>
+		</event>
+
+		<event type="push" resource="readme" clock="repository.pushed_at">
+			<subject>readme:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the same shape as contents: the payload names the changed files and never their content"/>
+		</event>
+
+		<event type="push" resource="readme_dir" clock="repository.pushed_at">
+			<subject>readme-dir:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the same shape as contents: the payload names the changed files and never their content"/>
+		</event>
+
+		<!--
+			A push is the only thing that edits .github/workflows. It names
+			changed FILES, and a file maps to a workflow id only through the
+			listing this resource is the cache of, so the repo is the finest
+			grain there is. A repo holds few workflows.
+		-->
+		<event type="push" resource="workflows_list" clock="repository.pushed_at">
+			<subject>workflows:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the payload names changed files, and a file maps to a workflow id only through this very answer"/>
+		</event>
+
+		<event type="push" resource="workflow" clock="repository.pushed_at">
+			<subject>workflow:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the payload names changed files, and a file maps to a workflow id only through the listing"/>
+		</event>
+
+		<!--
+			A created, deleted or renamed repo moves its owner's listings. The
+			delivery names the repo and never a credential, so the key names the
+			owner alone and the delete reaches every credential's row.
+		-->
+		<event type="repository" resource="org_repos" clock="repository.updated_at">
+			<subject>org-repos:<value name="payload.repository.owner.login"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<invalidate reason="the payload states one repo and the answer is the owner's whole page of them, so membership can only be refetched"/>
+		</event>
+
+		<event type="repository" resource="owner_user_repos" clock="repository.updated_at">
+			<subject>user-repos:<value name="payload.repository.owner.login"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<invalidate reason="the payload states one repo and the answer is the owner's whole page of them, so membership can only be refetched"/>
 		</event>
 
 		<event type="pull_request" resource="pull" clock="pull_request.updated_at">
@@ -1069,6 +1230,58 @@
 
 	<route method="POST" path="/graphql" resource="graphql" body-key="query">
 		<accept>application/json</accept>
+	</route>
+
+	<!--
+		The owner repo listings, GET /orgs/{org}/repos and
+		GET /users/{username}/repos. Each answers "the repos of this owner that
+		THIS token can see", so the credential is part of the key: a shared row
+		replays a token's private repos to another token.
+
+		The spellings get a resource each, never a key that says which. They
+		answer differently for the same name, because a user listing omits an
+		organization's own repos, and a key a caller can send is a key a caller
+		can forge: a query parameter naming the other spelling would make the
+		answers share a row.
+	-->
+	<resource name="org_repos" store="document" ttl="10m">
+		<key name="token_fp" credential="true"/>
+		<key name="owner" fold="true"/>
+		<key name="sort"/>
+		<key name="direction"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<resource name="owner_user_repos" store="document" ttl="10m">
+		<key name="token_fp" credential="true"/>
+		<key name="owner" fold="true"/>
+		<key name="sort"/>
+		<key name="direction"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal><credential/></reveal>
+	</resource>
+
+	<route method="GET" path="/orgs/{owner}/repos" resource="org_repos">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="sort" type="text" default="" key="true"/>
+		<param name="direction" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/users/{owner}/repos" resource="owner_user_repos">
+		<accept>application/json</accept>
+		<accept>application/vnd.github+json</accept>
+		<param name="sort" type="text" default="" key="true"/>
+		<param name="direction" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
 	</route>
 
 	<resource name="search_issues" store="document" ttl="1m">

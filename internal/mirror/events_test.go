@@ -289,6 +289,86 @@ func TestInvalidateDeletesTheRow(t *testing.T) {
 	assert.Nil(t, repoRow(t, store, "acme", "widget"))
 }
 
+// fanOutSpec adds another resource that the SAME delivery type moves. A push
+// states a branch tip and also makes the repo's file-derived answers wrong, so
+// the type has to reach both.
+func fanOutSpec() *Spec {
+	s := ingestSpec()
+	s.Resources = append(s.Resources, &Resource{
+		Name:  "readme",
+		Store: StoreDocument,
+		TTL:   time.Hour,
+		Keys: []Key{
+			{Name: "owner", From: "repository.owner.login", Fold: true},
+			{Name: "name", From: "repository.name", Fold: true},
+		},
+		Reveal: &Reveal{Public: `{{ true }}`},
+	})
+	s.Routes = append(s.Routes, &Route{
+		Method: "GET", Path: "/repos/{owner}/{name}/readme", Resource: "readme",
+	})
+	s.Events.List = append(s.Events.List, &Event{
+		Type:     "repository",
+		Resource: "readme",
+		Subject:  "readme:{{ .payload.repository.full_name }}",
+		Clock:    "repository.updated_at",
+		Keys: []Set{
+			{Field: "owner", From: "repository.owner.login"},
+			{Field: "name", From: "repository.name"},
+		},
+		Invalidate: &Invalidate{Reason: "the payload names the changed files and never their content"},
+	})
+	return s
+}
+
+// Every handler of a type runs. Before this, the last declaration silently won
+// and every other resource the delivery moved was left to its TTL.
+func TestOneTypeReachesEveryResourceItDeclares(t *testing.T) {
+	spec := fanOutSpec()
+	in, store := newIngest(t, spec)
+	readme, ok := store.Resource("readme")
+	require.True(t, ok)
+	key := map[string]string{"owner": "acme", "name": "widget"}
+	require.NoError(t, store.Put(context.Background(), readme,
+		Row{"owner": "acme", "name": "widget", "document": `{"path":"README.md"}`}, time.Now()))
+	require.NotNil(t, mustGet(t, store, readme, key), "the row under test must exist first")
+
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
+		map[string]any{"visibility": "public"}))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"],
+		"the first handler must still write its fields")
+	assert.Nil(t, mustGet(t, store, readme, key), "the second handler must have invalidated its own resource")
+}
+
+func mustGet(t *testing.T, s *Store, r *Resource, key map[string]string) Row {
+	t.Helper()
+	row, err := s.Get(context.Background(), r, key)
+	require.NoError(t, err)
+	return row
+}
+
+// The worst outcome is what the provider is told. A sibling that applied must
+// never hide a handler that failed.
+func TestAFailedHandlerDecidesTheAnswerForTheWholeDelivery(t *testing.T) {
+	spec := fanOutSpec()
+	// This handler cannot address its row, so its apply fails while the other succeeds.
+	spec.Events.List[len(spec.Events.List)-1].Keys = []Set{
+		{Field: "owner", From: "repository.owner.login"},
+		{Field: "name", From: "repository.nothing_here"},
+	}
+	in, store := newIngest(t, spec)
+
+	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockLate,
+		map[string]any{"visibility": "public"}))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, string(DeliveryFailed), w.Header().Get(dispositionHeader))
+	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"],
+		"the handler that could run still ran")
+}
+
 func TestWatermarkFailureStillApplies(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
 	// The ordering gate is now broken. A provider sends a delivery, so the
