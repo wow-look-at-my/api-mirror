@@ -39,7 +39,7 @@ type Ingest struct {
 	reorder *Reorderer
 	// secret is the resolved HMAC key. An empty refuses every delivery: an
 	secret []byte
-	byType map[string]*Event
+	byType map[string][]*Event
 	window time.Duration
 	now    func() time.Time
 	// lastPrune stamps the last watermark sweep, as a Unix.
@@ -69,12 +69,14 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 		events: spec.Events,
 		store:  store,
 		secret: []byte(secret),
-		byType: make(map[string]*Event, len(spec.Events.List)),
+		byType: make(map[string][]*Event, len(spec.Events.List)),
 		window: spec.Events.ReorderWindow,
 		now:    time.Now,
 	}
+	// A type fans out to every event declared for it, in spec order: a push
+	// states a branch tip AND makes the repo's file-derived answers wrong.
 	for _, ev := range spec.Events.List {
-		i.byType[ev.Type] = ev
+		i.byType[ev.Type] = append(i.byType[ev.Type], ev)
 	}
 	i.reorder = NewReorderer(i.window, i.applyAndRecord)
 	return i, nil
@@ -122,7 +124,7 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the delivery states no event type", http.StatusBadRequest)
 		return
 	}
-	ev, ok := i.byType[typ]
+	evs, ok := i.byType[typ]
 	if !ok {
 		// A type the spec does not model is a real answer, not a failure. A 4xx
 		i.answer(w, DeliveryIgnored)
@@ -133,36 +135,71 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the body is not JSON", http.StatusBadRequest)
 		return
 	}
-	subject, at, err := orderOf(ev, payload)
-	if err != nil {
-		logf("delivery %s: %v", typ, err)
-		i.answer(w, DeliveryFailed)
-		return
-	}
-	d := &Delivery{
-		ID:      deliveryID(raw),
-		Type:    typ,
-		Event:   ev,
-		Payload: payload,
-		Raw:     raw,
-		Subject: subject,
-		At:      at,
+	// Handlers order apart, each on its own subject. A shared subject makes the watermark refuse the rest.
+	id := deliveryID(raw)
+	deliveries := make([]*Delivery, 0, len(evs))
+	for _, ev := range evs {
+		subject, at, err := orderOf(ev, payload)
+		if err != nil {
+			logf("delivery %s (%s -> %s): %v", id, typ, ev.Resource, err)
+			i.answer(w, DeliveryFailed)
+			return
+		}
+		deliveries = append(deliveries, &Delivery{
+			ID:      id,
+			Type:    typ,
+			Event:   ev,
+			Payload: payload,
+			Raw:     raw,
+			Subject: subject,
+			At:      at,
+		})
 	}
 
 	if i.window > 0 {
 		// The provider waits for this answer and gives up in single-digit
-		i.reorder.Submit(d)
+		for _, d := range deliveries {
+			i.reorder.Submit(d)
+		}
 		i.reply(w, http.StatusAccepted, string(DeliveryHeld))
 		return
 	}
 	// With no window there is nothing to wait for, so the answer carries the
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), deliverTimeout)
 	defer cancel()
-	disp, err := i.applyAndNotify(ctx, d)
-	if err != nil {
-		logf("delivery %s (%s): %v", d.ID, d.Type, err)
+	disp := DeliveryIgnored
+	for _, d := range deliveries {
+		one, err := i.applyAndNotify(ctx, d)
+		if err != nil {
+			logf("delivery %s (%s -> %s): %v", d.ID, d.Type, d.Event.Resource, err)
+		}
+		disp = foldDisposition(disp, one)
 	}
 	i.answer(w, disp)
+}
+
+// foldDisposition answers a fanned-out delivery with its worst outcome, so a
+// failed handler is never hidden behind a sibling that applied.
+func foldDisposition(a, b DeliveryDisposition) DeliveryDisposition {
+	if dispositionRank(b) > dispositionRank(a) {
+		return b
+	}
+	return a
+}
+
+func dispositionRank(d DeliveryDisposition) int {
+	switch d {
+	case DeliveryFailed:
+		return 4
+	case DeliveryApplied:
+		return 3
+	case DeliveryInvalidated:
+		return 2
+	case DeliverySuperseded:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // answer reports a disposition to the provider.

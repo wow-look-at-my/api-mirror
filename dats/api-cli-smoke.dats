@@ -16,10 +16,15 @@ shared:
 		fakegithub: ../build/fakegithub
 		mirror-spec.xml: ../samples/github/github.xml
 
+# A TLS-intercepting environment points CURL_CA_BUNDLE and its siblings at a
+# bundle under the developer's own home, and the sandbox mounts standard system
+# paths only. curl then dies on the missing file rather than on a bad
+# certificate. Dropping the overrides falls back to the system trust store,
+# which the sandbox does mount, and which is all a plain runner ever had.
 setup:
-	- cmd: curl -fL --compressed "https://dl.pazer.build/api-cli?os=linux&arch=amd64" -o {shared.api-cli}
+	- cmd: env -u CURL_CA_BUNDLE -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE curl -fL --compressed "https://dl.pazer.build/api-cli?os=linux&arch=amd64" -o {shared.api-cli}
 	  timeout: 120s
-	- cmd: curl -fsSL "https://raw.githubusercontent.com/wow-look-at-my/api-cli/master/samples/github/github.xml" -o {shared.github-cli.xml}
+	- cmd: env -u CURL_CA_BUNDLE -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE curl -fsSL "https://raw.githubusercontent.com/wow-look-at-my/api-cli/master/samples/github/github.xml" -o {shared.github-cli.xml}
 	  timeout: 60s
 	- chmod +x {shared.api-cli} {shared.api-mirror} {shared.fakegithub}
 
