@@ -204,10 +204,7 @@ func TestNotifierSignsAndTellsSubscribersAfterTheWriteLands(t *testing.T) {
 	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", subscriber.URL, nil)
 	require.NoError(t, err)
 
-	e.notify.Fan(context.Background(), &Delivery{
-		ID: "d1", Type: "widget.changed", Subject: "widget:7",
-		Event: &Event{Type: "widget.changed", Resource: "widget"},
-	}, DeliveryApplied)
+	e.notify.Fan(context.Background(), widgetDelivery(e, "widget:7"), DeliveryApplied)
 
 	select {
 	case <-done:
@@ -237,9 +234,7 @@ func TestNotifierParksASubscriptionThatKeepsFailing(t *testing.T) {
 	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", dead.URL, nil)
 	require.NoError(t, err)
 
-	e.notify.Fan(context.Background(), &Delivery{
-		ID: "d1", Type: "widget.changed", Event: &Event{Type: "widget.changed", Resource: "widget"},
-	}, DeliveryApplied)
+	e.notify.Fan(context.Background(), widgetDelivery(e, ""), DeliveryApplied)
 	require.True(t, e.notify.Drain(10*time.Second))
 
 	all, err := e.notify.Subs().All(context.Background())
@@ -310,6 +305,16 @@ func TestSubscriptionAPICreatesAndReturnsTheSecretOnce(t *testing.T) {
 
 // notifyEngine is an engine with subscriber notifications declared, backed by a
 // config database in a temp directory.
+// widgetDelivery is a delivery as ingest builds it: the spec's own event and a
+// payload carrying the key, which the fan-out's reveal gate reads.
+func widgetDelivery(e *Engine, subject string) *Delivery {
+	return &Delivery{
+		ID: "d1", Type: "widget.changed", Subject: subject,
+		Event:   e.spec.Events.List[0],
+		Payload: map[string]any{"id": "7", "title": "renamed"},
+	}
+}
+
 func notifyEngine(t *testing.T) *Engine {
 	t.Helper()
 	dir := t.TempDir()
