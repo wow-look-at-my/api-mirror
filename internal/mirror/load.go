@@ -276,9 +276,9 @@ func addResourceChild(r *Resource, child *node) error {
 			return fmt.Errorf("resource %q key %q: a key is answered as text or int, not %q", r.Name, child.Attr("name"), typ)
 		}
 		r.Keys = append(r.Keys, Key{
-			Name:       child.Attr("name"),
-			From:       child.Attr("from"),
-			Fold:       child.Attr("fold") == "true",
+			Name:        child.Attr("name"),
+			From:        child.Attr("from"),
+			Fold:        child.Attr("fold") == "true",
 			Credential:  child.Attr("credential") == "true" || child.Attr("credential") == "principal",
 			ByPrincipal: child.Attr("credential") == "principal",
 			Type:        typ,
