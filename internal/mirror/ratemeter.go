@@ -45,6 +45,8 @@ type RateHeaders struct {
 	// Refusal is text whose presence in a refusal's body marks it as a rate
 	// limit that carries no budget header, such as GitHub's secondary limit.
 	Refusal string
+	// Answer is the budget path served from the meter instead of the upstream.
+	Answer string
 }
 
 // declared reports whether the spec named enough to read a budget at all.

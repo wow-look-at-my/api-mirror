@@ -199,6 +199,9 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		e.writeMessage(rec, http.StatusUnauthorized, "missing required header "+name)
 		return
 	}
+	if e.answerRate(rec, r) {
+		return
+	}
 	if purges, params, ok := e.matchPurges(r); ok {
 		rec.note(DispMiss, purges[0].Path, purges[0].Resource, "purge")
 		e.forwardAndPurge(rec, r, purges, params)

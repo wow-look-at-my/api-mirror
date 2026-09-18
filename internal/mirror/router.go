@@ -23,6 +23,8 @@ const (
 	PassNoIdentity PassReason = "unverified-identity"
 	PassRelay      PassReason = "relayed"     // a declared forward to a foreign host
 	PassBypass     PassReason = "bypass-body" // the body is a write the route declares uncacheable
+	// PassUnobservedBudget is a budget question from a caller the meter has not seen yet.
+	PassUnobservedBudget PassReason = "unobserved-budget"
 )
 
 // match is request resolved against a route.

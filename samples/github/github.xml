@@ -48,7 +48,7 @@
 		<forward name="Content-Type"/>
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
 			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"
-			refusal="secondary rate limit"/>
+			refusal="secondary rate limit" answer="/rate_limit"/>
 	</upstream>
 
 	<!--
@@ -1213,16 +1213,6 @@
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
-	</route>
-
-	<resource name="rate_limit" store="document" ttl="1m">
-		<key name="token_fp" credential="true"/>
-		<reveal><credential/></reveal>
-	</resource>
-
-	<route method="GET" path="/rate_limit" resource="rate_limit">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="org_runners" store="document">
