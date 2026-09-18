@@ -72,6 +72,12 @@
 				<xs:element name="refresh" type="refresh"/>
 				<xs:element name="replay" type="replay"/>
 				<xs:element name="health" type="health"/>
+				<xs:element name="alias">
+					<xs:complexType>
+						<xs:attribute name="from" type="xs:string" use="required"/>
+						<xs:attribute name="to" type="xs:string" use="required"/>
+					</xs:complexType>
+				</xs:element>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>

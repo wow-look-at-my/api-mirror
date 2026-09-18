@@ -157,6 +157,9 @@ func routeKind(rt *Route) string {
 }
 
 func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if len(e.spec.Aliases) > 0 {
+		w = &aliasWriter{ResponseWriter: w, aliases: e.spec.Aliases}
+	}
 	rec := newRecorder(w, r)
 	defer func() { e.tel.Requests.Record(rec.entry()) }()
 	e.dispatch(rec, r)

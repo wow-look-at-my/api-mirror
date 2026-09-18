@@ -1515,8 +1515,16 @@
 		cross-origin script, so a page cannot read the budget it is spending.
 		The engine adds its own X-Mirror-* headers to whatever is listed here.
 	-->
+	<!-- Consumers of github-state-mirror read its X-GSM-* spellings. -->
+	<alias from="X-Mirror-Cache" to="X-GSM-Cache"/>
+	<alias from="X-Mirror-Stale" to="X-GSM-Stale"/>
+	<alias from="X-Mirror-Fetched-At" to="X-GSM-Last-Fetched"/>
+
 	<cors max-age="10m">
 		<origin>*</origin>
+		<expose>X-GSM-Cache</expose>
+		<expose>X-GSM-Stale</expose>
+		<expose>X-GSM-Last-Fetched</expose>
 		<expose>X-RateLimit-Limit</expose>
 		<expose>X-RateLimit-Remaining</expose>
 		<expose>X-RateLimit-Used</expose>

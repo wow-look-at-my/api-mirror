@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -134,6 +135,15 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Health = h
+		case "alias":
+			if err := checkAttrs(child, "from", "to"); err != nil {
+				return nil, err
+			}
+			al := HeaderAlias{From: child.Attr("from"), To: child.Attr("to")}
+			if al.From == "" || al.To == "" || http.CanonicalHeaderKey(al.From) == http.CanonicalHeaderKey(al.To) {
+				return nil, fmt.Errorf("<alias> needs a from and a different to, got %q -> %q", al.From, al.To)
+			}
+			spec.Aliases = append(spec.Aliases, al)
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}

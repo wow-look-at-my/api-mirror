@@ -30,6 +30,8 @@ type Spec struct {
 	Replay *Replay
 	// Health declares the liveness and pre-update paths an orchestrator polls.
 	Health *Health
+	// Aliases repeat response headers under the names older clients read.
+	Aliases []HeaderAlias
 }
 
 // Dashboard is the operator surface: the tabs, the admin JSON, and the token
