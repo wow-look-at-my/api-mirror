@@ -151,10 +151,12 @@ func (u *Upstreamer) RateLimited(a *Answer) bool {
 	if a.Header.Get(retryAfter) != "" {
 		return true
 	}
-	if name := u.spec.Upstream.Rate.Remaining; name != "" {
-		return a.Header.Get(name) == "0"
+	if name := u.spec.Upstream.Rate.Remaining; name != "" && a.Header.Get(name) == "0" {
+		return true
 	}
-	return false
+	marker := u.spec.Upstream.Rate.Refusal
+	return marker != "" && a.Status >= 400 &&
+		strings.Contains(strings.ToLower(string(a.Body)), strings.ToLower(marker))
 }
 
 // Transient reports whether an answer is that must never be stored: a

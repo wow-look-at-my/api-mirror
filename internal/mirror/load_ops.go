@@ -197,7 +197,7 @@ func buildHealth(n *node) (*Health, error) {
 }
 
 func buildRateHeaders(n *node) (RateHeaders, error) {
-	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource"); err != nil {
+	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource", "refusal"); err != nil {
 		return RateHeaders{}, err
 	}
 	return RateHeaders{
@@ -206,5 +206,6 @@ func buildRateHeaders(n *node) (RateHeaders, error) {
 		Used:      n.Attr("used"),
 		Reset:     n.Attr("reset"),
 		Resource:  n.Attr("resource"),
+		Refusal:   n.Attr("refusal"),
 	}, nil
 }

@@ -106,6 +106,7 @@
 					<xs:attribute name="used" type="xs:string"/>
 					<xs:attribute name="reset" type="xs:string"/>
 					<xs:attribute name="resource" type="xs:string"/>
+					<xs:attribute name="refusal" type="xs:string"/>
 				</xs:complexType>
 			</xs:element>
 		</xs:choice>

@@ -69,6 +69,7 @@ func rateAwareUpstreamer(t *testing.T) *Upstreamer {
 			Limit:     "X-RateLimit-Limit",
 			Remaining: "X-RateLimit-Remaining",
 			Reset:     "X-RateLimit-Reset",
+			Refusal:   "secondary rate limit",
 		},
 	}}
 	up, err := NewUpstreamer(spec, map[string]any{}, nil)
@@ -317,6 +318,19 @@ func TestRateLimited_TellsARefusalToWaitFromARefusalToRead(t *testing.T) {
 			name: "a 403 with budget left",
 			answer: &Answer{Status: http.StatusForbidden,
 				Header: http.Header{"X-Ratelimit-Remaining": {"4999"}}},
+			want: false,
+		},
+		{
+			name: "a 403 naming the secondary limit in its body, budget left",
+			answer: &Answer{Status: http.StatusForbidden,
+				Header: http.Header{"X-Ratelimit-Remaining": {"4999"}},
+				Body:   []byte(`{"message":"You have exceeded a Secondary Rate Limit. Please wait."}`)},
+			want: true,
+		},
+		{
+			name: "a 200 whose body happens to say it",
+			answer: &Answer{Status: http.StatusOK, Header: http.Header{},
+				Body: []byte(`{"title":"docs on secondary rate limit"}`)},
 			want: false,
 		},
 		{name: "a plain 403", answer: &Answer{Status: http.StatusForbidden, Header: http.Header{}}, want: false},

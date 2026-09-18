@@ -42,6 +42,9 @@ type RateHeaders struct {
 	Used      string
 	Reset     string
 	Resource  string
+	// Refusal is text whose presence in a refusal's body marks it as a rate
+	// limit that carries no budget header, such as GitHub's secondary limit.
+	Refusal string
 }
 
 // declared reports whether the spec named enough to read a budget at all.
