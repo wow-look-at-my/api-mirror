@@ -290,6 +290,24 @@ has ingested the delivery and gets the state that delivery was about to replace.
 AFTER the write lands. Registrations live in a separate database file, because
 the cache nuke is safe only for rows the upstream still has a copy of.
 
+A consumer manages its own subscriptions at `path` with its own credential, and
+sees and changes only its own. A notification reaches a subscriber only when its
+principal could read the delivery's row without a probe: the row is public, or
+the principal holds live proof. The fan-out has no caller credential to probe
+with, so anything short of that is silence.
+
+A probe's grant is keyed by the path it asked, not by the row that asked it, so
+every resource proving access with the same question shares one answer.
+
+### `<identity>` — who is asking
+
+`<user>` asks the upstream who a bearer is and names the principal from the
+answer, so grants survive a rotated token. A credential the upstream says is not
+a user keeps its fingerprint; one it cannot answer about fails the request.
+`<assertion>` lets a caller name an identity the upstream verifies, and a route
+with `assert="true"` treats its bearer as that assertion. A key with
+`credential="principal"` files rows under the verified principal.
+
 ### `<cors>`, `<health>`, and debouncing
 
 `<cors>` names the origins and the response headers a cross-origin script may

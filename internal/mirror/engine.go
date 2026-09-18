@@ -99,6 +99,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		if err != nil {
 			return nil, err
 		}
+		e.notify.gate = e.visibleTo
 	}
 	e.refresh = NewRefresher(e)
 	e.replay = NewReplayer(e)
@@ -182,6 +183,12 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		return
 	}
 	if e.health(rec, r) {
+		return
+	}
+	// Ahead of the dashboard, whose prefix may contain it: a caller manages
+	// their own subscriptions with their own credential, not the dashboard's.
+	if e.subscriptionPath(r.URL.Path) {
+		e.serveSubscriptions(rec, r)
 		return
 	}
 	if e.admin != nil && e.admin.Handles(r.URL.Path) {

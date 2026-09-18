@@ -47,6 +47,11 @@ func (a *Admin) createSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this spec declares no <notify>", http.StatusNotImplemented)
 		return
 	}
+	createSubscriptionFor(w, r, subs, operatorPrincipal)
+}
+
+// createSubscriptionFor registers the posted subscription under a principal.
+func createSubscriptionFor(w http.ResponseWriter, r *http.Request, subs *Subscriptions, principal string) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSubscriptionBody))
 	if err != nil {
 		http.Error(w, "unreadable body", http.StatusBadRequest)
@@ -60,10 +65,6 @@ func (a *Admin) createSubscription(w http.ResponseWriter, r *http.Request) {
 	if err := checkCallbackURL(req.URL); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	}
-	principal := principalOf(r)
-	if principal == "" {
-		principal = "operator"
 	}
 	sub, err := subs.Create(r.Context(), principal, req.URL, req.Events)
 	if err != nil {
@@ -79,11 +80,7 @@ func (a *Admin) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this spec declares no <notify>", http.StatusNotImplemented)
 		return
 	}
-	principal := principalOf(r)
-	if principal == "" {
-		principal = "operator"
-	}
-	gone, err := subs.Delete(r.Context(), principal, r.PathValue("id"))
+	gone, err := subs.Delete(r.Context(), operatorPrincipal, r.PathValue("id"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
