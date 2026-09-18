@@ -300,6 +300,13 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		return DeliverySuperseded, nil
 	}
 
+	if ev.Invalidate != nil && ev.Invalidate.All {
+		if _, err := i.store.DeleteAll(ctx, res); err != nil {
+			return DeliveryFailed, err
+		}
+		i.prune(ctx)
+		return DeliveryInvalidated, nil
+	}
 	if ev.Invalidate != nil {
 		if _, err := i.store.Delete(ctx, res, key); err != nil {
 			return DeliveryFailed, err

@@ -112,10 +112,10 @@ func buildEvent(n *node) (*Event, error) {
 			}
 			ev.Keys = append(ev.Keys, k)
 		case "invalidate":
-			if err := checkAttrs(child, "reason"); err != nil {
+			if err := checkAttrs(child, "reason", "all"); err != nil {
 				return nil, err
 			}
-			ev.Invalidate = &Invalidate{Reason: child.Attr("reason")}
+			ev.Invalidate = &Invalidate{Reason: child.Attr("reason"), All: child.Attr("all") == "true"}
 		default:
 			return nil, fmt.Errorf("<event type=%q>: unexpected child element <%s>", ev.Type, child.Name())
 		}

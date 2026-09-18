@@ -384,4 +384,6 @@ type Set struct {
 // Invalidate drops the stored row for this event's subject.
 type Invalidate struct {
 	Reason string
+	// All drops every row of the resource, for rows no delivery can key.
+	All bool
 }

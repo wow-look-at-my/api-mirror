@@ -41,6 +41,9 @@ DELETE FROM mirror_freshness
 WHERE kind = sqlc.arg(kind)
   AND (key = sqlc.arg(key) OR substr(key, 1, length(sqlc.arg(below))) = sqlc.arg(below));
 
+-- name: DeleteFreshnessKind :execrows
+DELETE FROM mirror_freshness WHERE kind = ?;
+
 -- The sweep asks for the keys of one kind that have aged out, oldest first.
 -- A row still inside its error backoff is included: the sweep is a deliberate
 -- refresh, and a deliberate refresh is exactly what the backoff does not hold

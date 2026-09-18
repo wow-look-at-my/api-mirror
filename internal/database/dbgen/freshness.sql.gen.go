@@ -69,6 +69,18 @@ func (q *Queries) DeleteFreshness(ctx context.Context, arg DeleteFreshnessParams
 	return result.RowsAffected()
 }
 
+const deleteFreshnessKind = `-- name: DeleteFreshnessKind :execrows
+DELETE FROM mirror_freshness WHERE kind = ?
+`
+
+func (q *Queries) DeleteFreshnessKind(ctx context.Context, kind string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteFreshnessKind, kind)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteFreshnessUnder = `-- name: DeleteFreshnessUnder :execrows
 DELETE FROM mirror_freshness
 WHERE kind = ?1

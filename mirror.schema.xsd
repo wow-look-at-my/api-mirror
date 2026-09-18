@@ -316,6 +316,7 @@
 			<xs:element name="invalidate">
 				<xs:complexType>
 					<xs:attribute name="reason" type="xs:string" use="required"/>
+					<xs:attribute name="all" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
 		</xs:choice>

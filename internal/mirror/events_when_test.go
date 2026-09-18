@@ -45,6 +45,25 @@ func TestHandles_AWhenPredicateSplitsOneTypeByPayload(t *testing.T) {
 	}
 }
 
+func TestValidate_AKeylessInvalidateMustSayAll(t *testing.T) {
+	s := eventSpec()
+	s.Events.List[0].Keys = nil
+	s.Events.List[0].Sets = nil
+	s.Events.List[0].Invalidate = &Invalidate{Reason: "r"}
+	assert.ErrorContains(t, s.validate(), "invalidates every row")
+
+	s.Events.List[0].Invalidate.All = true
+	assert.NoError(t, s.validate())
+}
+
+func TestValidate_AnInvalidateAllRefusesAKey(t *testing.T) {
+	s := eventSpec()
+	s.Events.List[0].Sets = nil
+	s.Events.List[0].Keys = []Set{{Field: "owner", From: "repository.owner.login"}}
+	s.Events.List[0].Invalidate = &Invalidate{Reason: "r", All: true}
+	assert.ErrorContains(t, s.validate(), "would narrow nothing")
+}
+
 func TestHandles_APredicateThatCannotRenderFails(t *testing.T) {
 	ev := &Event{Type: "push", When: `{{ hasPrefix }}`}
 	_, err := handles(ev, map[string]any{})

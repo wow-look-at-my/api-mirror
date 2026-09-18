@@ -154,6 +154,22 @@ func (s *Store) Delete(ctx context.Context, r *Resource, key map[string]string) 
 	return res.RowsAffected()
 }
 
+// DeleteAll drops every row of a resource and the freshness of every answer
+// built from it. It serves an invalidation that no delivery can key, such as
+// rows keyed by a credential the payload never names.
+func (s *Store) DeleteAll(ctx context.Context, r *Resource) (int64, error) {
+	res, err := s.db.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, resourceTable(r.Name)))
+	if err != nil {
+		return 0, fmt.Errorf("delete all %s: %w", r.Name, err)
+	}
+	for _, kind := range []string{r.Name, r.Name + ":list"} {
+		if _, err := s.q.DeleteFreshnessKind(ctx, kind); err != nil {
+			return 0, fmt.Errorf("forget all %s: %w", kind, err)
+		}
+	}
+	return res.RowsAffected()
+}
+
 // insertStmt builds the write statement every resource write uses.
 func insertStmt(r *Resource) string {
 	if v := versionColumn(r); v != "" {

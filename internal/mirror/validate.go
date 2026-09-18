@@ -578,7 +578,13 @@ func validateEventKeys(ev *Event, res *Resource) error {
 	}
 	if ev.Invalidate != nil {
 		// A partial key is legitimate here and deletes everything beneath it,
-		// but naming none of them would delete the resource.
+		// but naming none of them would delete the resource unless it says so.
+		if ev.Invalidate.All {
+			if len(ev.Keys) > 0 {
+				return fmt.Errorf("event %q invalidates all of resource %q: a <key> would narrow nothing", ev.Type, res.Name)
+			}
+			return nil
+		}
 		if len(ev.Keys) == 0 {
 			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about",
 				ev.Type, res.Name)

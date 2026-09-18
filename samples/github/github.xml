@@ -1185,6 +1185,14 @@
 			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
 			<invalidate reason="the payload lists what was added and removed, and a stored not-installed verdict for an added repository is now wrong"/>
 		</event>
+		<event type="installation_repositories" resource="installation_repos" clock="installation.updated_at">
+			<subject>installation-repos:<value name="payload.installation.id"/></subject>
+			<invalidate all="true" reason="the rows are keyed by installation token, which no delivery names, and the payload says the covered repositories changed"/>
+		</event>
+		<event type="installation" resource="installation_repos" clock="installation.updated_at">
+			<subject>installation-repos-lifecycle:<value name="payload.installation.id"/></subject>
+			<invalidate all="true" reason="the rows are keyed by installation token, which no delivery names, and a deleted or suspended installation lists nothing"/>
+		</event>
 
 		<event type="pull_request" resource="pull_diff" clock="pull_request.updated_at">
 			<subject>pull-diff:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
