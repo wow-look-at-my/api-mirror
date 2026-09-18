@@ -456,7 +456,7 @@ func pathParams(path string) []string {
 	var out []string
 	for _, seg := range strings.Split(path, "/") {
 		if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
-			out = append(out, seg[1:len(seg)-1])
+			out = append(out, strings.TrimSuffix(seg[1:len(seg)-1], "*"))
 		}
 	}
 	return out

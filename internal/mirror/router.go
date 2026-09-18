@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -124,15 +125,31 @@ func foldFor(res *Resource, name, value string) string {
 }
 
 // matchPath matches a request path against a route pattern, returning the
-// {name} bindings.
+// {name} bindings. A final {name*} binds every remaining segment, slashes
+// included, because a file path or a ref like heads/feature/x is a single value.
 func matchPath(pattern, path string) (map[string]string, bool) {
 	pseg := strings.Split(strings.Trim(pattern, "/"), "/")
 	rseg := strings.Split(strings.Trim(path, "/"), "/")
+	last := pseg[len(pseg)-1]
+	rest := strings.HasPrefix(last, "{") && strings.HasSuffix(last, "*}")
+	if rest {
+		if len(rseg) < len(pseg) {
+			return nil, false
+		}
+		rseg = append(rseg[:len(pseg)-1:len(pseg)-1], strings.Join(rseg[len(pseg)-1:], "/"))
+	}
 	if len(pseg) != len(rseg) {
 		return nil, false
 	}
 	out := make(map[string]string, len(pseg))
 	for i, p := range pseg {
+		if rest && i == len(pseg)-1 {
+			if rseg[i] == "" || slices.Contains(strings.Split(rseg[i], "/"), "") {
+				return nil, false
+			}
+			out[p[1:len(p)-2]] = rseg[i]
+			continue
+		}
 		if len(p) > 2 && p[0] == '{' && p[len(p)-1] == '}' {
 			v := rseg[i]
 			if v == "" {

@@ -480,7 +480,7 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref}" resource="branch">
+	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref*}" resource="branch">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
@@ -512,7 +512,7 @@
 		<param name="page" type="int" default="1" min="1" max="100"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/contents/{path}" resource="contents">
+	<route method="GET" path="/repos/{owner}/{repo}/contents/{path*}" resource="contents">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
@@ -526,7 +526,7 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir}" resource="readme_dir">
+	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir*}" resource="readme_dir">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
@@ -558,13 +558,13 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/git/ref/{ref}" resource="git_ref">
+	<route method="GET" path="/repos/{owner}/{repo}/git/ref/{ref*}" resource="git_ref">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/git/matching-refs/heads/{prefix}" resource="matching_refs">
+	<route method="GET" path="/repos/{owner}/{repo}/git/matching-refs/heads/{prefix*}" resource="matching_refs">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -579,7 +579,7 @@
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/compare/{basehead}" resource="compare">
+	<route method="GET" path="/repos/{owner}/{repo}/compare/{basehead*}" resource="compare">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
