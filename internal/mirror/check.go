@@ -82,7 +82,7 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 		return out
 	}
 
-	fetchCtx, cancel := context.WithTimeout(withLane(ctx, LaneRefresh, "", "check"), checkKeyTimeout)
+	fetchCtx, cancel := context.WithTimeout(withPlan(withLane(ctx, LaneRefresh, "", "check"), plan), checkKeyTimeout)
 	defer cancel()
 	answer, err := e.up.Call(plan.media(fetchCtx), plan.route.Method, plan.upstreamPath(), e.vars, nil, nil)
 	if err != nil {

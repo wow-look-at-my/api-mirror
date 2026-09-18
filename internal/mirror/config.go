@@ -137,6 +137,8 @@ type Upstream struct {
 	Debounce time.Duration
 	// RetryAfter names the header saying a refusal is about waiting, not access.
 	RetryAfter string
+	// App is the mirror's own signed identity for the calls it makes itself.
+	App *App
 }
 
 // Header is header sent upstream.

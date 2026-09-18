@@ -113,6 +113,17 @@
 					<xs:attribute name="required" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
+			<xs:element name="app">
+				<xs:complexType>
+					<xs:attribute name="id" type="xs:string" use="required"/>
+					<xs:attribute name="key" type="xs:string"/>
+					<xs:attribute name="key-file" type="xs:string"/>
+					<xs:attribute name="installations" type="xs:string" use="required"/>
+					<xs:attribute name="account" type="xs:string" use="required"/>
+					<xs:attribute name="mint" type="xs:string" use="required"/>
+					<xs:attribute name="owner-key" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
 			<!-- Which headers carry a budget is the upstream's own vocabulary. -->
 			<xs:element name="ratelimit">
 				<xs:complexType>

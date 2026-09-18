@@ -24,6 +24,8 @@ type Upstreamer struct {
 	headers []Header
 	client  *http.Client
 	observe Observer
+	// app signs the mirror's own calls; nil falls back to background headers.
+	app *appAuth
 }
 
 // NewUpstreamer resolves the upstream's base URL and static headers.
@@ -40,14 +42,20 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 	if observe == nil {
 		observe = funcObserver(func(Exchange) {})
 	}
-	return &Upstreamer{
+	u := &Upstreamer{
 		spec:    spec,
 		base:    base,
 		headers: spec.Upstream.Headers,
 		// Reports from its transport: no call site can forget to.
 		client:  observedClient(upstreamClient, LaneFetch, observe),
 		observe: observe,
-	}, nil
+	}
+	app, err := newAppAuth(spec.Upstream.App, vars, u)
+	if err != nil {
+		return nil, err
+	}
+	u.app = app
+	return u, nil
 }
 
 // Answer is what the upstream said.
@@ -104,6 +112,15 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 	}
 	if m := mediaFrom(ctx); m != "" {
 		req.Header.Set("Accept", m)
+	}
+	if forward == nil && u.app != nil {
+		auth, ok, err := u.app.authorization(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("app credential for %s %s: %w", method, path, err)
+		}
+		if ok {
+			req.Header.Set("Authorization", auth)
+		}
 	}
 	// A buffered body must be plain bytes: the mirror parses and rebuilds it,
 	req.Header.Set("Accept-Encoding", "identity")

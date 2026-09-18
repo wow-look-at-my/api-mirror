@@ -122,6 +122,9 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 	if err := s.Identity.validate(s.Upstream.Forward); err != nil {
 		return err
 	}
+	if err := s.Upstream.App.validate(); err != nil {
+		return err
+	}
 	for _, rt := range s.Routes {
 		if rt.Assert && (s.Identity == nil || s.Identity.Assertion == nil) {
 			return fmt.Errorf("route %s: assert=\"true\" verifies the bearer with <identity><assertion>, which the spec does not declare", rt.Path)

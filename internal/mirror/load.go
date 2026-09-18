@@ -208,6 +208,15 @@ func buildUpstream(n *node) (Upstream, error) {
 				return Upstream{}, err
 			}
 			up.Headers = append(up.Headers, h)
+		case "app":
+			if err := checkAttrs(child, "id", "key", "key-file", "installations", "account", "mint", "owner-key"); err != nil {
+				return Upstream{}, err
+			}
+			up.App = &App{
+				ID: child.Attr("id"), Key: child.Attr("key"), KeyFile: child.Attr("key-file"),
+				Installations: child.Attr("installations"), Account: child.Attr("account"),
+				Mint: child.Attr("mint"), OwnerKey: child.Attr("owner-key"),
+			}
 		case "forward":
 			if err := checkAttrs(child, "name", "required"); err != nil {
 				return Upstream{}, err
