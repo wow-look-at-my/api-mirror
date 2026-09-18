@@ -287,7 +287,7 @@ views.timeline = async () => {
 	const rowsBy = new Map();
 	let first = Infinity;
 	for (const f of frames) {
-		const key = `${f.lane} ${f.group || ''}`;
+		const key = `${f.lane}|${f.group || ''}`;
 		if (!rowsBy.has(key)) rowsBy.set(key, { lane: f.lane, group: f.group || '', frames: [] });
 		rowsBy.get(key).frames.push(f);
 		first = Math.min(first, new Date(f.at).getTime());
@@ -596,11 +596,15 @@ views.principals = async () => {
 	const out = el('div', {});
 	out.append(section('Who has proven what', el('p', { class: 'muted' },
 		`Grants and denials are the only per-caller tables. Everything else this mirror stores is global. ${fmt.int(v.denials)} refusals are currently being replayed without asking upstream.`)));
-	out.append(table(['Principal', 'Grants', 'Newest'],
+	const names = v.names || {};
+	const seen = v.last_seen || {};
+	out.append(table(['Principal', 'Name', 'Grants', 'Newest grant', 'Last seen'],
 		v.principals.map((p) => [
 			el('a', { href: `#principals?principal=${encodeURIComponent(p.principal)}`, onclick: () => setTimeout(render, 0) },
 				el('span', { class: 'mono' }, p.principal)),
-			p.grants, fmt.ago(p.newest)])));
+			names[p.principal] || el('span', { class: 'muted' }, '-'),
+			p.grants, fmt.ago(p.newest),
+			seen[p.principal] ? fmt.ago(seen[p.principal]) : el('span', { class: 'muted' }, 'not since restart')])));
 
 	if (v.standing) {
 		out.append(section(`${v.standing.principal} grants`, table(
@@ -624,7 +628,7 @@ views.subscriptions = async () => {
 		return out;
 	}
 	out.append(section('Registered consumers', el('p', { class: 'muted' },
-		'A subscriber is told AFTER a delivery is applied, so they stop racing this mirror’s ingestion with their own copy of the upstream’s webhooks.')));
+		'A subscriber is told AFTER a delivery is applied, so they stop racing this mirror's ingestion with their own copy of the upstream's webhooks.')));
 	out.append(table(['Principal', 'URL', 'Events', 'State', 'Failures', 'Last delivered'],
 		list.map((s) => [
 			el('span', { class: 'mono' }, s.principal),

@@ -171,6 +171,7 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		entry := rec.entry()
 		e.tel.Requests.Record(entry)
+		e.tel.Seen(entry.Principal, entry.At)
 		// A delivery is charted by its own handler, and the dashboard's own
 		// polling would fill the chart with the act of viewing it.
 		if entry.Disposition == DispDelivery || entry.Disposition == DispAdmin {

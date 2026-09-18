@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -16,6 +17,53 @@ type Telemetry struct {
 	mu      sync.Mutex
 	lanes   map[Lane]*LaneTally
 	upBytes int
+	// seen is when each principal last asked this mirror anything.
+	seen map[string]time.Time
+}
+
+// seenMax bounds the last-seen map. Past it, the oldest half is dropped: a
+// principal quiet that long is the least useful line on the page.
+const seenMax = 10000
+
+// Seen records a principal's request.
+func (t *Telemetry) Seen(principal string, at time.Time) {
+	if t == nil || principal == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.seen == nil {
+		t.seen = map[string]time.Time{}
+	}
+	t.seen[principal] = at
+	if len(t.seen) <= seenMax {
+		return
+	}
+	times := make([]time.Time, 0, len(t.seen))
+	for _, v := range t.seen {
+		times = append(times, v)
+	}
+	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
+	cutoff := times[len(times)/2]
+	for p, v := range t.seen {
+		if v.Before(cutoff) {
+			delete(t.seen, p)
+		}
+	}
+}
+
+// LastSeen copies the last-seen map.
+func (t *Telemetry) LastSeen() map[string]time.Time {
+	out := map[string]time.Time{}
+	if t == nil {
+		return out
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for p, v := range t.seen {
+		out[p] = v
+	}
+	return out
 }
 
 // LaneTally is the running cost of lane of traffic.

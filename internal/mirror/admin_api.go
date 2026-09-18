@@ -128,11 +128,15 @@ type PrincipalsView struct {
 	Principals []PrincipalStanding `json:"principals"`
 	Standing   *Standing           `json:"standing,omitempty"`
 	Denials    int64               `json:"denials"`
+	// Names and LastSeen are live views: names from the identity verdicts
+	// still held, last-seen since this process started.
+	Names    map[string]string    `json:"names"`
+	LastSeen map[string]time.Time `json:"last_seen"`
 }
 
 func (a *Admin) principals(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	view := PrincipalsView{}
+	view := PrincipalsView{Names: a.engine.ids.names(), LastSeen: a.engine.tel.LastSeen()}
 	list, err := a.engine.store.Principals(r.Context(), now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -201,7 +205,7 @@ func (a *Admin) resources(w http.ResponseWriter, r *http.Request) {
 	for _, res := range a.engine.spec.Resources {
 		view := describeResource(a.engine, res)
 		if want != "" && res.Name == want {
-			rows, truncated, err := a.engine.store.Rows(r.Context(), res, intParam(r, "limit", browseLimit))
+			rows, truncated, err := a.engine.store.Rows(r.Context(), res, scopeOf(r, res), intParam(r, "limit", browseLimit))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -224,6 +228,25 @@ func (a *Admin) resources(w http.ResponseWriter, r *http.Request) {
 		out = append(out, view)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// scopeOf reads the query parameters named after a resource's columns, such
+// as ?owner=acme, as the rows an operator is asking about. A key column is
+// folded as the resource folds it, so the scope matches what was stored.
+func scopeOf(r *http.Request, res *Resource) map[string]string {
+	q := r.URL.Query()
+	scope := map[string]string{}
+	for _, k := range res.Keys {
+		if q.Has(k.Name) {
+			scope[k.Name] = foldKey(k, q.Get(k.Name))
+		}
+	}
+	for _, f := range res.Fields {
+		if q.Has(f.Name) {
+			scope[f.Name] = q.Get(f.Name)
+		}
+	}
+	return scope
 }
 
 func describeResource(e *Engine, res *Resource) ResourceView {

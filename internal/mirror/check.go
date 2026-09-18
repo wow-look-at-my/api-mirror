@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -43,20 +44,44 @@ type KeyCheck struct {
 const checkKeyTimeout = 30 * time.Second
 
 // Check re-asks the upstream about every stored key of kind and reports where
-// the cache and the upstream disagree, using the mirror's own credential.
-func (e *Engine) Check(ctx context.Context, kind string, repair bool, emit func(KeyCheck)) error {
+// the cache and the upstream disagree, using the mirror's own credential. A
+// non-empty scope checks only the keys whose components equal it, such as a
+// single owner's rows, so a check of a large kind can be run a slice at a time.
+func (e *Engine) Check(ctx context.Context, kind string, scope map[string]string, repair bool, emit func(KeyCheck)) error {
 	keys, err := e.store.FreshnessByKind(ctx, kind)
 	if err != nil {
 		return err
 	}
+	res, _ := e.store.Resource(strings.TrimSuffix(kind, ":list"))
 	sort.Slice(keys, func(i, j int) bool { return keys[i].Key < keys[j].Key })
 	for _, f := range keys {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if len(scope) > 0 && !inScope(res, f.Key, scope) {
+			continue
+		}
 		emit(e.checkOne(ctx, kind, f, repair))
 	}
 	return nil
+}
+
+// inScope reports whether a stored key's components equal every scoped value.
+// A key that cannot be read back into components is outside any scope.
+func inScope(res *Resource, key string, scope map[string]string) bool {
+	if res == nil {
+		return false
+	}
+	parts, ok := parseKeyString(res, key)
+	if !ok {
+		return false
+	}
+	for name, want := range scope {
+		if parts[name] != want {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair bool) KeyCheck {
