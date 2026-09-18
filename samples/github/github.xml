@@ -52,6 +52,19 @@
 	</upstream>
 
 	<!--
+		A caller is a GitHub user by numeric id, which survives a login rename
+		and every token rotation, so earned grants outlive the token that
+		earned them. A token GET /user will not answer for (an installation
+		token) keeps its fingerprint. An App whose installation tokens rotate
+		hourly asserts its identity with an App JWT, which GET /app accepts
+		only when the App's private key signed it.
+	-->
+	<identity ttl="1h">
+		<user path="/user" principal="user:{{ .doc.id }}"/>
+		<assertion header="X-Mirror-Identity" as="Authorization" scheme="Bearer" path="/app" principal="app:{{ .doc.id }}"/>
+	</identity>
+
+	<!--
 		A repository. Its visibility is load-bearing twice over: it is the fast
 		path of the reveal ladder, and an UNKNOWN visibility must read as
 		private. The predicate below says "public" explicitly rather than "not

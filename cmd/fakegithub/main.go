@@ -1,5 +1,5 @@
 // Command fakegithub is a deterministic GitHub REST stand-in for tests.
-// It answers the repo and commit-statuses routes with fixed, request-derived
+// It answers /user, the repo and commit-statuses routes with fixed, request-derived
 // JSON, and counts every request so a test can prove a cache hit made none.
 package main
 
@@ -29,6 +29,11 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Path == "/user" {
+			json.NewEncoder(w).Encode(map[string]any{"id": 42, "login": "fake-user"})
+			return
+		}
 
 		if m := repoPath.FindStringSubmatch(r.URL.Path); m != nil {
 			owner, name := m[1], m[2]

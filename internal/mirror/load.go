@@ -144,6 +144,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, fmt.Errorf("<alias> needs a from and a different to, got %q -> %q", al.From, al.To)
 			}
 			spec.Aliases = append(spec.Aliases, al)
+		case "identity":
+			id, err := buildIdentity(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Identity = id
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}

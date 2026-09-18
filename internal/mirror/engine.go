@@ -34,6 +34,7 @@ type Engine struct {
 	replay   *Replayer
 	debounce *Debouncer
 	vocab    set.Set[string]
+	ids      *identities
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.
@@ -75,6 +76,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		store:   store,
 		up:      up,
 		reveal:  NewRevealer(store, up, vars),
+		ids:     newIdentities(spec.Identity, up, vars),
 		vars:    vars,
 		baseURL: base,
 		tel:     tel,
@@ -202,6 +204,14 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		e.writeMessage(rec, http.StatusUnauthorized, "missing required header "+name)
 		return
 	}
+	principal, refused := e.ids.resolve(r.Context(), r)
+	if refused != nil {
+		rec.note(DispDenied, e.shapeOf(r), "", "identity")
+		e.writeMessage(rec, refused.status, refused.message)
+		return
+	}
+	rec.principal = principal
+	r = r.WithContext(withPrincipal(r.Context(), principal))
 	if e.answerRate(rec, r) {
 		return
 	}
@@ -564,8 +574,12 @@ func (e *Engine) writeMessage(w http.ResponseWriter, status int, message string)
 	}
 }
 
-// principalOf identifies who is asking.
+// principalOf identifies who is asking: the principal dispatch resolved, or,
+// on a path dispatch does not resolve, the credential's fingerprint.
 func principalOf(r *http.Request) string {
+	if p, ok := r.Context().Value(principalKey{}).(string); ok {
+		return p
+	}
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
 		return ""

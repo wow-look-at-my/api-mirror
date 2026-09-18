@@ -78,6 +78,15 @@
 						<xs:attribute name="to" type="xs:string" use="required"/>
 					</xs:complexType>
 				</xs:element>
+				<xs:element name="identity">
+					<xs:complexType>
+						<xs:choice minOccurs="1" maxOccurs="2">
+							<xs:element name="user" type="identityRule"/>
+							<xs:element name="assertion" type="identityRule"/>
+						</xs:choice>
+						<xs:attribute name="ttl" type="xs:string" use="required"/>
+					</xs:complexType>
+				</xs:element>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
@@ -164,6 +173,14 @@
 		<xs:attribute name="name" type="xs:string" use="required"/>
 		<xs:attribute name="ttl" type="xs:string"/>
 		<xs:attribute name="store" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="identityRule">
+		<xs:attribute name="header" type="xs:string"/>
+		<xs:attribute name="as" type="xs:string"/>
+		<xs:attribute name="scheme" type="xs:string"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="principal" type="xs:string" use="required"/>
 	</xs:complexType>
 
 	<xs:complexType name="reveal">

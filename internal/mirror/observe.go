@@ -20,6 +20,7 @@ const (
 	LaneReplay      Lane = "replay"      // asking the upstream to re-send a lost delivery
 	LaneDelivery    Lane = "delivery"    // an inbound webhook, timed at the handler
 	LaneNotify      Lane = "notify"      // an outbound subscriber notification
+	LaneIdentity    Lane = "identity"    // resolving who a caller's credential belongs to
 )
 
 // Exchange is completed request, inbound or outbound, as reported to the

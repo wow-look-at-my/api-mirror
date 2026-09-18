@@ -62,7 +62,7 @@ tests:
 					- "^0$"
 			after-miss.txt:
 				match:
-					- "^3$"
+					- "^4$"
 			after-hit.txt:
 				match:
-					- "^3$"
+					- "^4$"

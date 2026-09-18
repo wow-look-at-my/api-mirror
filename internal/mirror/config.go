@@ -32,6 +32,9 @@ type Spec struct {
 	Health *Health
 	// Aliases repeat response headers under the names older clients read.
 	Aliases []HeaderAlias
+	// Identity resolves a credential to a stable principal. Nil keys a caller
+	// by their credential's fingerprint.
+	Identity *Identity
 }
 
 // Dashboard is the operator surface: the tabs, the admin JSON, and the token

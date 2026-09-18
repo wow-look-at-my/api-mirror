@@ -196,6 +196,39 @@ func buildHealth(n *node) (*Health, error) {
 	return &Health{Live: n.Attr("live"), PreUpdate: n.Attr("pre-update")}, nil
 }
 
+func buildIdentity(n *node) (*Identity, error) {
+	if err := checkAttrs(n, "ttl"); err != nil {
+		return nil, err
+	}
+	id := &Identity{}
+	ttl, err := parseDuration("<identity> ttl", n.Attr("ttl"))
+	if err != nil {
+		return nil, err
+	}
+	id.TTL = ttl
+	for _, child := range n.Children() {
+		if err := checkAttrs(child, "header", "as", "scheme", "path", "principal"); err != nil {
+			return nil, err
+		}
+		rule := &IdentityRule{
+			Header:    child.Attr("header"),
+			As:        child.Attr("as"),
+			Scheme:    child.Attr("scheme"),
+			Path:      child.Attr("path"),
+			Principal: child.Attr("principal"),
+		}
+		switch child.Name() {
+		case "user":
+			id.User = rule
+		case "assertion":
+			id.Assertion = rule
+		default:
+			return nil, fmt.Errorf("<identity>: unexpected child element <%s>", child.Name())
+		}
+	}
+	return id, nil
+}
+
 func buildRateHeaders(n *node) (RateHeaders, error) {
 	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource", "refusal", "answer"); err != nil {
 		return RateHeaders{}, err
