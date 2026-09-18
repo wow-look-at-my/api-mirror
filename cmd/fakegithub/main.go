@@ -1,5 +1,5 @@
 // Command fakegithub is a deterministic GitHub REST stand-in for tests.
-// It answers /user, the repo and commit-statuses routes with fixed, request-derived
+// It answers /user, the repo, commit-statuses and branches routes with fixed, request-derived
 // JSON, and counts every request so a test can prove a cache hit made none.
 package main
 
@@ -15,6 +15,7 @@ import (
 
 var repoPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)$`)
 var statusesPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/commits/([^/]+)/statuses$`)
+var branchesPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/branches$`)
 
 func main() {
 	listen := flag.String("listen", ":8081", "listen address")
@@ -58,6 +59,14 @@ func main() {
 			json.NewEncoder(w).Encode([]map[string]any{
 				{"id": 1, "context": "ci/build", "state": "pending", "description": nil, "target_url": nil, "created_at": "2026-08-25T11:00:00Z"},
 				{"id": 2, "context": "ci/build", "state": "success", "description": "2/2 passed", "target_url": "https://ci.example.com/2", "created_at": "2026-08-25T12:00:00Z"},
+			})
+			return
+		}
+
+		if branchesPath.MatchString(r.URL.Path) {
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"name": "main", "commit": map[string]any{"sha": "1111111111111111111111111111111111111111"}, "protected": true},
+				{"name": "dev", "commit": map[string]any{"sha": "3333333333333333333333333333333333333333"}, "protected": false},
 			})
 			return
 		}
