@@ -267,7 +267,12 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if rt.Complete && !rt.List {
 		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
 	}
-	if !rt.List {
+	if rt.Complete && res.Store == StoreDocument {
+		return fmt.Errorf("route %s: complete=\"true\" replace-syncs rows, and a document resource stores each page whole", rt.Path)
+	}
+	// A document resource stores a single answer per key, a list page
+	// included, so every route onto a single must name the whole key or pages share a row.
+	if !rt.List || res.Store == StoreDocument {
 		for _, k := range res.Keys {
 			if k.Credential {
 				// The engine fills this from the request, not a route param.

@@ -424,7 +424,9 @@ func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
 // cache state. A consumer that works against a warm cache and breaks against a
 // cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
-	if m.route.List {
+	// A document resource keeps each answer whole, a paged list included, so
+	// the stored document IS the answer and is never wrapped another time.
+	if m.route.List && res.Store != StoreDocument {
 		rows, err := e.store.List(ctx, res, m.key)
 		if err != nil {
 			return nil, err
