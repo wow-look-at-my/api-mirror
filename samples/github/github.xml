@@ -133,25 +133,16 @@
 	</resource>
 
 	<!--
-		One historical status POST. Append-only: GitHub never mutates or
-		deletes a posted status, it only adds a newer one for the same
-		context. Keyed by GitHub's own status id, so a redelivered or
-		re-fetched post upserts onto itself rather than duplicating. Distinct
-		from `commit_status` above, which holds the latest-per-context
-		rollup; this one holds the full history the raw list endpoint (a
-		bare array, unlike the enveloped combined-status endpoint) answers
-		with.
+		A page of a commit's status history, as the upstream ordered it:
+		newest first. Stored whole per page, because rows absorbed from
+		different pages and sorted by id cannot answer a page or its order.
 	-->
-	<resource name="status_post" ttl="10m">
+	<resource name="statuses_list" store="document" ttl="10m">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="sha"/>
-		<key name="id"/>
-		<field name="context" type="text">context</field>
-		<field name="state" type="text">state</field>
-		<field name="description" type="text">description</field>
-		<field name="target_url" type="text">target_url</field>
-		<field name="created_at" type="time">created_at</field>
+		<key name="per_page"/>
+		<key name="page"/>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>
@@ -434,6 +425,29 @@
 		</reveal>
 	</resource>
 
+	<!--
+		A page of a repository's pull requests, exactly as asked: state, head,
+		base, sort, direction and paging all change which PRs are on it and in
+		what order, so each is part of the key. The single pull rows cannot
+		answer this, because they hold closed PRs too and know nothing of pages.
+	-->
+	<resource name="pulls_list" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="state"/>
+		<key name="head"/>
+		<key name="base"/>
+		<key name="sort"/>
+		<key name="direction"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
 	<resource name="pull_files" store="document" ttl="24h">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
@@ -467,12 +481,16 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/pulls" resource="pull" list="true">
+	<route method="GET" path="/repos/{owner}/{repo}/pulls" resource="pulls_list" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
-		<param name="state" type="text" default="open"/>
-		<param name="per_page" type="int" default="30" min="1" max="100"/>
-		<param name="page" type="int" default="1" min="1" max="100"/>
+		<param name="state" type="text" default="open" key="true"/>
+		<param name="head" type="text" default="" key="true"/>
+		<param name="base" type="text" default="" key="true"/>
+		<param name="sort" type="text" default="created" key="true"/>
+		<param name="direction" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull">
@@ -493,11 +511,11 @@
 		`complete="true"`: statuses are append-only history, so a page never
 		omits something that was deleted. There is nothing here to delete.
 	-->
-	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}/statuses" resource="status_post" list="true">
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}/statuses" resource="statuses_list" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
-		<param name="per_page" type="int" default="30" min="1" max="100"/>
-		<param name="page" type="int" default="1" min="1" max="100"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<!--
@@ -506,11 +524,11 @@
 		caller using the old path shares the cache with one using the new, and
 		a delivery that moves those rows moves the answer to both.
 	-->
-	<route method="GET" path="/repos/{owner}/{repo}/statuses/{sha}" resource="status_post" list="true">
+	<route method="GET" path="/repos/{owner}/{repo}/statuses/{sha}" resource="statuses_list" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
-		<param name="per_page" type="int" default="30" min="1" max="100"/>
-		<param name="page" type="int" default="1" min="1" max="100"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/contents/{path*}" resource="contents">
@@ -1011,6 +1029,13 @@
 			A pull request's files and commits change on every synchronize, and
 			the payload states the new head, not the diff or the commit list.
 		-->
+		<event type="pull_request" resource="pulls_list" clock="pull_request.updated_at">
+			<subject>pulls-list:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answer is a filtered, ordered page, and the payload cannot say which pages this PR enters or leaves"/>
+		</event>
+
 		<event type="pull_request" resource="pull_files" clock="pull_request.updated_at">
 			<subject>pull-files:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
 			<key field="owner">repository.owner.login</key>
@@ -1038,6 +1063,14 @@
 			<key field="owner">repository.owner.login</key>
 			<key field="repo">repository.name</key>
 			<invalidate reason="the rollup is recomputed upstream across every context, and it is keyed by whatever ref spelling the caller used"/>
+		</event>
+
+		<event type="status" resource="statuses_list" clock="updated_at">
+			<subject>statuses:<value name="payload.repository.full_name"/>:<value name="payload.sha"/>:<value name="payload.context"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="sha">sha</key>
+			<invalidate reason="a new status is prepended to the history, which shifts every page after it"/>
 		</event>
 
 		<event type="check_run" resource="check_run" clock="check_run.completed_at">
