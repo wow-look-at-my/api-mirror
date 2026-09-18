@@ -134,6 +134,8 @@
 					<xs:attribute name="resource" type="xs:string"/>
 					<xs:attribute name="refusal" type="xs:string"/>
 					<xs:attribute name="answer" type="xs:string"/>
+					<xs:attribute name="poll" type="xs:string"/>
+					<xs:attribute name="poll-field" type="xs:string"/>
 				</xs:complexType>
 			</xs:element>
 		</xs:choice>
@@ -222,6 +224,7 @@
 		<xs:attribute name="scheme" type="xs:string"/>
 		<xs:attribute name="path" type="xs:string" use="required"/>
 		<xs:attribute name="principal" type="xs:string" use="required"/>
+		<xs:attribute name="name" type="xs:string"/>
 	</xs:complexType>
 
 	<xs:complexType name="reveal">

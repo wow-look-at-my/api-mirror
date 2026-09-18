@@ -59,7 +59,7 @@
 		<forward name="Content-Type"/>
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
 			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"
-			refusal="secondary rate limit" answer="/rate_limit"/>
+			refusal="secondary rate limit" answer="/rate_limit" poll="/rate_limit" poll-field="resources"/>
 	</upstream>
 
 	<!--
@@ -71,8 +71,8 @@
 		only when the App's private key signed it.
 	-->
 	<identity ttl="1h">
-		<user path="/user" principal="user:{{ .doc.id }}"/>
-		<assertion header="X-Mirror-Identity" as="Authorization" scheme="Bearer" path="/app" principal="app:{{ .doc.id }}"/>
+		<user path="/user" principal="user:{{ .doc.id }}" name="{{ .doc.login }}"/>
+		<assertion header="X-Mirror-Identity" as="Authorization" scheme="Bearer" path="/app" principal="app:{{ .doc.id }}" name="{{ .doc.slug }}"/>
 	</identity>
 
 	<!--

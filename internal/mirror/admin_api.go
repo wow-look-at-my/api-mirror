@@ -85,14 +85,26 @@ type RatesView struct {
 	// Declared separates "no traffic yet" from "cannot read a budget at all".
 	Declared bool        `json:"declared"`
 	Headers  RateHeaders `json:"headers"`
+	// Live is asked per App installation; LiveNote says why it is empty.
+	Live     []LiveRate `json:"live"`
+	LiveNote string     `json:"live_note,omitempty"`
+	// Names are the verified display names of the principals above.
+	Names map[string]string `json:"names"`
 }
 
-func (a *Admin) rates(w http.ResponseWriter, _ *http.Request) {
+func (a *Admin) rates(w http.ResponseWriter, r *http.Request) {
 	h := a.engine.spec.Upstream.Rate
+	live, note := a.engine.liveRates(r.Context())
+	if live == nil {
+		live = []LiveRate{}
+	}
 	writeJSON(w, http.StatusOK, RatesView{
 		Budgets:  a.engine.tel.Rates.Snapshot(),
 		Declared: h.declared(),
 		Headers:  h,
+		Live:     live,
+		LiveNote: note,
+		Names:    a.engine.ids.names(),
 	})
 }
 

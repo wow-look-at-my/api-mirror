@@ -228,7 +228,7 @@ func buildIdentity(n *node) (*Identity, error) {
 	}
 	id.TTL = ttl
 	for _, child := range n.Children() {
-		if err := checkAttrs(child, "header", "as", "scheme", "path", "principal"); err != nil {
+		if err := checkAttrs(child, "header", "as", "scheme", "path", "principal", "name"); err != nil {
 			return nil, err
 		}
 		rule := &IdentityRule{
@@ -237,6 +237,7 @@ func buildIdentity(n *node) (*Identity, error) {
 			Scheme:    child.Attr("scheme"),
 			Path:      child.Attr("path"),
 			Principal: child.Attr("principal"),
+			Name:      child.Attr("name"),
 		}
 		switch child.Name() {
 		case "user":
@@ -251,10 +252,15 @@ func buildIdentity(n *node) (*Identity, error) {
 }
 
 func buildRateHeaders(n *node) (RateHeaders, error) {
-	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource", "refusal", "answer"); err != nil {
+	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource", "refusal", "answer", "poll", "poll-field"); err != nil {
 		return RateHeaders{}, err
 	}
+	if (n.Attr("poll") == "") != (n.Attr("poll-field") == "") {
+		return RateHeaders{}, fmt.Errorf("<ratelimit> poll and poll-field come together")
+	}
 	return RateHeaders{
+		Poll:      n.Attr("poll"),
+		PollField: n.Attr("poll-field"),
 		Limit:     n.Attr("limit"),
 		Remaining: n.Attr("remaining"),
 		Used:      n.Attr("used"),

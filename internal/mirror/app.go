@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -233,6 +234,22 @@ func (a *appAuth) tokenFor(ctx context.Context, owner string) (string, error) {
 	a.tokens[owner] = appToken{value: minted.Token, serveUntil: minted.ExpiresAt.Add(-appTokenMargin)}
 	a.mu.Unlock()
 	return minted.Token, nil
+}
+
+// owners lists every account the App is installed on, relisting when the map
+// is older than appListLife.
+func (a *appAuth) owners(ctx context.Context) ([]string, error) {
+	if _, err := a.installationOf(ctx, ""); err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]string, 0, len(a.installs))
+	for owner := range a.installs {
+		out = append(out, owner)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // installationOf maps an owner to its installation, relisting when the map is

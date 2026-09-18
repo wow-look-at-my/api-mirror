@@ -33,6 +33,9 @@ type IdentityRule struct {
 	Path string
 	// Principal is template source over the answer, `.doc`.
 	Principal string
+	// Name is template source over the same answer naming the principal for
+	// a human. Display only, never a key.
+	Name string
 }
 
 // validate refuses an identity block that would resolve nobody, or would ask
@@ -90,6 +93,7 @@ type identities struct {
 
 type identityVerdict struct {
 	principal string
+	name      string
 	expires   time.Time
 }
 
@@ -210,7 +214,35 @@ func (id *identities) verdict(rule *IdentityRule, answer *Answer) (identityVerdi
 	if principal == "" {
 		return identityVerdict{}, fmt.Errorf("%s: the principal rendered empty", rule.Path)
 	}
-	return identityVerdict{principal: principal, expires: id.now().Add(id.spec.TTL)}, nil
+	v := identityVerdict{principal: principal, expires: id.now().Add(id.spec.TTL)}
+	if rule.Name != "" {
+		// A name that does not render leaves the principal unnamed: it is
+		// display text, and the verdict it rides on is already proven.
+		if name, err := renderString(rule.Name, data); err == nil {
+			v.name = strings.TrimSpace(name)
+		} else {
+			logf("%s name: %v", rule.Path, err)
+		}
+	}
+	return v, nil
+}
+
+// names maps each principal a live verdict resolved to the name its upstream
+// answer gave it.
+func (id *identities) names() map[string]string {
+	out := map[string]string{}
+	if id == nil {
+		return out
+	}
+	id.mu.Lock()
+	defer id.mu.Unlock()
+	now := id.now()
+	for _, v := range id.cache {
+		if v.name != "" && now.Before(v.expires) {
+			out[v.principal] = v.name
+		}
+	}
+	return out
 }
 
 func (id *identities) cached(key string) (identityVerdict, bool) {

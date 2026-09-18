@@ -330,24 +330,32 @@ views.rates = async () => {
 			'This spec names no rate-limit headers, so no budget can be read. Declare <ratelimit> on <upstream> to fill this tab.')));
 		return out;
 	}
-	out.append(section('Budgets observed', table(
-		['Principal', 'Resource', 'Remaining', 'Limit', 'Used', 'Resets', 'Seen'],
-		v.budgets.map((b) => {
-			const share = b.limit ? (b.remaining / b.limit) * 100 : 0;
-			const meter = el('div', { class: `meter${share < 20 ? ' low' : ''}` },
-				el('span', { style: `width:${Math.max(share, 2)}%` }));
-			return [
-				el('span', { class: 'mono' }, b.principal),
-				b.resource,
-				el('div', { class: 'row' }, meter, el('span', { class: 'num' }, fmt.int(b.remaining))),
-				b.limit,
-				b.used,
-				// A reset already in the past is said plainly. Rendering it as
-				// "resets now" would read as a budget about to refresh.
-				b.stale ? el('span', { class: 'muted' }, `${fmt.ago(b.reset)} - stale`) : fmt.ago(b.reset),
-				fmt.ago(b.observed_at),
-			];
-		}))));
+	const names = v.names || {};
+	const row = (b) => {
+		const share = b.limit ? (b.remaining / b.limit) * 100 : 0;
+		const meter = el('div', { class: `meter${share < 20 ? ' low' : ''}` },
+			el('span', { style: `width:${Math.max(share, 2)}%` }));
+		return [
+			el('span', {}, el('span', { class: 'mono' }, b.principal),
+				names[b.principal] ? el('span', { class: 'muted' }, ` ${names[b.principal]}`) : null),
+			b.resource,
+			el('div', { class: 'row' }, meter, el('span', { class: 'num' }, fmt.int(b.remaining))),
+			b.limit,
+			b.used,
+			// A reset already in the past is said plainly. Rendering it as
+			// "resets now" would read as a budget about to refresh.
+			b.stale ? el('span', { class: 'muted' }, `${fmt.ago(b.reset)} - stale`) : fmt.ago(b.reset),
+			fmt.ago(b.observed_at),
+		];
+	};
+	const head = ['Principal', 'Resource', 'Remaining', 'Limit', 'Used', 'Resets', 'Seen'];
+	out.append(section('Per installation, asked now', v.live.length
+		? table(['Account', ...head.slice(1, 6), 'Error'],
+			v.live.flatMap((l) => l.error
+				? [[l.account, '-', '-', '-', '-', '-', el('span', { class: 'bad' }, l.error)]]
+				: l.resources.map((b) => [l.account, ...row(b).slice(1, 6), '-'])))
+		: panel(el('div', { class: 'empty' }, v.live_note || 'The App is installed nowhere.'))));
+	out.append(section('Budgets observed', table(head, v.budgets.map(row))));
 	return out;
 };
 
