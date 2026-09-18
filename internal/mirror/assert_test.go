@@ -65,6 +65,51 @@ func TestAssert_ARotatedJWTOfTheSameAppFindsTheSameMint(t *testing.T) {
 		"a bearer the upstream does not vouch for is its to answer, uncached")
 }
 
+func TestRevoke_AMintedTokenTheUpstreamRefusesIsMintedAgain(t *testing.T) {
+	var mints atomic.Int32
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/app":
+			w.Write([]byte(`{"id":7}`))
+		case strings.HasSuffix(r.URL.Path, "/access_tokens"):
+			mints.Add(1)
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"token":"ghs_minted"}`))
+		case r.Header.Get("X-RateLimit-Remaining-Test") != "":
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	}), withAssertedMint, func(s *Spec) {
+		s.Upstream.RetryAfter = "Retry-After"
+		s.Resources[len(s.Resources)-1].RevokeOn = "token"
+	})
+	mint := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/app/installations/9/access_tokens", strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer jwt")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+	use := func(extra string) {
+		req := httptest.NewRequest(http.MethodGet, "/uncached/thing", nil)
+		req.Header.Set("Authorization", "token ghs_minted")
+		if extra != "" {
+			req.Header.Set("X-RateLimit-Remaining-Test", extra)
+		}
+		e.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	require.Equal(t, http.StatusCreated, mint().Code)
+	use("limited")
+	assert.Equal(t, string(OutcomeHit), mint().Header().Get("X-Mirror-Cache"), "a rate-limit refusal says nothing about the token")
+	use("")
+	again := mint()
+	assert.Equal(t, string(OutcomeMiss), again.Header().Get("X-Mirror-Cache"), "a refused token is never handed out again")
+	assert.EqualValues(t, 2, mints.Load())
+}
+
 func TestAssert_NeedsAnAssertionRule(t *testing.T) {
 	spec := testSpec("https://api.example.com")
 	withAssertedMint(spec)

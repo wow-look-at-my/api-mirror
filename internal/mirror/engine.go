@@ -87,7 +87,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 			pr.SetURL(base)
 			// The upstream does not need the client's address, and adding it
 		},
-		ModifyResponse: stripUpstreamCORS,
+		ModifyResponse: e.revokeOnResponse,
 		// The path an instrumented call site would have missed entirely.
 		Transport: observing(http.DefaultTransport, LanePassthrough, tel),
 	}
@@ -386,6 +386,7 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	var relayed *RelayedAnswer
 	if errors.As(err, &relayed) {
 		w.note(DispRelayed, "", "", strconv.Itoa(relayed.Answer.Status))
+		e.revokeRefused(ctx, r.Header.Get("Authorization"), relayed.Answer.Status, relayed.Answer.Header)
 		e.relayAnswer(w, relayed.Answer)
 		return
 	}

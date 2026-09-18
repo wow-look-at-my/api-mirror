@@ -1197,7 +1197,7 @@
 		(GET /app) and credential="principal" keys the row by the verified
 		app:<id>; a bearer that does not verify is forwarded uncached.
 	-->
-	<resource name="install_token" store="document" ttl="50m">
+	<resource name="install_token" store="document" ttl="50m" revoke-on-refusal="token">
 		<key name="app" credential="principal"/>
 		<key name="id"/>
 		<key name="request"/>

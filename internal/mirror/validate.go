@@ -195,6 +195,9 @@ func (r *Resource) validate() error {
 			return fmt.Errorf("resource %q field %q: a version column orders writes, so it must be a time or an int", r.Name, f.Name)
 		}
 	}
+	if r.RevokeOn != "" && r.Store != StoreDocument {
+		return fmt.Errorf("resource %q: revoke-on-refusal names a path in a stored document, and this resource stores %s", r.Name, r.Store)
+	}
 	if len(versionFields(r)) > 1 {
 		return fmt.Errorf("resource %q: more than one version=\"true\" field, and two clocks cannot order a row", r.Name)
 	}

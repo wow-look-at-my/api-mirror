@@ -252,10 +252,10 @@ func buildHeader(n *node) (Header, error) {
 }
 
 func buildResource(n *node) (*Resource, error) {
-	if err := checkAttrs(n, "name", "ttl", "store"); err != nil {
+	if err := checkAttrs(n, "name", "ttl", "store", "revoke-on-refusal"); err != nil {
 		return nil, err
 	}
-	r := &Resource{Name: n.Attr("name"), Store: StoreColumns}
+	r := &Resource{Name: n.Attr("name"), Store: StoreColumns, RevokeOn: n.Attr("revoke-on-refusal")}
 	if s := n.Attr("store"); s != "" {
 		r.Store = StoreMode(s)
 	}

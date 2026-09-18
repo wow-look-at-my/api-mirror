@@ -184,6 +184,9 @@ type Resource struct {
 	Keep []Keep
 	// Reveal gates every read of this resource. A resource without cannot
 	Reveal *Reveal
+	// RevokeOn is the document path holding a credential this resource hands
+	// out. A row whose credential the upstream refuses is dropped.
+	RevokeOn string
 }
 
 // Key is component of a resource's identity.
