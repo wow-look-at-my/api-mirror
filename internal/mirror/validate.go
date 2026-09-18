@@ -410,7 +410,7 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
 	}
 	// The path may name a PREFIX of the key, and the delete reaches everything
-	// beneath it. A gap is refused: a key named after a missing one would
+	// beneath it. A gap is refused: a key named after a missing a single would
 	// widen the delete past what the path says.
 	params := pathParams(p.Path)
 	named, missing := 0, ""

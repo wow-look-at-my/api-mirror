@@ -98,8 +98,8 @@ func (f *fixture) allow(t *testing.T, principal string, key map[string]string) (
 }
 
 // grantRows counts the stored grant rows for a key, expired ones included.
-// HasGrant filters on expiry, so it cannot tell a revoked grant from a lapsed
-// , and the revoke rules are exactly about that difference.
+// HasGrant filters on expiry, so it cannot tell a revoked grant from a
+// lapsed, and the revoke rules are exactly about that difference.
 func (f *fixture) grantRows(t *testing.T, principal, key string) int {
 	t.Helper()
 	var n int

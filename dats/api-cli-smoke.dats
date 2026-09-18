@@ -1,7 +1,7 @@
 # Drives a real api-mirror server with api-cli's own (upstream, not vendored)
 # GitHub sample config, against a deterministic fake upstream. Proves the
 # whole stack end to end: a genuine independent HTTP client gets correctly
-# shaped data on a miss, and a second call is byte-identical with zero new
+# shaped data on a miss, and another call is byte-identical with empty new
 # upstream requests.
 #
 # The docker sandbox falls back for us (no bwrap on the CI runner) and runs

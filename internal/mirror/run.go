@@ -25,8 +25,7 @@ func Run() error {
 
 // run parses argv into its own flag set and reports to out. Nothing here
 // reads a process global, so a test hands both in rather than assigning
-// os.Args and os.Stdout. Those assignments reached every other test in the
-// binary, which broke a re-executed test and a parallel one.
+// os.Args and os.Stdout.
 func run(argv []string, out io.Writer) error {
 	fs := flag.NewFlagSet(argv[0], flag.ContinueOnError)
 	var (

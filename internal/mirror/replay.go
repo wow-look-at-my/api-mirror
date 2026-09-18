@@ -108,10 +108,10 @@ func (r *Replayer) Stop() {
 
 // cycle reads the failure log and asks for what is still missing.
 //
-// A lost delivery is the quietest failure a mirror has. The provider sends
-// , nothing retries, and every cache that delivery would have moved serves
-// its last answer for the whole TTL -- well-formed, recent-looking and wrong.
-// A shorter TTL shrinks that window and hides it; it does not close it.
+// A lost delivery is the quietest failure a mirror has. The provider sends,
+// nothing retries, and every cache that delivery would have moved serves its
+// last answer for the whole TTL -- well-formed, recent-looking and wrong. A
+// shorter TTL shrinks that window and hides it; it does not close it.
 func (r *Replayer) cycle() {
 	ctx, cancel := context.WithTimeout(context.Background(), replayCycleTimeout)
 	defer cancel()

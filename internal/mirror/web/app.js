@@ -1,12 +1,12 @@
 // The dashboard.
 //
 // Plain ES modules, no build step and no dependencies. The page is served from
-// the binary, so a toolchain between the source and what ships would be one
-// more thing that can be stale in a way nothing checks.
+// the binary, so a toolchain between the source and what ships would be a
+// single more thing that can be stale in a way nothing checks.
 
 const token = new URLSearchParams(location.search).get('token') || '';
 
-// api fetches one admin endpoint, carrying the token the page was opened with.
+// api fetches a single admin endpoint, carrying the token the page was opened with.
 async function api(path, options = {}) {
 	const headers = { ...(options.headers || {}) };
 	if (token) headers['X-Mirror-Token'] = token;
@@ -16,9 +16,9 @@ async function api(path, options = {}) {
 	return resp.json();
 }
 
-// el builds one element. Children may be nodes or text; an object of attributes
-// is applied first. It is here so no view has to touch innerHTML with a value
-// that came off the wire.
+// el builds a single element. Children may be nodes or text; an object of
+// attributes is applied earliest. It is here so no view has to touch innerHTML
+// with a value that came off the wire.
 function el(tag, attrs = {}, ...children) {
 	const node = document.createElement(tag);
 	for (const [k, v] of Object.entries(attrs)) {
@@ -84,7 +84,7 @@ function panel(...children) {
 function table(headers, rows) {
 	if (!rows.length) return panel(el('div', { class: 'empty' }, 'Nothing yet.'));
 	// A number is right-aligned, and its heading follows it: a left heading
-	// over a right column reads as two columns that failed to line up.
+	// over a right column reads as columns that failed to line up.
 	const numeric = headers.map((_, i) => rows.some((cells) => typeof cells[i] === 'number'));
 	return panel(el('table', {},
 		el('thead', {}, el('tr', {}, headers.map((h, i) => el('th', { class: numeric[i] ? 'num' : null }, h)))),
@@ -108,7 +108,7 @@ const PILL_VARIANT = {
 
 function pill(text) {
 	const word = String(text).toLowerCase();
-	// A danger chip is not one of the shipped variants, so it borrows the plain
+	// A danger chip is not any of the shipped variants, so it borrows the plain
 	// key chip and takes its colour from a token here rather than from a
 	// variant the library does not have.
 	const variant = PILL_VARIANT[word] || 'key';
@@ -122,8 +122,8 @@ function section(title, ...body) {
 	return el('section', {}, el('h2', {}, title), ...body);
 }
 
-// dispositions renders one group's tally as a row of pills, so a shape that is
-// half hit and half passthrough reads as exactly that.
+// dispositions renders a single group's tally as a row of pills, so a shape
+// that is half hit and half passthrough reads as exactly that.
 function dispositions(map) {
 	const entries = Object.entries(map || {}).filter(([, n]) => n > 0);
 	if (!entries.length) return el('span', { class: 'muted' }, '-');
@@ -241,8 +241,8 @@ views.timeline = async () => {
 		return out;
 	}
 
-	// One row per lane, bars positioned by time. Everything the mirror
-	// exchanged is here; a gap in a lane is a real gap, not a filter.
+	// A single row per lane, bars positioned by time. Everything the
+	// mirror exchanged is here; a gap in a lane is a real gap, not a filter.
 	const lanes = new Map();
 	for (const f of v.frames) {
 		if (!lanes.has(f.lane)) lanes.set(f.lane, []);
@@ -327,8 +327,8 @@ views.webhooks = async () => {
 
 	out.append(section('Outcomes', el('div', { class: 'row' }, dispositions(s.dispositions))));
 
-	// Declared types with a zero are the point of this table: a type the
-	// provider was never subscribed to looks exactly like a quiet week.
+	// Declared types with a empty are the point of this table: a type
+	// the provider was never subscribed to looks exactly like a quiet week.
 	const seen = new Map((s.types || []).map((t) => [t.type, t.count]));
 	out.append(section('Event types', table(
 		['Type', 'Resource', 'Clock', 'Sets', 'Received'],
@@ -341,7 +341,7 @@ views.webhooks = async () => {
 			seen.get(d.type) || 0,
 		]))));
 
-	// Declared-but-off and never-declared are different answers, and only one of
+	// Declared-but-off and never-declared are different answers, and only any of
 	// them is somebody's mistake. Reporting both as "no replay" hides which.
 	out.append(section('Delivery-gap replay', v.replay.enabled
 		? table(['Interval', 'Cycles', 'Listed', 'Re-sent', 'Errors', 'Last'],
@@ -405,13 +405,13 @@ const checkResults = new Map();
 
 // checkSection drives the consistency check.
 //
-// Every other view here reports what this process has SEEN. This is the only
-// one that asks the upstream whether the stored answers are still right, which
-// is the only way a delivery that never arrived ever surfaces.
+// Every other view here reports what this process has SEEN. This is the only a
+// single that asks the upstream whether the stored answers are still right,
+// which is the only way a delivery that never arrived ever surfaces.
 function checkSection(kind) {
 	// The page re-reads on a timer, which rebuilds this whole panel. A check
-	// takes one upstream call per key, so its result has to outlive that: it is
-	// held per kind and redrawn, or a long check finishes into a discarded DOM.
+	// takes a single upstream call per key, so its result has to outlive that:
+	// it is held per kind and redrawn, or a long check finishes into a discarded DOM.
 	const held = checkResults.get(kind);
 	const results = el('div', { class: 'panel scroll' },
 		held ? checkTable(held.lines) : el('div', { class: 'empty' }, 'Not run. The check asks the upstream once per stored key.'));
@@ -423,9 +423,6 @@ function checkSection(kind) {
 		results.replaceChildren(el('div', { class: 'empty' }, 'Asking the upstream...'));
 		status.textContent = '';
 		try {
-			// The stream is read as it arrives rather than awaited whole: a check
-			// is one upstream call per key, so a large kind takes minutes and a
-			// buffered read cannot be told apart from a wedged one.
 			await readNDJSON(`api/check?kind=${encodeURIComponent(kind)}${repair ? '&apply=true' : ''}&stream=1`,
 				repair ? 'POST' : 'GET',
 				(line) => {
@@ -483,8 +480,6 @@ function verdictPill(line) {
 	return el('span', { class: 'row' }, chip, pill('repaired'));
 }
 
-// readNDJSON reads one line-delimited JSON stream, handing over each object as
-// it lands rather than after the last one.
 async function readNDJSON(path, method, onLine) {
 	const headers = token ? { 'X-Mirror-Token': token } : {};
 	const resp = await fetch(path, { method, headers });
@@ -599,8 +594,8 @@ function drawTabs() {
 	const active = tabs.findIndex(([id]) => id === currentTab());
 	if (!tabStrip) {
 		// The strip is built from the children present when the component is
-		// inserted, so it arrives whole. Filling an empty one already in the
-		// page leaves a bar with no buttons.
+		// inserted, so it arrives whole. Filling an empty a single already
+		// in the page leaves a bar with no buttons.
 		tabStrip = el('scratch-tabs', { 'strip-only': true },
 			tabs.map(([id, label], i) => el('scratch-tab', { label, 'data-tab': id, selected: i === active })));
 		tabStrip.addEventListener('change', (e) => {
@@ -630,6 +625,5 @@ api('api/overview').then(nameTheMirror).catch(() => {});
 window.addEventListener('hashchange', render);
 document.getElementById('reload').addEventListener('click', render);
 render();
-// The page re-reads on a fixed cadence. It is a live view of a running process,
-// so a stale one is worse than a slow one.
+// The page re-reads on a fixed cadence.
 setInterval(render, 15000);

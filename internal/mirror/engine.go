@@ -166,8 +166,8 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // recorder what it did, because a disposition the log cannot name is traffic
 // nobody can account for.
 func (e *Engine) dispatch(rec *recorder, r *http.Request) {
-	// Canonicalise ahead of every gate below, so they see one spelling. This
-	// grants nothing: the rewritten path meets the same rules.
+	// Canonicalise ahead of every gate below, so they see a single spelling.
+	// This grants nothing: the rewritten path meets the same rules.
 	if p, ok := e.rewritePath(r.URL.EscapedPath()); ok {
 		r = r.Clone(r.Context())
 		r.URL.RawPath = ""
