@@ -180,6 +180,18 @@ func TestRequestLog_TalliesByShapeSoOneOffPathsDoNotHideTheFamily(t *testing.T) 
 	assert.Equal(t, time.Millisecond, groups[0].MeanDuration())
 }
 
+func TestRequestLog_KeepsStatusesAndABoundedCallerTally(t *testing.T) {
+	log := NewRequestLog()
+	for i := range groupCallers + 5 {
+		log.Record(Request{Method: "GET", Path: "/x", Shape: "/x", Status: 200, Principal: "token:" + itoa(i)})
+	}
+	log.Record(Request{Method: "GET", Path: "/x", Shape: "/x", Status: 404, Principal: "token:0"})
+	g := log.Groups()[0]
+	assert.Equal(t, map[int]int{200: groupCallers + 5, 404: 1}, g.Statuses)
+	assert.Len(t, g.Callers, groupCallers, "one noisy shape cannot grow the tally without bound")
+	assert.Equal(t, 2, g.Callers["token:0"], "a caller already counted keeps counting")
+}
+
 func TestGeneralizeWith_UsesTheSpecsOwnWordsRatherThanGuessing(t *testing.T) {
 	vocab := pathVocabulary(&Spec{Routes: []*Route{
 		{Path: "/repos/{owner}/{repo}/pulls/{number}"},

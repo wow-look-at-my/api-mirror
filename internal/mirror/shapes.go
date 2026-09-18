@@ -106,6 +106,10 @@ type BriefItem struct {
 	Bytes   int            `json:"bytes"`
 	// Samples are real paths, so an author can check the guess the shape made.
 	Samples []string `json:"samples,omitempty"`
+	// Statuses and Callers say what the upstream answered and who asked, so an
+	// author can tell a shape a single script hammers from a single every client needs.
+	Statuses map[int]int    `json:"statuses,omitempty"`
+	Callers  map[string]int `json:"callers,omitempty"`
 	// Sketch is a starting <route>, not a finished declaration.
 	Sketch string `json:"sketch"`
 }
@@ -121,12 +125,14 @@ func (e *Engine) Brief() []BriefItem {
 			continue
 		}
 		item := BriefItem{
-			Method:  g.Method,
-			Shape:   g.Shape,
-			Count:   g.Dispositions[DispPassthrough],
-			Reasons: g.Reasons,
-			Bytes:   g.Bytes,
-			Samples: g.Samples,
+			Method:   g.Method,
+			Shape:    g.Shape,
+			Count:    g.Dispositions[DispPassthrough],
+			Reasons:  g.Reasons,
+			Bytes:    g.Bytes,
+			Samples:  g.Samples,
+			Statuses: g.Statuses,
+			Callers:  g.Callers,
 		}
 		item.Sketch = sketchRoute(g.Method, g.Shape)
 		out = append(out, item)

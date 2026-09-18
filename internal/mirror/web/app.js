@@ -154,6 +154,7 @@ views.overview = async () => {
 		tile('Passed through', fmt.int(o.passthrough), 'still unmodelled'),
 		tile('Modelled', `${modelled}%`, 'of requests answered here'),
 		tile('Pulled upstream', fmt.bytes(o.upstream_bytes), 'this process'),
+		tile('Cache on disk', fmt.bytes(o.db_bytes), `${fmt.bytes(o.wal_bytes)} write-ahead log`),
 		tile('Principals', fmt.int(o.principals), `${fmt.int(o.denials)} live denials`),
 		tile('Deliveries', fmt.int(o.deliveries.total), `last ${fmt.ago(o.deliveries.last)}`),
 		tile('Started', fmt.ago(o.started), o.fingerprint.slice(0, 12)))));
@@ -222,7 +223,11 @@ views.passthrough = async () => {
 				item.samples && item.samples.length
 					? el('span', { class: 'muted mono' }, `e.g. ${item.samples.join('  ')}`)
 					: null),
-			el('pre', {}, item.sketch)));
+			el('div', { class: 'row muted' },
+				el('span', {}, `answered ${Object.entries(item.statuses || {}).map(([s, n]) => `${s} x${n}`).join(', ') || '-'}`),
+				el('span', { class: 'mono wrap' }, `by ${Object.entries(item.callers || {}).map(([p, n]) => `${p || 'anonymous'} x${n}`).join(', ') || '-'}`)),
+			el('pre', {}, item.sketch),
+			el('scratch-button', { type: 'button', onclick: () => navigator.clipboard.writeText(JSON.stringify(item, null, '\t')) }, 'Copy JSON')));
 	}
 	return out;
 };
