@@ -62,7 +62,9 @@ func (t *Telemetry) Observe(e Exchange) {
 	if e.Err != nil || e.Status >= 500 {
 		tally.Errors++
 	}
-	t.upBytes += e.Bytes
+	if e.Lane != LaneInbound && e.Lane != LaneDelivery {
+		t.upBytes += e.Bytes
+	}
 }
 
 // ObserveHeaders reads a budget out of an answer's headers.

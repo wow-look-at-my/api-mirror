@@ -15,7 +15,10 @@ const (
 // Frame is timed event on the chart: what the mirror exchanged, when, and
 // what it cost.
 type Frame struct {
+	// Seq orders frames by arrival, so a poll asks only for what is new.
+	Seq       uint64        `json:"seq"`
 	Lane      Lane          `json:"lane"`
+	Group     string        `json:"group,omitempty"`
 	Method    string        `json:"method"`
 	Path      string        `json:"path"`
 	Status    int           `json:"status"`
@@ -34,6 +37,7 @@ type Timeline struct {
 	head    int
 	size    int
 	dropped int
+	seq     uint64
 	started time.Time
 	now     func() time.Time
 }
@@ -56,6 +60,7 @@ func (t *Timeline) Observe(e Exchange) {
 	}
 	f := Frame{
 		Lane:      e.Lane,
+		Group:     e.Group,
 		Method:    e.Method,
 		Path:      e.Path,
 		Status:    e.Status,
@@ -77,6 +82,8 @@ func (t *Timeline) Observe(e Exchange) {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.seq++
+	f.Seq = t.seq
 	if t.size == len(t.frames) {
 		t.dropped++
 		t.frames[t.head] = f
@@ -87,32 +94,34 @@ func (t *Timeline) Observe(e Exchange) {
 	t.size++
 }
 
-// Frames returns what is still inside the window, oldest.
+// Frames returns everything still inside the window, oldest earliest.
+func (t *Timeline) Frames() []Frame { return t.Since(0) }
+
+// Since returns the frames inside the window that arrived after seq, oldest
+// earliest.
 //
 // Eviction is lazy, here, rather than on a timer: a background goroutine that
-// only ever deletes is a moving part with nothing to gain from moving.
-func (t *Timeline) Frames() []Frame {
+// only ever deletes is a moving part with nothing to gain from moving. Only
+// the expired run at the front is evicted.
+func (t *Timeline) Since(seq uint64) []Frame {
 	if t == nil {
 		return nil
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	cutoff := t.now().Add(-timelineWindow)
-	out := make([]Frame, 0, t.size)
-	live := 0
+	for t.size > 0 && t.frames[t.head].At.Before(cutoff) {
+		t.head = (t.head + 1) % len(t.frames)
+		t.size--
+	}
+	out := make([]Frame, 0)
 	for i := range t.size {
 		f := t.frames[(t.head+i)%len(t.frames)]
-		if f.At.Before(cutoff) {
+		if f.Seq <= seq || f.At.Before(cutoff) {
 			continue
 		}
-		if live == 0 {
-			// Everything before this is out of the window; skip it next sweep.
-			t.head = (t.head + i) % len(t.frames)
-		}
-		live++
 		out = append(out, f)
 	}
-	t.size = live
 	return out
 }
 
@@ -123,6 +132,8 @@ type TimelineStats struct {
 	Since   time.Time `json:"since"`
 	Window  string    `json:"window"`
 	Cap     int       `json:"cap"`
+	// Seq is the newest frame's sequence, the cursor for the next poll.
+	Seq uint64 `json:"seq"`
 }
 
 // Stats reports the ring's own state, including what it dropped.
@@ -141,5 +152,6 @@ func (t *Timeline) Stats() TimelineStats {
 		Since:   t.started,
 		Window:  timelineWindow.String(),
 		Cap:     len(t.frames),
+		Seq:     t.seq,
 	}
 }

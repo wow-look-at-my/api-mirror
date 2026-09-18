@@ -130,6 +130,39 @@ func TestTimeline_ReportsWhatItDroppedRatherThanLosingItQuietly(t *testing.T) {
 		"a chart that silently loses its oldest frames reads as a quiet period that never happened")
 }
 
+func TestTimeline_SinceAnswersOnlyNewerFrames(t *testing.T) {
+	tl := NewTimeline()
+	for i := range 3 {
+		tl.Observe(Exchange{Lane: LaneFetch, Group: "repo", Path: "/" + itoa(i), Started: time.Now()})
+	}
+	cursor := tl.Stats().Seq
+	assert.Equal(t, uint64(3), cursor)
+	assert.Empty(t, tl.Since(cursor))
+
+	tl.Observe(Exchange{Lane: LaneInbound, Group: "GET /x", Path: "/x", Started: time.Now()})
+	got := tl.Since(cursor)
+	require.Len(t, got, 1)
+	assert.Equal(t, "GET /x", got[0].Group)
+	assert.Len(t, tl.Since(0), 4)
+}
+
+func TestTimeline_ALiveFrameBehindAnExpiredOneStays(t *testing.T) {
+	now := time.Now()
+	tl := NewTimeline()
+	tl.now = func() time.Time { return now }
+	old := now.Add(-timelineWindow - time.Minute)
+	// A slow exchange started before an expired a single ended, so it sits behind it.
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/old", Started: old})
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/live", Started: now})
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/stale", Started: old})
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/also-live", Started: now})
+
+	got := tl.Frames()
+	require.Len(t, got, 2)
+	assert.Equal(t, "/live", got[0].Path)
+	assert.Equal(t, "/also-live", got[1].Path, "evicting past a live frame would have dropped this one")
+}
+
 func TestRequestLog_TalliesByShapeSoOneOffPathsDoNotHideTheFamily(t *testing.T) {
 	log := NewRequestLog()
 	for _, path := range []string{"/repos/a/b", "/repos/c/d", "/repos/e/f"} {

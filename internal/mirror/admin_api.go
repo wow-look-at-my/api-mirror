@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"cmp"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,8 +58,15 @@ type TimelineView struct {
 	Stats  TimelineStats `json:"stats"`
 }
 
+// timeline answers the frames after ?since=<seq>, so a page polling every few
+// seconds is sent what is new rather than the whole ring each time.
 func (a *Admin) timeline(w http.ResponseWriter, r *http.Request) {
-	frames := a.engine.tel.Timeline.Frames()
+	since, err := strconv.ParseUint(cmp.Or(r.URL.Query().Get("since"), "0"), 10, 64)
+	if err != nil {
+		http.Error(w, "since: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	frames := a.engine.tel.Timeline.Since(since)
 	if lane := r.URL.Query().Get("lane"); lane != "" {
 		filtered := frames[:0:0]
 		for _, f := range frames {

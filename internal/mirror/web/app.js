@@ -227,54 +227,93 @@ views.passthrough = async () => {
 	return out;
 };
 
+// The page keeps the frames it has seen and asks only for newer ones, so a
+// poll costs what arrived since the last, never the whole ring. A restarted
+// server hands back a cursor below ours, which resets the copy.
+const ring = { seq: 0, frames: [] };
+
+async function pollTimeline() {
+	const v = await api(`api/timeline?since=${ring.seq}`);
+	if (v.stats.seq < ring.seq) {
+		ring.seq = 0;
+		ring.frames = [];
+		return pollTimeline();
+	}
+	ring.frames.push(...v.frames);
+	ring.seq = v.stats.seq;
+	const cutoff = Date.now() - 24 * 3600 * 1000;
+	let drop = 0;
+	while (drop < ring.frames.length && new Date(ring.frames[drop].at).getTime() < cutoff) drop++;
+	if (drop) ring.frames.splice(0, drop);
+	return v.stats;
+}
+
+// drawTrack paints a single row's frames on a canvas. A DOM node per frame
+// stops scaling long before the ring's cap does.
+function drawTrack(canvas, frames, first, span) {
+	const width = canvas.clientWidth || 600;
+	const ratio = window.devicePixelRatio || 1;
+	canvas.width = width * ratio;
+	canvas.height = 20 * ratio;
+	const ctx = canvas.getContext('2d');
+	ctx.scale(ratio, ratio);
+	const style = getComputedStyle(document.body);
+	const ok = style.getPropertyValue('--accent').trim() || '#ffae00';
+	const bad = style.getPropertyValue('--danger').trim() || '#ff4444';
+	for (const f of frames) {
+		const x = ((new Date(f.at).getTime() - first) / span) * width;
+		const w = Math.max((f.duration_ns / 1e6 / span) * width, 1);
+		ctx.fillStyle = f.error || f.status >= 400 ? bad : ok;
+		ctx.fillRect(x, 3, w, 14);
+	}
+}
+
 views.timeline = async () => {
-	const v = await api('api/timeline');
+	const s = await pollTimeline();
+	const frames = ring.frames;
 	const out = el('div', {});
-	const s = v.stats;
 	out.append(section('The ring', el('div', { class: 'tiles' },
 		tile('Frames', fmt.int(s.frames), `window ${s.window}`),
 		tile('Dropped', fmt.int(s.dropped), s.dropped ? 'oldest frames evicted' : 'nothing lost'),
 		tile('Since', fmt.ago(s.since), 'resets on restart'))));
 
-	if (!v.frames.length) {
+	if (!frames.length) {
 		out.append(panel(el('div', { class: 'empty' }, 'No traffic recorded yet.')));
 		return out;
 	}
 
-	// A single row per lane, bars positioned by time. Everything the
-	// mirror exchanged is here; a gap in a lane is a real gap, not a filter.
-	const lanes = new Map();
-	for (const f of v.frames) {
-		if (!lanes.has(f.lane)) lanes.set(f.lane, []);
-		lanes.get(f.lane).push(f);
+	// A row per lane and group: a resource, an event type, a route shape.
+	// Everything the mirror exchanged is here; a gap in a row is a real gap.
+	const rowsBy = new Map();
+	let first = Infinity;
+	for (const f of frames) {
+		const key = `${f.lane} ${f.group || ''}`;
+		if (!rowsBy.has(key)) rowsBy.set(key, { lane: f.lane, group: f.group || '', frames: [] });
+		rowsBy.get(key).frames.push(f);
+		first = Math.min(first, new Date(f.at).getTime());
 	}
-	const times = v.frames.map((f) => new Date(f.at).getTime());
-	const first = Math.min(...times);
-	const last = Math.max(...times, Date.now());
+	const last = Date.now();
 	const span = Math.max(last - first, 1);
 
 	const rows = el('div', { class: 'lanes' });
-	for (const [lane, frames] of [...lanes].sort((a, b) => b[1].length - a[1].length)) {
-		const track = el('div', { class: 'track' });
-		for (const f of frames) {
-			const left = ((new Date(f.at).getTime() - first) / span) * 100;
-			const width = Math.max((f.duration_ns / 1e6 / span) * 100, 0.4);
-			track.append(el('div', {
-				class: `bar${f.error || f.status >= 400 ? ' err' : ''}`,
-				style: `left:${left}%;width:${width}%`,
-				title: `${f.method} ${f.path} -> ${f.status || 'error'} (${fmt.dur(f.duration_ns)})`,
-			}));
-		}
+	const pending = [];
+	const ordered = [...rowsBy.values()].sort((a, b) => a.lane.localeCompare(b.lane) || b.frames.length - a.frames.length);
+	for (const row of ordered) {
+		const canvas = el('canvas', { class: 'track' });
+		pending.push(() => drawTrack(canvas, row.frames, first, span));
 		rows.append(el('div', { class: 'lane' },
-			el('span', {}, pill(lane), ' ', el('span', { class: 'muted' }, fmt.int(frames.length))),
-			track));
+			el('span', { class: 'wrap' }, pill(row.lane), ' ', el('span', { class: 'mono' }, row.group), ' ',
+				el('span', { class: 'muted' }, fmt.int(row.frames.length))),
+			canvas));
 	}
+	// A canvas has no width until it is in the page.
+	requestAnimationFrame(() => pending.forEach((draw) => draw()));
 	out.append(section('Everything exchanged', rows,
 		el('div', { class: 'axis' },
 			el('span', {}, new Date(first).toLocaleTimeString()),
 			el('span', {}, new Date(last).toLocaleTimeString()))));
 
-	const recent = v.frames.slice(-100).reverse();
+	const recent = frames.slice(-100).reverse();
 	out.append(section('Latest frames', table(
 		['At', 'Lane', 'Method', 'Path', 'Status', 'Bytes', 'Took', 'Detail'],
 		recent.map((f) => [fmt.when(f.at), pill(f.lane), f.method,

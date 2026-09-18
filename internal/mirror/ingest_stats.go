@@ -36,6 +36,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	i.tel.Observe(Exchange{
 		Lane:     LaneDelivery,
+		Group:    r.Header.Get(i.events.TypeHeader),
 		Method:   r.Method,
 		Path:     r.URL.Path,
 		Status:   probe.status,

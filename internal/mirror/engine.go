@@ -165,7 +165,31 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w = &aliasWriter{ResponseWriter: w, aliases: e.spec.Aliases}
 	}
 	rec := newRecorder(w, r)
-	defer func() { e.tel.Requests.Record(rec.entry()) }()
+	defer func() {
+		entry := rec.entry()
+		e.tel.Requests.Record(entry)
+		// A delivery is charted by its own handler, and the dashboard's own
+		// polling would fill the chart with the act of viewing it.
+		if entry.Disposition == DispDelivery || entry.Disposition == DispAdmin {
+			return
+		}
+		detail := string(entry.Disposition)
+		if entry.Reason != "" {
+			detail += " " + entry.Reason
+		}
+		e.tel.Observe(Exchange{
+			Lane:      LaneInbound,
+			Group:     entry.Method + " " + entry.Shape,
+			Method:    entry.Method,
+			Path:      entry.Path,
+			Status:    entry.Status,
+			Bytes:     entry.Bytes,
+			Started:   entry.At,
+			Duration:  entry.Duration,
+			Principal: entry.Principal,
+			Detail:    detail,
+		})
+	}()
 	e.dispatch(rec, r)
 }
 
