@@ -40,6 +40,20 @@ func buildEvents(n *node) (*Events, error) {
 				return nil, err
 			}
 			e.List = append(e.List, ev)
+		case "subscriptions":
+			if err := checkAttrs(child, "path", "field", "always"); err != nil {
+				return nil, err
+			}
+			if child.Attr("path") == "" || child.Attr("field") == "" {
+				return nil, fmt.Errorf("<subscriptions> needs a path and a field")
+			}
+			sub := &EventSubscriptions{Path: child.Attr("path"), Field: child.Attr("field")}
+			for _, t := range strings.Split(child.Attr("always"), ",") {
+				if t = strings.TrimSpace(t); t != "" {
+					sub.Always = append(sub.Always, t)
+				}
+			}
+			e.Subscriptions = sub
 		default:
 			return nil, fmt.Errorf("<events>: unexpected child element <%s>", child.Name())
 		}

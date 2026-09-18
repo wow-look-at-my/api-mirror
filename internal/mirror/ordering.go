@@ -18,6 +18,8 @@ type Delivery struct {
 	// Subject is what this delivery is a view of, and At is the moment that
 	Subject string
 	At      time.Time
+	// Received is when the mirror took the delivery in.
+	Received time.Time
 }
 
 // orderOf resolves a delivery's subject and clock from its event declaration.
@@ -83,6 +85,8 @@ type Reorderer struct {
 	wg      sync.WaitGroup
 	// now is a package var in disguise so a test can drive the clock.
 	now func() time.Time
+	// onBatch sees each held batch before it is sorted.
+	onBatch func(items []*Delivery)
 }
 
 type batch struct {
@@ -130,6 +134,9 @@ func (r *Reorderer) close(subject string) {
 	r.mu.Unlock()
 	if b == nil || len(b.items) == 0 {
 		return
+	}
+	if r.onBatch != nil {
+		r.onBatch(b.items)
 	}
 	r.wg.Add(1)
 	r.run(b.items)

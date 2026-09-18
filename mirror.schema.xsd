@@ -305,6 +305,13 @@
 		<xs:choice minOccurs="0" maxOccurs="unbounded">
 			<xs:element name="secret" type="content"/>
 			<xs:element name="event" type="event"/>
+			<xs:element name="subscriptions">
+				<xs:complexType>
+					<xs:attribute name="path" type="xs:string" use="required"/>
+					<xs:attribute name="field" type="xs:string" use="required"/>
+					<xs:attribute name="always" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="path" type="xs:string" use="required"/>
 		<xs:attribute name="signature-header" type="xs:string" use="required"/>

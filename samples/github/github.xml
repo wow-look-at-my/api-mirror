@@ -796,6 +796,9 @@
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>
 
+		<!-- GitHub sends these three to every App whether or not it subscribes. -->
+		<subscriptions path="/app" field="events" always="installation,installation_repositories,github_app_authorization"/>
+
 		<event type="repository" resource="repo" clock="repository.updated_at" when='{{ ne .payload.action "deleted" }}'>
 			<subject>repo:<value name="payload.repository.full_name"/></subject>
 			<apply>

@@ -21,6 +21,7 @@ const (
 	LaneDelivery    Lane = "delivery"    // an inbound webhook, timed at the handler
 	LaneNotify      Lane = "notify"      // an outbound subscriber notification
 	LaneIdentity    Lane = "identity"    // resolving who a caller's credential belongs to
+	LaneAdmin       Lane = "admin"       // the operator surface asking the upstream itself
 )
 
 // Exchange is completed request, inbound or outbound, as reported to the

@@ -347,6 +347,8 @@ type Events struct {
 	// ReorderWindow holds a delivery so other deliveries for the same subject
 	ReorderWindow time.Duration
 	List          []*Event
+	// Subscriptions asks the upstream which types it sends. Nil reports none.
+	Subscriptions *EventSubscriptions
 }
 
 // Event maps delivery to stored rows.

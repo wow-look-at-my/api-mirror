@@ -248,6 +248,13 @@ type EventsView struct {
 	Declared   []EventView   `json:"declared"`
 	Replay     ReplayStats   `json:"replay"`
 	Configured bool          `json:"configured"`
+	// Log is the most recent arrivals and applies, newest earliest.
+	Log        []DeliveryRecord `json:"log"`
+	LogDropped int              `json:"log_dropped"`
+	Ordering   OrderingView     `json:"ordering"`
+	// Missing is absent, never empty, when the upstream could not be asked.
+	Missing           []MissingSubscription `json:"missing_subscriptions,omitempty"`
+	SubscriptionError string                `json:"subscription_error,omitempty"`
 }
 
 // EventView is declared event and how it is ordered.
@@ -256,13 +263,15 @@ type EventView struct {
 	Resource  string `json:"resource"`
 	Clock     string `json:"clock,omitempty"`
 	Unordered bool   `json:"unordered,omitempty"`
+	Actions   string `json:"actions,omitempty"`
+	When      string `json:"when,omitempty"`
 	Sets      int    `json:"sets"`
 	// Invalidate is the escape hatch's stated reason; empty means it applies.
 	Invalidate string `json:"invalidate,omitempty"`
 }
 
-func (a *Admin) events(w http.ResponseWriter, _ *http.Request) {
-	view := EventsView{Replay: a.engine.replay.Stats(), Declared: []EventView{}}
+func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
+	view := EventsView{Replay: a.engine.replay.Stats(), Declared: []EventView{}, Log: []DeliveryRecord{}}
 	if a.engine.spec.Events == nil {
 		writeJSON(w, http.StatusOK, view)
 		return
@@ -270,12 +279,24 @@ func (a *Admin) events(w http.ResponseWriter, _ *http.Request) {
 	view.Configured = a.engine.ingest != nil
 	view.Path = a.engine.spec.Events.Path
 	view.Stats = a.engine.ingest.Stats()
+	if in := a.engine.ingest; in != nil {
+		view.Log, view.LogDropped = in.log.recent()
+		view.Ordering = in.ordering.view(in.window)
+	}
+	missing, err := a.engine.missingSubscriptions(r.Context())
+	if err != nil {
+		logf("read event subscriptions: %v", err)
+		view.SubscriptionError = err.Error()
+	}
+	view.Missing = missing
 	for _, ev := range a.engine.spec.Events.List {
 		e := EventView{
 			Type:      ev.Type,
 			Resource:  ev.Resource,
 			Clock:     ev.Clock,
 			Unordered: ev.Unordered,
+			Actions:   strings.Join(ev.Actions, ","),
+			When:      ev.When,
 			Sets:      len(ev.Sets),
 		}
 		if ev.Invalidate != nil {

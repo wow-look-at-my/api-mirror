@@ -325,21 +325,52 @@ views.webhooks = async () => {
 		tile('Last', fmt.ago(s.last), `reorder window ${s.reorder_window}`),
 		tile('Since', fmt.ago(s.since), 'counts reset on restart'))));
 
+	// The upstream's own answer. Absent means it could not be asked, which
+	// claims nothing; a quiet type in the table below is not evidence either way.
+	if (v.missing_subscriptions && v.missing_subscriptions.length) {
+		out.append(section('Missing subscriptions', table(['Type', 'Resources left to their TTL'],
+			v.missing_subscriptions.map((m) => [el('span', { class: 'mono' }, m.type), m.resources.join(', ')]))));
+	} else if (v.subscription_error) {
+		out.append(section('Subscriptions', panel(el('div', { class: 'empty' }, `Could not ask the upstream: ${v.subscription_error}`))));
+	}
+
 	out.append(section('Outcomes', el('div', { class: 'row' }, dispositions(s.dispositions))));
+
+	const o = v.ordering;
+	const secs = (n) => `${(n || 0).toFixed(1)}s`;
+	out.append(section('Ordering', el('div', { class: 'tiles' },
+		tile('Ordered', fmt.int(o.ordered), `${fmt.int(o.unordered)} unordered`),
+		tile('Superseded', fmt.int(o.superseded), 'refused as older than a view applied'),
+		tile('Lag', secs(o.mean_lag_seconds), `worst ${secs(o.worst_lag_seconds)}, upstream clock to arrival`),
+		tile('Held', fmt.int(o.held), `${fmt.int(o.reordered)} batches reordered, window ${secs(o.reorder_window_seconds)}`))));
 
 	// Declared types with a empty are the point of this table: a type
 	// the provider was never subscribed to looks exactly like a quiet week.
 	const seen = new Map((s.types || []).map((t) => [t.type, t.count]));
 	out.append(section('Event types', table(
-		['Type', 'Resource', 'Clock', 'Sets', 'Received'],
+		['Type', 'Resource', 'Filter', 'Clock', 'Sets', 'Received'],
 		v.declared.map((d) => [
 			el('span', { class: 'mono' }, d.type),
 			d.resource,
+			el('span', { class: 'mono wrap' }, [d.actions && `action ${d.actions}`, d.when].filter(Boolean).join('; ') || '-'),
 			d.invalidate ? el('span', { class: 'muted' }, `invalidates: ${d.invalidate}`)
 				: (d.unordered ? el('span', { class: 'muted' }, 'unordered') : el('span', { class: 'mono' }, d.clock)),
 			d.sets,
 			seen.get(d.type) || 0,
 		]))));
+
+	out.append(section(`Recent deliveries${v.log_dropped ? ` (${fmt.int(v.log_dropped)} older dropped)` : ''}`, v.log.length
+		? table(['When', 'Kind', 'Type', 'Resource', 'Subject', 'Lag', 'Outcome'],
+			v.log.map((r) => [
+				fmt.ago(r.at),
+				r.kind,
+				el('span', { class: 'mono' }, r.action ? `${r.type}.${r.action}` : r.type),
+				r.resource || '-',
+				el('span', { class: 'mono wrap' }, r.subject || (r.status ? String(r.status) : '-')),
+				r.lag_seconds ? secs(r.lag_seconds) : '-',
+				r.error ? el('span', { class: 'bad', title: r.error }, `${r.disposition}: ${r.error}`) : r.disposition,
+			]))
+		: panel(el('div', { class: 'empty' }, 'Nothing has arrived since this process started.'))));
 
 	// Declared-but-off and never-declared are different answers, and only any of
 	// them is somebody's mistake. Reporting both as "no replay" hides which.

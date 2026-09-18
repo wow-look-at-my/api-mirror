@@ -49,6 +49,8 @@ type Ingest struct {
 	tel      *Telemetry
 	notifier *Notifier
 	stats    deliveryStats
+	log      deliveryLog
+	ordering orderingStats
 }
 
 // NewIngest builds the ingest endpoint a spec declares. vars is the spec's
@@ -80,6 +82,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 		i.byType[ev.Type] = append(i.byType[ev.Type], ev)
 	}
 	i.reorder = NewReorderer(i.window, i.applyAndRecord)
+	i.reorder.onBatch = i.ordering.batch
 	return i, nil
 }
 
@@ -156,13 +159,14 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		deliveries = append(deliveries, &Delivery{
-			ID:      id,
-			Type:    typ,
-			Event:   ev,
-			Payload: payload,
-			Raw:     raw,
-			Subject: subject,
-			At:      at,
+			ID:       id,
+			Type:     typ,
+			Event:    ev,
+			Payload:  payload,
+			Raw:      raw,
+			Subject:  subject,
+			At:       at,
+			Received: i.now(),
 		})
 	}
 	if len(deliveries) == 0 {
