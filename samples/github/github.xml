@@ -963,6 +963,98 @@
 			one has to go as well. The key therefore stops at the repository and
 			reaches every label in it.
 		-->
+		<!--
+			Every answer a push moves beyond the branch row: the ref lookups, the
+			commit and branch listings, and compares against any ref. The payload
+			states one ref's new tip, and each of these is keyed by a ref
+			spelling, a page or a base...head pair the payload cannot name, so
+			the key stops at the repository. A stale compare is the worst of
+			them: a cached behind_by of 0 stops a PR from ever being updated.
+		-->
+		<event type="push" resource="git_ref" clock="repository.pushed_at">
+			<subject>git-ref:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answers are keyed by ref spelling, and the payload names one ref in one spelling"/>
+		</event>
+
+		<event type="push" resource="matching_refs" clock="repository.pushed_at">
+			<subject>matching-refs:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answer is every ref under a prefix, and the payload states one"/>
+		</event>
+
+		<event type="push" resource="commits_list" clock="repository.pushed_at">
+			<subject>commits:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a page of history shifts with every new commit, and the payload cannot say which page a commit lands on"/>
+		</event>
+
+		<event type="push" resource="compare" clock="repository.pushed_at">
+			<subject>compare:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a compare's ahead_by, behind_by and files are computed by the upstream against both tips, and the payload moves one of them"/>
+		</event>
+
+		<event type="push" resource="branches_list" clock="repository.pushed_at">
+			<subject>branches:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answer is a page of branches with their tips, and the payload cannot say which page this branch is on"/>
+		</event>
+
+		<!--
+			A pull request's files and commits change on every synchronize, and
+			the payload states the new head, not the diff or the commit list.
+		-->
+		<event type="pull_request" resource="pull_files" clock="pull_request.updated_at">
+			<subject>pull-files:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="number">number</key>
+			<invalidate reason="the payload states the new head sha and never the changed files"/>
+		</event>
+
+		<event type="pull_request" resource="pull_commits" clock="pull_request.updated_at">
+			<subject>pull-commits:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="number">number</key>
+			<invalidate reason="the payload states the new head sha and never the commit list"/>
+		</event>
+
+		<!--
+			A status changes the combined rollup the served route answers. The
+			rollup is keyed by the ref the caller asked with, a sha or a branch
+			name, and the payload names only the sha, so the key stops at the
+			repository.
+		-->
+		<event type="status" resource="commit_status_rollup" clock="updated_at">
+			<subject>rollup:<value name="payload.repository.full_name"/>:<value name="payload.sha"/>:<value name="payload.context"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the rollup is recomputed upstream across every context, and it is keyed by whatever ref spelling the caller used"/>
+		</event>
+
+		<event type="check_run" resource="check_run" clock="check_run.completed_at">
+			<subject>check-run:<value name="payload.repository.full_name"/>:<value name="payload.check_run.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="check_run_id">check_run.id</key>
+			<invalidate reason="the stored answer is a trimmed document whose shape the delivery's check_run object does not match field for field"/>
+		</event>
+
+		<event type="workflow_job" resource="workflow_job" clock="workflow_job.started_at">
+			<subject>single-job:<value name="payload.repository.full_name"/>:<value name="payload.workflow_job.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="job_id">workflow_job.id</key>
+			<invalidate reason="the stored answer is a trimmed document whose shape the delivery's workflow_job object does not match field for field"/>
+		</event>
+
 		<event type="label" resource="label" clock="repository.updated_at">
 			<subject>label:<value name="payload.repository.full_name"/>:<value name="payload.label.name"/></subject>
 			<key field="owner">repository.owner.login</key>
