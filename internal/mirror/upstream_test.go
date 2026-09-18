@@ -103,6 +103,31 @@ func TestUpstreamCall_SendsStaticHeadersAndTheCallersOwn(t *testing.T) {
 		"the mirror parses and rebuilds the body, so a compressed one would only have to be decoded here")
 }
 
+func TestUpstreamCall_BackgroundHeaderRidesOnlyTheMirrorsOwnCalls(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("Authorization"))
+	}))
+	t.Cleanup(srv.Close)
+	spec := upstreamSpec(srv.URL)
+	spec.Upstream.Headers = append(spec.Upstream.Headers,
+		Header{Name: "Authorization", Value: "Bearer service-token", Background: true})
+	up, err := NewUpstreamer(spec, callVars, nil)
+	require.NoError(t, err)
+
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, nil, nil)
+	require.NoError(t, err)
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{}, nil)
+	require.NoError(t, err)
+	caller := http.Header{}
+	caller.Set("Authorization", "Bearer caller-token")
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, caller, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"Bearer service-token", "", "Bearer caller-token"}, got,
+		"only a call with no caller at all may use the service credential")
+}
+
 func TestUpstreamCall_MissingForwardedHeaderIsNotSentEmpty(t *testing.T) {
 	var got http.Header
 	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, r *http.Request) {

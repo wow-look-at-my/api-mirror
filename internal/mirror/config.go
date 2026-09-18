@@ -121,6 +121,8 @@ type Upstream struct {
 	Headers []Header
 	// Forward names the request headers copied from the caller to the upstream.
 	Forward []string
+	// Require names forwarded headers a caller must send.
+	Require []string
 	// Rate names the budget headers. Their spelling is the upstream's, not ours.
 	Rate RateHeaders
 	// Debounce holds an eligible passthrough READ so identical reads share call.
@@ -133,6 +135,9 @@ type Upstream struct {
 type Header struct {
 	Name  string
 	Value string // template source
+	// Background sends this header only on the mirror's own calls: refresh,
+	// replay and check. A caller's request never carries it.
+	Background bool
 }
 
 // StoreMode says what a resource keeps per key.

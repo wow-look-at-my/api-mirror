@@ -28,11 +28,11 @@
 		rather than the mirror's, and it is why the mirror never needs a
 		credential of its own to serve a read.
 
-		The static Authorization below is for the requests that have NO caller:
-		the periodic sweep and the delivery-gap replayer. A forwarded header
-		wins over a static one, so a consumer's own token still answers every
-		read they make. Unset, the header is skipped and the background jobs
-		get whatever an anonymous caller gets.
+		The background Authorization below is for the requests that have NO
+		caller: the periodic sweep, the consistency check and the delivery-gap
+		replayer. A caller's request never carries it. The forwarded one is
+		required, so a request without a token is refused with a 401 before
+		anything is served or forwarded.
 
 		<ratelimit> names the headers that carry a budget. Naming them is what
 		lets the Rate limit tab exist at all, and it is also what tells a
@@ -42,8 +42,8 @@
 	<upstream base="{{ .var.base }}" debounce="5s" retry-after="Retry-After">
 		<header name="Accept">application/vnd.github+json</header>
 		<header name="X-GitHub-Api-Version">2022-11-28</header>
-		<header name="Authorization"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
-		<forward name="Authorization"/>
+		<header name="Authorization" background="true"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
+		<forward name="Authorization" required="true"/>
 		<!-- A body-keyed route posts its question, and it has to arrive typed. -->
 		<forward name="Content-Type"/>
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"

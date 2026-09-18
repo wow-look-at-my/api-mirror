@@ -95,6 +95,7 @@
 			<xs:element name="forward">
 				<xs:complexType>
 					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="required" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
 			<!-- Which headers carry a budget is the upstream's own vocabulary. -->
@@ -116,6 +117,7 @@
 	<xs:complexType name="headerType" mixed="true">
 		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
 		<xs:attribute name="name" type="xs:string" use="required"/>
+		<xs:attribute name="background" type="xs:boolean"/>
 	</xs:complexType>
 
 	<xs:complexType name="resource">

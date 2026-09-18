@@ -41,11 +41,9 @@ func withForward(ctx context.Context, h http.Header) context.Context {
 	return context.WithValue(ctx, forwardKey{}, h)
 }
 
+// forwardFrom returns the caller's headers, or nil for the mirror's own fetch.
 func forwardFrom(ctx context.Context) http.Header {
 	h, _ := ctx.Value(forwardKey{}).(http.Header)
-	if h == nil {
-		return http.Header{}
-	}
 	return h
 }
 
@@ -192,6 +190,11 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 	// Ahead of the route table, because a relay carries no bearer to resolve.
 	if rl, ok := e.matchRelay(r); ok {
 		e.relay(rec, r, rl)
+		return
+	}
+	if name := e.missingRequired(r); name != "" {
+		rec.note(DispDenied, e.shapeOf(r), "", "unauthenticated")
+		e.writeMessage(rec, http.StatusUnauthorized, "missing required header "+name)
 		return
 	}
 	if purges, params, ok := e.matchPurges(r); ok {
@@ -498,6 +501,30 @@ func stripUpstreamCORS(resp *http.Response) error {
 		}
 	}
 	return nil
+}
+
+// missingRequired names the earliest required caller header this request lacks.
+func (e *Engine) missingRequired(r *http.Request) string {
+	for _, name := range e.spec.Upstream.Require {
+		if strings.TrimSpace(r.Header.Get(name)) == "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// writeMessage answers with a JSON error body, the shape API clients parse.
+func (e *Engine) writeMessage(w http.ResponseWriter, status int, message string) {
+	body, err := marshalJSON(map[string]any{"message": message})
+	if err != nil {
+		http.Error(w, message, status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(body); err != nil {
+		logf("write message: %v", err)
+	}
 }
 
 // principalOf identifies who is asking.

@@ -81,6 +81,26 @@ func TestCredentialResource_NoCredentialIsPassthrough(t *testing.T) {
 	assert.Equal(t, string(PassNoIdentity), rec.Header().Get("X-Mirror-Passthrough-Reason"))
 }
 
+func TestRequiredCredential_RefusesATokenlessCallerBeforeAnyUpstreamCall(t *testing.T) {
+	var calls atomic.Int32
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+	}), func(s *Spec) {
+		s.Upstream.Forward = append(s.Upstream.Forward, "Authorization")
+		s.Upstream.Require = append(s.Upstream.Require, "Authorization")
+		s.Upstream.Headers = append(s.Upstream.Headers,
+			Header{Name: "Authorization", Value: "Bearer service-token", Background: true})
+	})
+
+	for _, path := range []string{"/widgets/7", "/not/declared"} {
+		rec := get(t, e, path)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, path)
+		assert.JSONEq(t, `{"message":"missing required header Authorization"}`, rec.Body.String(), path)
+	}
+	assert.Zero(t, calls.Load(),
+		"a tokenless caller must never reach the upstream, where the service credential could answer for them")
+}
+
 func TestAllow_CredentialResourceNeverProbes(t *testing.T) {
 	res := credentialResource()
 	rv := NewRevealer(nil, mustUpstreamer(t, unreachable(t)), map[string]any{})

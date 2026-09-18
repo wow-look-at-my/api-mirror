@@ -192,7 +192,7 @@ func buildUpstream(n *node) (Upstream, error) {
 			}
 			up.Headers = append(up.Headers, h)
 		case "forward":
-			if err := checkAttrs(child, "name"); err != nil {
+			if err := checkAttrs(child, "name", "required"); err != nil {
 				return Upstream{}, err
 			}
 			name := child.Attr("name")
@@ -200,6 +200,9 @@ func buildUpstream(n *node) (Upstream, error) {
 				return Upstream{}, fmt.Errorf("<forward>: name is required")
 			}
 			up.Forward = append(up.Forward, name)
+			if child.Attr("required") == "true" {
+				up.Require = append(up.Require, name)
+			}
 		default:
 			return Upstream{}, fmt.Errorf("<upstream>: unexpected child element <%s>", child.Name())
 		}
@@ -208,7 +211,7 @@ func buildUpstream(n *node) (Upstream, error) {
 }
 
 func buildHeader(n *node) (Header, error) {
-	if err := checkAttrs(n, "name"); err != nil {
+	if err := checkAttrs(n, "name", "background"); err != nil {
 		return Header{}, err
 	}
 	name := n.Attr("name")
@@ -219,7 +222,7 @@ func buildHeader(n *node) (Header, error) {
 	if err != nil {
 		return Header{}, fmt.Errorf("<header name=%q>: %w", name, err)
 	}
-	return Header{Name: name, Value: value}, nil
+	return Header{Name: name, Value: value, Background: n.Attr("background") == "true"}, nil
 }
 
 func buildResource(n *node) (*Resource, error) {

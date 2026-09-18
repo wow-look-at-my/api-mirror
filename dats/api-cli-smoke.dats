@@ -39,14 +39,17 @@ tests:
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
 		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19931/_requests && curl -s -o /dev/null http://127.0.0.1:19930/nonexistent && break; sleep 0.1; done
+		echo "anonymous-status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19930/repos/octo/demo)"
+		curl -s http://127.0.0.1:19931/_requests > {outputs.after-anonymous.txt}
 		echo "=== miss ==="
-		GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
 		curl -s http://127.0.0.1:19931/_requests > {outputs.after-miss.txt}
 		echo "=== hit ==="
-		GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
 		curl -s http://127.0.0.1:19931/_requests > {outputs.after-hit.txt}
 	  outputs:
 		stdout:
+			- "anonymous-status=401"
 			- "=== miss ==="
 			- '"default": "main"'
 			- '"archived": false'
@@ -54,6 +57,9 @@ tests:
 		!stdout:
 			- "error:"
 		files:
+			after-anonymous.txt:
+				match:
+					- "^0$"
 			after-miss.txt:
 				match:
 					- "^3$"
