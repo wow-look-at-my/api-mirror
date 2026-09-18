@@ -2,8 +2,10 @@ package mirror
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -42,20 +44,44 @@ type KeyCheck struct {
 const checkKeyTimeout = 30 * time.Second
 
 // Check re-asks the upstream about every stored key of kind and reports where
-// the cache and the upstream disagree, using the mirror's own credential.
-func (e *Engine) Check(ctx context.Context, kind string, repair bool, emit func(KeyCheck)) error {
+// the cache and the upstream disagree, using the mirror's own credential. A
+// non-empty scope checks only the keys whose components equal it, such as a
+// single owner's rows, so a check of a large kind can be run a slice at a time.
+func (e *Engine) Check(ctx context.Context, kind string, scope map[string]string, repair bool, emit func(KeyCheck)) error {
 	keys, err := e.store.FreshnessByKind(ctx, kind)
 	if err != nil {
 		return err
 	}
+	res, _ := e.store.Resource(strings.TrimSuffix(kind, ":list"))
 	sort.Slice(keys, func(i, j int) bool { return keys[i].Key < keys[j].Key })
 	for _, f := range keys {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if len(scope) > 0 && !inScope(res, f.Key, scope) {
+			continue
+		}
 		emit(e.checkOne(ctx, kind, f, repair))
 	}
 	return nil
+}
+
+// inScope reports whether a stored key's components equal every scoped value.
+// A key that cannot be read back into components is outside any scope.
+func inScope(res *Resource, key string, scope map[string]string) bool {
+	if res == nil {
+		return false
+	}
+	parts, ok := parseKeyString(res, key)
+	if !ok {
+		return false
+	}
+	for name, want := range scope {
+		if parts[name] != want {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair bool) KeyCheck {
@@ -81,9 +107,9 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 		return out
 	}
 
-	fetchCtx, cancel := context.WithTimeout(withLane(ctx, LaneRefresh, "", "check"), checkKeyTimeout)
+	fetchCtx, cancel := context.WithTimeout(withPlan(withLane(ctx, LaneRefresh, "", "check"), plan), checkKeyTimeout)
 	defer cancel()
-	answer, err := e.up.Call(fetchCtx, plan.route.Method, plan.upstreamPath(), e.vars, nil, nil)
+	answer, err := e.up.Call(plan.media(fetchCtx), plan.route.Method, plan.upstreamPath(), e.vars, nil, nil)
 	if err != nil {
 		out.Verdict = CheckUnreachable
 		out.Detail = err.Error()
@@ -145,6 +171,9 @@ func (e *Engine) rowFromAnswer(plan *fetchPlan, answer *Answer) (Row, error) {
 	if answer.Overflow {
 		return nil, fmt.Errorf("the upstream answered more than the %d byte cap", maxBodyBytes)
 	}
+	if plan.res.Store == StoreRaw {
+		return plan.rawRow(answer.Body), nil
+	}
 	doc, err := decodeJSON(answer.Body)
 	if err != nil {
 		return nil, err
@@ -172,7 +201,10 @@ func (e *Engine) rowFromAnswer(plan *fetchPlan, answer *Answer) (Row, error) {
 
 // absorbAnswerRow writes a row the check already projected.
 func (e *Engine) absorbAnswerRow(ctx context.Context, plan *fetchPlan, row Row) error {
-	return e.store.Put(ctx, plan.res, row, time.Now())
+	if err := e.store.Put(ctx, plan.res, row, time.Now()); !errors.Is(err, errStoredIsNewer) {
+		return err
+	}
+	return nil
 }
 
 // diffRows compares the columns the spec declares, in declaration order.
@@ -182,7 +214,7 @@ func (e *Engine) absorbAnswerRow(ctx context.Context, plan *fetchPlan, row Row) 
 func diffRows(res *Resource, stored, fresh Row) []Difference {
 	var out []Difference
 	names := make([]string, 0, len(res.Fields)+1)
-	if res.Store == StoreDocument {
+	if res.whole() {
 		names = append(names, "document")
 	}
 	for _, f := range res.Fields {

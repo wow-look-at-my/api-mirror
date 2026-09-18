@@ -90,3 +90,37 @@ func listNames(t *testing.T, e *Engine) []string {
 	}
 	return names
 }
+
+func TestDocumentListAnswersThePageItStored(t *testing.T) {
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"sha":"a"},{"sha":"b"}]`))
+	}), func(s *Spec) {
+		s.Resources = append(s.Resources, &Resource{
+			Name: "commit_page", Store: StoreDocument, TTL: time.Hour,
+			Keys:   []Key{{Name: "id"}, {Name: "page"}},
+			Reveal: &Reveal{Public: "true"},
+		})
+		s.Routes = append(s.Routes, &Route{
+			Method: "GET", Path: "/widgets/{id}/commits", Resource: "commit_page", List: true,
+			Query: []QueryParam{{Name: "page", Type: FieldInt, Default: "1", Min: 1, Max: 100, Key: true}},
+		})
+	})
+
+	for _, want := range []string{string(OutcomeMiss), string(OutcomeHit)} {
+		rec := get(t, e, "/widgets/7/commits")
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		assert.Equal(t, want, rec.Header().Get("X-Mirror-Cache"))
+		assert.JSONEq(t, `[{"sha":"a"},{"sha":"b"}]`, rec.Body.String(),
+			"the stored page is the answer, never wrapped in a second array")
+	}
+}
+
+func TestValidateRoute_DocumentListNeedsTheWholeKey(t *testing.T) {
+	res := &Resource{Name: "page", Store: StoreDocument, Keys: []Key{{Name: "id"}, {Name: "page"}},
+		Reveal: &Reveal{Public: "true"}}
+	rt := &Route{Method: "GET", Path: "/widgets/{id}/commits", Resource: "page", List: true}
+	err := rt.validate(map[string]*Resource{"page": res})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `nothing supplies "page"`)
+}

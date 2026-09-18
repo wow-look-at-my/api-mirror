@@ -1,9 +1,12 @@
 package mirror
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -18,7 +21,10 @@ const (
 	PassQuery      PassReason = "unmodeled-query"
 	PassResponse   PassReason = "unmodeled-response" // the route models the request, not what came back
 	PassNoIdentity PassReason = "unverified-identity"
-	PassRelay      PassReason = "relayed" // a declared forward to a foreign host
+	PassRelay      PassReason = "relayed"     // a declared forward to a foreign host
+	PassBypass     PassReason = "bypass-body" // the body is a write the route declares uncacheable
+	// PassUnobservedBudget is a budget question from a caller the meter has not seen yet.
+	PassUnobservedBudget PassReason = "unobserved-budget"
 )
 
 // match is request resolved against a route.
@@ -38,7 +44,7 @@ type match struct {
 // with a method no route declares. Both are reported, because a route that
 // still forwards is unfinished work rather than a settled state.
 func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
-	pathKnown := false
+	pathKnown, mediaRefused := false, false
 	for _, rt := range e.spec.Routes {
 		params, ok := matchPath(rt.Path, r.URL.EscapedPath())
 		if !ok {
@@ -48,8 +54,10 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 		if rt.Method != r.Method {
 			continue
 		}
+		// Another route on this path may answer the asked media type.
 		if !acceptable(rt, r.Header.Get("Accept")) {
-			return nil, PassAccept, nil
+			mediaRefused = true
+			continue
 		}
 		query, err := modelQuery(rt, r)
 		if err != nil {
@@ -75,12 +83,12 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			if !k.Credential {
 				continue
 			}
-			auth := r.Header.Get("Authorization")
-			if auth == "" {
+			v := credentialValue(k, r)
+			if v == "" {
 				// No credential to key this row by; nothing to serve.
 				return nil, PassNoIdentity, nil
 			}
-			key[k.Name] = fingerprint(auth)
+			key[k.Name] = v
 		}
 		// The body IS the key here, and a consumed body cannot be re-read, so
 		// the match carries it for the fetch to replay.
@@ -94,14 +102,36 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 				return nil, PassQuery, fmt.Errorf("route %s: the request body is over the %d byte cap", rt.Path, maxBodyBytes)
 			}
 			body = b
-			key[rt.BodyKey] = fingerprint(string(b))
+			// The passthrough needs the body the resolve just consumed.
+			r.Body = io.NopCloser(bytes.NewReader(b))
+			if rt.Bypass != nil && rt.Bypass.Match(b) {
+				return nil, PassBypass, nil
+			}
+			key[rt.BodyKey] = bodyFingerprint(b)
 		}
 		return &match{route: rt, key: key, query: query, body: body}, "", nil
+	}
+	if mediaRefused {
+		return nil, PassAccept, nil
 	}
 	if pathKnown {
 		return nil, PassMethod, nil
 	}
 	return nil, PassUnrouted, nil
+}
+
+// bodyFingerprint keys a request body. A JSON body is re-marshalled so the
+// same question with its fields in another order finds the same row.
+func bodyFingerprint(b []byte) string {
+	doc, err := decodeJSON(b)
+	if err != nil {
+		return fingerprint(string(b))
+	}
+	canon, err := marshalJSON(doc)
+	if err != nil {
+		return fingerprint(string(b))
+	}
+	return fingerprint(string(canon))
 }
 
 // foldFor applies a key component's declared case folding, so a differently
@@ -116,15 +146,31 @@ func foldFor(res *Resource, name, value string) string {
 }
 
 // matchPath matches a request path against a route pattern, returning the
-// {name} bindings.
+// {name} bindings. A final {name*} binds every remaining segment, slashes
+// included, because a file path or a ref like heads/feature/x is a single value.
 func matchPath(pattern, path string) (map[string]string, bool) {
 	pseg := strings.Split(strings.Trim(pattern, "/"), "/")
 	rseg := strings.Split(strings.Trim(path, "/"), "/")
+	last := pseg[len(pseg)-1]
+	rest := strings.HasPrefix(last, "{") && strings.HasSuffix(last, "*}")
+	if rest {
+		if len(rseg) < len(pseg) {
+			return nil, false
+		}
+		rseg = append(rseg[:len(pseg)-1:len(pseg)-1], strings.Join(rseg[len(pseg)-1:], "/"))
+	}
 	if len(pseg) != len(rseg) {
 		return nil, false
 	}
 	out := make(map[string]string, len(pseg))
 	for i, p := range pseg {
+		if rest && i == len(pseg)-1 {
+			if rseg[i] == "" || slices.Contains(strings.Split(rseg[i], "/"), "") {
+				return nil, false
+			}
+			out[p[1:len(p)-2]] = rseg[i]
+			continue
+		}
 		if len(p) > 2 && p[0] == '{' && p[len(p)-1] == '}' {
 			v := rseg[i]
 			if v == "" {

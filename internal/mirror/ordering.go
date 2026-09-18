@@ -18,6 +18,8 @@ type Delivery struct {
 	// Subject is what this delivery is a view of, and At is the moment that
 	Subject string
 	At      time.Time
+	// Received is when the mirror took the delivery in.
+	Received time.Time
 }
 
 // orderOf resolves a delivery's subject and clock from its event declaration.
@@ -40,8 +42,10 @@ func orderOf(ev *Event, payload any) (string, time.Time, error) {
 	}
 	raw := lookupPath(payload, ev.Clock)
 	if raw == nil {
-		// The spec named a clock field and this payload does not carry it. That
-		return subject, time.Time{}, fmt.Errorf("event %q: payload carries no %s", ev.Type, ev.Clock)
+		// A view that states no moment still carries the new value, so it is
+		// applied unordered rather than refused: GitHub leaves completed_at
+		// null on every check run that has not finished.
+		return subject, time.Time{}, nil
 	}
 	secs, err := toUnix(raw)
 	if err != nil {
@@ -81,6 +85,8 @@ type Reorderer struct {
 	wg      sync.WaitGroup
 	// now is a package var in disguise so a test can drive the clock.
 	now func() time.Time
+	// onBatch sees each held batch before it is sorted.
+	onBatch func(items []*Delivery)
 }
 
 type batch struct {
@@ -128,6 +134,9 @@ func (r *Reorderer) close(subject string) {
 	r.mu.Unlock()
 	if b == nil || len(b.items) == 0 {
 		return
+	}
+	if r.onBatch != nil {
+		r.onBatch(b.items)
 	}
 	r.wg.Add(1)
 	r.run(b.items)

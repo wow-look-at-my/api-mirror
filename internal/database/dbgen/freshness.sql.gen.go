@@ -69,6 +69,41 @@ func (q *Queries) DeleteFreshness(ctx context.Context, arg DeleteFreshnessParams
 	return result.RowsAffected()
 }
 
+const deleteFreshnessKind = `-- name: DeleteFreshnessKind :execrows
+DELETE FROM mirror_freshness WHERE kind = ?
+`
+
+func (q *Queries) DeleteFreshnessKind(ctx context.Context, kind string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteFreshnessKind, kind)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteFreshnessUnder = `-- name: DeleteFreshnessUnder :execrows
+DELETE FROM mirror_freshness
+WHERE kind = ?1
+  AND (key = ?2 OR substr(key, 1, length(?3)) = ?3)
+`
+
+type DeleteFreshnessUnderParams struct {
+	Kind  string
+	Key   string
+	Below interface{}
+}
+
+// An invalidation names a key or a prefix of one, and every answer stored
+// beneath it has to be asked again. A prefix compare rather than LIKE, so a key
+// holding % or _ cannot widen the delete.
+func (q *Queries) DeleteFreshnessUnder(ctx context.Context, arg DeleteFreshnessUnderParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteFreshnessUnder, arg.Kind, arg.Key, arg.Below)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getFreshness = `-- name: GetFreshness :one
 SELECT kind, "key", fetched_at, changed_at, etag, expires_at, state, error, retry_after, status FROM mirror_freshness WHERE kind = ? AND key = ?
 `

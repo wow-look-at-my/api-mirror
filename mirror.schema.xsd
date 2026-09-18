@@ -72,6 +72,21 @@
 				<xs:element name="refresh" type="refresh"/>
 				<xs:element name="replay" type="replay"/>
 				<xs:element name="health" type="health"/>
+				<xs:element name="alias">
+					<xs:complexType>
+						<xs:attribute name="from" type="xs:string" use="required"/>
+						<xs:attribute name="to" type="xs:string" use="required"/>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="identity">
+					<xs:complexType>
+						<xs:choice minOccurs="1" maxOccurs="2">
+							<xs:element name="user" type="identityRule"/>
+							<xs:element name="assertion" type="identityRule"/>
+						</xs:choice>
+						<xs:attribute name="ttl" type="xs:string" use="required"/>
+					</xs:complexType>
+				</xs:element>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
@@ -95,6 +110,18 @@
 			<xs:element name="forward">
 				<xs:complexType>
 					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="required" type="xs:boolean"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="app">
+				<xs:complexType>
+					<xs:attribute name="id" type="xs:string" use="required"/>
+					<xs:attribute name="key" type="xs:string"/>
+					<xs:attribute name="key-file" type="xs:string"/>
+					<xs:attribute name="installations" type="xs:string" use="required"/>
+					<xs:attribute name="account" type="xs:string" use="required"/>
+					<xs:attribute name="mint" type="xs:string" use="required"/>
+					<xs:attribute name="owner-key" type="xs:string" use="required"/>
 				</xs:complexType>
 			</xs:element>
 			<!-- Which headers carry a budget is the upstream's own vocabulary. -->
@@ -105,6 +132,10 @@
 					<xs:attribute name="used" type="xs:string"/>
 					<xs:attribute name="reset" type="xs:string"/>
 					<xs:attribute name="resource" type="xs:string"/>
+					<xs:attribute name="refusal" type="xs:string"/>
+					<xs:attribute name="answer" type="xs:string"/>
+					<xs:attribute name="poll" type="xs:string"/>
+					<xs:attribute name="poll-field" type="xs:string"/>
 				</xs:complexType>
 			</xs:element>
 		</xs:choice>
@@ -116,6 +147,7 @@
 	<xs:complexType name="headerType" mixed="true">
 		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
 		<xs:attribute name="name" type="xs:string" use="required"/>
+		<xs:attribute name="background" type="xs:boolean"/>
 	</xs:complexType>
 
 	<xs:complexType name="resource">
@@ -126,7 +158,16 @@
 					<xs:attribute name="from" type="xs:string"/>
 					<xs:attribute name="fold" type="xs:boolean"/>
 					<!-- The key is a fingerprint of the caller's own credential. -->
-					<xs:attribute name="credential" type="xs:boolean"/>
+					<xs:attribute name="credential">
+						<xs:simpleType>
+							<xs:restriction base="xs:string">
+								<xs:enumeration value="true"/>
+								<xs:enumeration value="false"/>
+								<xs:enumeration value="principal"/>
+							</xs:restriction>
+						</xs:simpleType>
+					</xs:attribute>
+					<xs:attribute name="type" type="fieldType"/>
 				</xs:complexType>
 			</xs:element>
 			<xs:element name="field">
@@ -134,6 +175,7 @@
 					<xs:attribute name="name" type="xs:string" use="required"/>
 					<xs:attribute name="type" type="fieldType"/>
 					<xs:attribute name="expr" type="xs:string"/>
+					<xs:attribute name="version" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
 			<xs:element name="drop">
@@ -148,10 +190,41 @@
 				</xs:complexType>
 			</xs:element>
 			<xs:element name="reveal" type="reveal"/>
+			<xs:element name="contradicted-by">
+				<xs:complexType>
+					<xs:choice minOccurs="0" maxOccurs="unbounded">
+						<xs:element name="on">
+							<xs:complexType>
+								<xs:attribute name="key" type="xs:string" use="required"/>
+								<xs:attribute name="column" type="xs:string" use="required"/>
+							</xs:complexType>
+						</xs:element>
+						<xs:element name="only">
+							<xs:complexType>
+								<xs:attribute name="column" type="xs:string" use="required"/>
+								<xs:attribute name="value" type="xs:string" use="required"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:choice>
+					<xs:attribute name="resource" type="xs:string" use="required"/>
+					<xs:attribute name="field" type="xs:string" use="required"/>
+					<xs:attribute name="against" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="name" type="xs:string" use="required"/>
 		<xs:attribute name="ttl" type="xs:string"/>
 		<xs:attribute name="store" type="xs:string"/>
+		<xs:attribute name="revoke-on-refusal" type="xs:string"/>
+	</xs:complexType>
+
+	<xs:complexType name="identityRule">
+		<xs:attribute name="header" type="xs:string"/>
+		<xs:attribute name="as" type="xs:string"/>
+		<xs:attribute name="scheme" type="xs:string"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="principal" type="xs:string" use="required"/>
+		<xs:attribute name="name" type="xs:string"/>
 	</xs:complexType>
 
 	<xs:complexType name="reveal">
@@ -207,6 +280,8 @@
 		<xs:attribute name="complete" type="xs:boolean"/>
 		<!-- The resource key the REQUEST body fills, for a route that posts its question. -->
 		<xs:attribute name="body-key" type="xs:string"/>
+		<xs:attribute name="bypass" type="xs:string"/>
+		<xs:attribute name="assert" type="xs:boolean"/>
 	</xs:complexType>
 
 	<!-- A write whose answer the mirror cannot derive: forward it, drop the row. -->
@@ -233,6 +308,13 @@
 		<xs:choice minOccurs="0" maxOccurs="unbounded">
 			<xs:element name="secret" type="content"/>
 			<xs:element name="event" type="event"/>
+			<xs:element name="subscriptions">
+				<xs:complexType>
+					<xs:attribute name="path" type="xs:string" use="required"/>
+					<xs:attribute name="field" type="xs:string" use="required"/>
+					<xs:attribute name="always" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="path" type="xs:string" use="required"/>
 		<xs:attribute name="signature-header" type="xs:string" use="required"/>
@@ -265,6 +347,7 @@
 			<xs:element name="invalidate">
 				<xs:complexType>
 					<xs:attribute name="reason" type="xs:string" use="required"/>
+					<xs:attribute name="all" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
 		</xs:choice>
@@ -273,6 +356,8 @@
 		<xs:attribute name="clock" type="xs:string"/>
 		<xs:attribute name="unordered" type="xs:boolean"/>
 		<xs:attribute name="absorb-when-superseded" type="xs:boolean"/>
+		<xs:attribute name="action" type="xs:string"/>
+		<xs:attribute name="when" type="xs:string"/>
 	</xs:complexType>
 
 	<!--
@@ -284,6 +369,19 @@
 	<xs:complexType name="dashboard">
 		<xs:sequence>
 			<xs:element name="token" type="content" minOccurs="0"/>
+			<xs:element name="sign-in" minOccurs="0">
+				<xs:complexType>
+					<xs:attribute name="client-id" type="xs:string" use="required"/>
+					<xs:attribute name="client-secret" type="xs:string" use="required"/>
+					<xs:attribute name="authorize" type="xs:string" use="required"/>
+					<xs:attribute name="exchange" type="xs:string" use="required"/>
+					<xs:attribute name="user" type="xs:string" use="required"/>
+					<xs:attribute name="login" type="xs:string" use="required"/>
+					<xs:attribute name="admins" type="xs:string"/>
+					<xs:attribute name="secret" type="xs:string"/>
+					<xs:attribute name="base-url" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:sequence>
 		<xs:attribute name="path" type="xs:string"/>
 		<xs:attribute name="title" type="xs:string"/>

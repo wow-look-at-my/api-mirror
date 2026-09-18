@@ -128,6 +128,18 @@ func (s *Subscriptions) Delete(ctx context.Context, principal, id string) (bool,
 	return n > 0, err
 }
 
+// Reactivate re-enables a parked subscription of a principal's and clears its
+// failure run.
+func (s *Subscriptions) Reactivate(ctx context.Context, principal, id string) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE subscription SET disabled = 0, failures = 0, last_error = '' WHERE id = ? AND principal = ?`, id, principal)
+	if err != nil {
+		return false, fmt.Errorf("reactivate subscription: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // ByPrincipal lists caller's own subscriptions.
 func (s *Subscriptions) ByPrincipal(ctx context.Context, principal string) ([]Subscription, error) {
 	return s.query(ctx, `SELECT id, principal, url, events, created_at, last_ok, failures, disabled, last_error

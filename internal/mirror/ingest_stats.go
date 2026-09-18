@@ -27,8 +27,16 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if disp != DeliveryHeld {
 		i.stats.record(r.Header.Get(i.events.TypeHeader), disp)
 	}
+	i.log.add(DeliveryRecord{
+		At:          started,
+		Kind:        "arrival",
+		Type:        r.Header.Get(i.events.TypeHeader),
+		Status:      probe.status,
+		Disposition: disp,
+	})
 	i.tel.Observe(Exchange{
 		Lane:     LaneDelivery,
+		Group:    r.Header.Get(i.events.TypeHeader),
 		Method:   r.Method,
 		Path:     r.URL.Path,
 		Status:   probe.status,
@@ -159,6 +167,7 @@ func (i *Ingest) Stats() DeliveryStats {
 // race the notification exists to remove.
 func (i *Ingest) applyAndNotify(ctx context.Context, d *Delivery) (DeliveryDisposition, error) {
 	disp, err := i.apply(ctx, d)
+	i.recordApply(d, disp, err)
 	if err != nil || i.notifier == nil {
 		return disp, err
 	}

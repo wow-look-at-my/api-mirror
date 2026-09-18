@@ -3,10 +3,12 @@ package mirror
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +34,8 @@ type Engine struct {
 	replay   *Replayer
 	debounce *Debouncer
 	vocab    set.Set[string]
+	ids      *identities
+	settled  settledValues
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.
@@ -41,11 +45,9 @@ func withForward(ctx context.Context, h http.Header) context.Context {
 	return context.WithValue(ctx, forwardKey{}, h)
 }
 
+// forwardFrom returns the caller's headers, or nil for the mirror's own fetch.
 func forwardFrom(ctx context.Context) http.Header {
 	h, _ := ctx.Value(forwardKey{}).(http.Header)
-	if h == nil {
-		return http.Header{}
-	}
 	return h
 }
 
@@ -75,6 +77,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		store:   store,
 		up:      up,
 		reveal:  NewRevealer(store, up, vars),
+		ids:     newIdentities(spec.Identity, up, vars),
 		vars:    vars,
 		baseURL: base,
 		tel:     tel,
@@ -85,18 +88,22 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 			pr.SetURL(base)
 			// The upstream does not need the client's address, and adding it
 		},
-		ModifyResponse: stripUpstreamCORS,
+		ModifyResponse: e.revokeOnResponse,
 		// The path an instrumented call site would have missed entirely.
 		Transport: observing(http.DefaultTransport, LanePassthrough, tel),
 	}
 	e.vocab = pathVocabulary(spec)
 	e.debounce = NewDebouncer(spec.Upstream.Debounce)
-	e.admin = NewAdmin(e)
+	e.admin, err = NewAdmin(e)
+	if err != nil {
+		return nil, err
+	}
 	if spec.Notify != nil {
 		e.notify, err = NewNotifier(spec, vars, tel, store.path)
 		if err != nil {
 			return nil, err
 		}
+		e.notify.gate = e.visibleTo
 	}
 	e.refresh = NewRefresher(e)
 	e.replay = NewReplayer(e)
@@ -157,8 +164,36 @@ func routeKind(rt *Route) string {
 }
 
 func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if len(e.spec.Aliases) > 0 {
+		w = &aliasWriter{ResponseWriter: w, aliases: e.spec.Aliases}
+	}
 	rec := newRecorder(w, r)
-	defer func() { e.tel.Requests.Record(rec.entry()) }()
+	defer func() {
+		entry := rec.entry()
+		e.tel.Requests.Record(entry)
+		e.tel.Seen(entry.Principal, entry.At)
+		// A delivery is charted by its own handler, and the dashboard's own
+		// polling would fill the chart with the act of viewing it.
+		if entry.Disposition == DispDelivery || entry.Disposition == DispAdmin {
+			return
+		}
+		detail := string(entry.Disposition)
+		if entry.Reason != "" {
+			detail += " " + entry.Reason
+		}
+		e.tel.Observe(Exchange{
+			Lane:      LaneInbound,
+			Group:     entry.Method + " " + entry.Shape,
+			Method:    entry.Method,
+			Path:      entry.Path,
+			Status:    entry.Status,
+			Bytes:     entry.Bytes,
+			Started:   entry.At,
+			Duration:  entry.Duration,
+			Principal: entry.Principal,
+			Detail:    detail,
+		})
+	}()
 	e.dispatch(rec, r)
 }
 
@@ -166,8 +201,8 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // recorder what it did, because a disposition the log cannot name is traffic
 // nobody can account for.
 func (e *Engine) dispatch(rec *recorder, r *http.Request) {
-	// Canonicalise ahead of every gate below, so they see one spelling. This
-	// grants nothing: the rewritten path meets the same rules.
+	// Canonicalise ahead of every gate below, so they see a single spelling.
+	// This grants nothing: the rewritten path meets the same rules.
 	if p, ok := e.rewritePath(r.URL.EscapedPath()); ok {
 		r = r.Clone(r.Context())
 		r.URL.RawPath = ""
@@ -177,6 +212,12 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		return
 	}
 	if e.health(rec, r) {
+		return
+	}
+	// Ahead of the dashboard, whose prefix may contain it: a caller manages
+	// their own subscriptions with their own credential, not the dashboard's.
+	if e.subscriptionPath(r.URL.Path) {
+		e.serveSubscriptions(rec, r)
 		return
 	}
 	if e.admin != nil && e.admin.Handles(r.URL.Path) {
@@ -192,6 +233,31 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 	// Ahead of the route table, because a relay carries no bearer to resolve.
 	if rl, ok := e.matchRelay(r); ok {
 		e.relay(rec, r, rl)
+		return
+	}
+	if name := e.missingRequired(r); name != "" {
+		rec.note(DispDenied, e.shapeOf(r), "", "unauthenticated")
+		e.writeMessage(rec, http.StatusUnauthorized, "missing required header "+name)
+		return
+	}
+	asserting := e.assertingRoute(r)
+	if asserting {
+		r = withBearerAssertion(r)
+	}
+	principal, refused := e.ids.resolve(r.Context(), r)
+	if refused != nil && asserting {
+		// The upstream decides a bearer the mirror could not verify.
+		e.passthrough(rec, r, PassNoIdentity)
+		return
+	}
+	if refused != nil {
+		rec.note(DispDenied, e.shapeOf(r), "", "identity")
+		e.writeMessage(rec, refused.status, refused.message)
+		return
+	}
+	rec.principal = principal
+	r = r.WithContext(withPrincipal(r.Context(), principal))
+	if e.answerRate(rec, r) {
 		return
 	}
 	if purges, params, ok := e.matchPurges(r); ok {
@@ -262,7 +328,7 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 			e.passthrough(w, r, PassUnrouted)
 			return
 		}
-		key, ok := purgeKey(res, params, r.Header.Get("Authorization"))
+		key, ok := purgeKey(res, params, r)
 		if !ok {
 			e.passthrough(w, r, PassNoIdentity)
 			return
@@ -283,20 +349,24 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 		if _, err := e.store.Delete(r.Context(), res, keys[i]); err != nil {
 			logf("purge %s: %v", purges[i].Path, err)
 		}
+		if err := e.store.Forget(r.Context(), res, keys[i]); err != nil {
+			logf("purge %s: %v", purges[i].Path, err)
+		}
 	}
 }
 
 // purgeKey builds the row key a write addresses. A path parameter the
 // resource does not key on is dropped, so a write on the single item can
 // still name the listing it belongs to, which keys on fewer columns.
-func purgeKey(res *Resource, params map[string]string, auth string) (map[string]string, bool) {
+func purgeKey(res *Resource, params map[string]string, r *http.Request) (map[string]string, bool) {
 	key := make(map[string]string, len(res.Keys))
 	for _, k := range res.Keys {
 		if k.Credential {
-			if auth == "" {
+			v := credentialValue(k, r)
+			if v == "" {
 				return nil, false
 			}
-			key[k.Name] = fingerprint(auth)
+			key[k.Name] = v
 			continue
 		}
 		if value, ok := params[k.Name]; ok {
@@ -341,7 +411,17 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		path:  r.URL.EscapedPath(),
 		body:  m.body,
 	})
+	if !m.route.List {
+		e.refetchIfContradicted(ctx, res, m.key)
+	}
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
+	var relayed *RelayedAnswer
+	if errors.As(err, &relayed) {
+		w.note(DispRelayed, "", "", strconv.Itoa(relayed.Answer.Status))
+		e.revokeRefused(ctx, r.Header.Get("Authorization"), relayed.Answer.Status, relayed.Answer.Header)
+		e.relayAnswer(w, relayed.Answer)
+		return
+	}
 	if err != nil {
 		w.note(DispError, "", "", "upstream")
 		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
@@ -373,7 +453,18 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
-	e.write(w, http.StatusOK, doc, outcome)
+	if res.Store == StoreRaw {
+		w.Header().Set("Content-Type", m.route.Accept[0])
+	}
+	e.write(w, e.storedSuccess(ctx, kind, key), doc, outcome)
+}
+
+func (e *Engine) storedSuccess(ctx context.Context, kind, key string) int {
+	meta, err := e.store.Freshness(ctx, kind, key)
+	if err != nil || meta == nil || meta.Status < 200 || meta.Status >= 300 {
+		return http.StatusOK
+	}
+	return meta.Status
 }
 
 // dispositionOf maps a freshness outcome onto the log's vocabulary.
@@ -410,7 +501,9 @@ func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
 // cache state. A consumer that works against a warm cache and breaks against a
 // cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
-	if m.route.List {
+	// A document resource keeps each answer whole, a paged list included, so
+	// the stored document IS the answer and is never wrapped another time.
+	if m.route.List && !res.whole() {
 		rows, err := e.store.List(ctx, res, m.key)
 		if err != nil {
 			return nil, err
@@ -437,8 +530,11 @@ func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error)
 
 // rebuildRow renders stored row as the document a consumer receives.
 func rebuildRow(res *Resource, row Row) (any, error) {
-	if res.Store == StoreDocument {
-		s, _ := row["document"].(string)
+	s, _ := row["document"].(string)
+	switch res.Store {
+	case StoreRaw:
+		return rawDoc(s), nil
+	case StoreDocument:
 		return decodeJSON([]byte(s))
 	}
 	return rebuild(res, row)
@@ -446,12 +542,16 @@ func rebuildRow(res *Resource, row Row) (any, error) {
 
 // write sends a rebuilt answer, saying plainly where it came from.
 func (e *Engine) write(w http.ResponseWriter, status int, doc any, outcome Outcome) {
-	body, err := marshalJSON(doc)
-	if err != nil {
-		http.Error(w, "render answer: "+err.Error(), http.StatusInternalServerError)
-		return
+	raw, isRaw := doc.(rawDoc)
+	body := []byte(raw)
+	if !isRaw {
+		var err error
+		if body, err = marshalJSON(doc); err != nil {
+			http.Error(w, "render answer: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 	}
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Mirror-Cache", string(outcome))
 	w.WriteHeader(status)
 	if _, err := w.Write(body); err != nil {
@@ -500,8 +600,36 @@ func stripUpstreamCORS(resp *http.Response) error {
 	return nil
 }
 
-// principalOf identifies who is asking.
+// missingRequired names the earliest required caller header this request lacks.
+func (e *Engine) missingRequired(r *http.Request) string {
+	for _, name := range e.spec.Upstream.Require {
+		if strings.TrimSpace(r.Header.Get(name)) == "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// writeMessage answers with a JSON error body, the shape API clients parse.
+func (e *Engine) writeMessage(w http.ResponseWriter, status int, message string) {
+	body, err := marshalJSON(map[string]any{"message": message})
+	if err != nil {
+		http.Error(w, message, status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(body); err != nil {
+		logf("write message: %v", err)
+	}
+}
+
+// principalOf identifies who is asking: the principal dispatch resolved, or,
+// on a path dispatch does not resolve, the credential's fingerprint.
 func principalOf(r *http.Request) string {
+	if p, ok := r.Context().Value(principalKey{}).(string); ok {
+		return p
+	}
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
 		return ""

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -41,18 +42,22 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if plan == nil {
 		return FetchResult{}, fmt.Errorf("fetch %s/%s: no plan on the context", kind, key)
 	}
-	answer, err := e.up.Call(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), plan.body)
+	answer, err := e.up.Call(plan.media(ctx), plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), plan.body)
 	if err != nil {
 		return FetchResult{}, err
 	}
 	if answer.Status == 304 {
 		return FetchResult{ETag: etag}, nil
 	}
-	if !storable(e.up, plan.route, answer) {
-		// The route models the request but not this answer. Storing it anyway
-		// would be a guess written down as a fact.
-		return FetchResult{}, fmt.Errorf("upstream %s answered %d, which route %s does not absorb",
-			plan.path, answer.Status, plan.route.Path)
+	// A refusal the mirror's own identity got says nothing about what a
+	// caller with access would see, so it is never stored as the answer.
+	background := forwardFrom(ctx) == nil && answer.Status >= 400
+	if background || !storable(e.up, plan.route, answer) {
+		return FetchResult{}, &RelayedAnswer{
+			Answer: answer,
+			Outage: answer.Status >= 500 && !e.up.RateLimited(answer),
+			Route:  plan.route.Path,
+		}
 	}
 	if answer.Overflow {
 		return FetchResult{}, fmt.Errorf("upstream %s answered more than the %d byte cap", plan.path, maxBodyBytes)
@@ -64,6 +69,9 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return result, nil
 	}
 
+	if plan.res.Store == StoreRaw {
+		return result, e.store.Put(ctx, plan.res, plan.rawRow(answer.Body), time.Now())
+	}
 	doc, err := decodeJSON(answer.Body)
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("upstream %s: %w", plan.path, err)
@@ -72,6 +80,19 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return FetchResult{}, err
 	}
 	return result, nil
+}
+
+// RelayedAnswer is an upstream answer the route does not store.
+type RelayedAnswer struct {
+	Answer *Answer
+	// Outage marks the upstream itself failing, the a single case every
+	// caller of the key shares, so it alone holds the key off for the backoff.
+	Outage bool
+	Route  string
+}
+
+func (r *RelayedAnswer) Error() string {
+	return fmt.Sprintf("upstream answered %d, which route %s does not absorb", r.Answer.Status, r.Route)
 }
 
 // upstreamPath rebuilds the path this plan asks the upstream for, carrying only
@@ -167,7 +188,10 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 	if err := requireKeys(plan.res, row); err != nil {
 		return fmt.Errorf("route %s: %w", plan.route.Path, err)
 	}
-	return e.store.Put(ctx, plan.res, row, now)
+	if err := e.store.Put(ctx, plan.res, row, now); !errors.Is(err, errStoredIsNewer) {
+		return err
+	}
+	return nil
 }
 
 // requireKeys refuses a row whose identity is incomplete. A row filed under a

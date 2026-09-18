@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,6 +49,8 @@ type Ingest struct {
 	tel      *Telemetry
 	notifier *Notifier
 	stats    deliveryStats
+	log      deliveryLog
+	ordering orderingStats
 }
 
 // NewIngest builds the ingest endpoint a spec declares. vars is the spec's
@@ -79,6 +82,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 		i.byType[ev.Type] = append(i.byType[ev.Type], ev)
 	}
 	i.reorder = NewReorderer(i.window, i.applyAndRecord)
+	i.reorder.onBatch = i.ordering.batch
 	return i, nil
 }
 
@@ -139,6 +143,15 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 	id := deliveryID(raw)
 	deliveries := make([]*Delivery, 0, len(evs))
 	for _, ev := range evs {
+		ok, err := handles(ev, payload)
+		if err != nil {
+			logf("delivery %s (%s -> %s): %v", id, typ, ev.Resource, err)
+			i.answer(w, DeliveryFailed)
+			return
+		}
+		if !ok {
+			continue
+		}
 		subject, at, err := orderOf(ev, payload)
 		if err != nil {
 			logf("delivery %s (%s -> %s): %v", id, typ, ev.Resource, err)
@@ -146,14 +159,19 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		deliveries = append(deliveries, &Delivery{
-			ID:      id,
-			Type:    typ,
-			Event:   ev,
-			Payload: payload,
-			Raw:     raw,
-			Subject: subject,
-			At:      at,
+			ID:       id,
+			Type:     typ,
+			Event:    ev,
+			Payload:  payload,
+			Raw:      raw,
+			Subject:  subject,
+			At:       at,
+			Received: i.now(),
 		})
+	}
+	if len(deliveries) == 0 {
+		i.answer(w, DeliveryIgnored)
+		return
 	}
 
 	if i.window > 0 {
@@ -176,6 +194,22 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		disp = foldDisposition(disp, one)
 	}
 	i.answer(w, disp)
+}
+
+// handles reports whether an event takes this delivery: its action is listed,
+// and its when predicate renders truthy.
+func handles(ev *Event, payload any) (bool, error) {
+	if len(ev.Actions) > 0 && !containsString(ev.Actions, fmt.Sprint(lookupPath(payload, "action"))) {
+		return false, nil
+	}
+	if ev.When == "" {
+		return true, nil
+	}
+	out, err := renderString(ev.When, map[string]any{"payload": payload})
+	if err != nil {
+		return false, fmt.Errorf("event %q when: %w", ev.Type, err)
+	}
+	return isTruthy(out), nil
 }
 
 // foldDisposition answers a fanned-out delivery with its worst outcome, so a
@@ -270,14 +304,29 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		return DeliverySuperseded, nil
 	}
 
-	if ev.Invalidate != nil {
-		if _, err := i.store.Delete(ctx, res, key); err != nil {
+	if ev.Invalidate != nil && ev.Invalidate.All {
+		if _, err := i.store.DeleteAll(ctx, res); err != nil {
 			return DeliveryFailed, err
 		}
 		i.prune(ctx)
 		return DeliveryInvalidated, nil
 	}
-	if err := i.merge(ctx, res, ev, key, d.Payload); err != nil {
+	if ev.Invalidate != nil {
+		if _, err := i.store.Delete(ctx, res, key); err != nil {
+			return DeliveryFailed, err
+		}
+		if err := i.store.Forget(ctx, res, key); err != nil {
+			return DeliveryFailed, err
+		}
+		i.prune(ctx)
+		return DeliveryInvalidated, nil
+	}
+	err = i.merge(ctx, res, ev, key, d.Payload)
+	if errors.Is(err, errStoredIsNewer) {
+		// A fetch already stored a later view than this delivery carries.
+		return DeliverySuperseded, nil
+	}
+	if err != nil {
 		return DeliveryFailed, err
 	}
 	i.prune(ctx)
@@ -293,7 +342,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 //
 // A failure APPLIES the delivery, loudly. A provider sends a delivery, so
 func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
-	if d.Event.Unordered {
+	if d.Event.Unordered || d.At.IsZero() {
 		return false
 	}
 	applied, err := i.store.ApplyWatermark(ctx, d.Subject, d.At)
@@ -389,7 +438,10 @@ func (i *Ingest) merge(ctx context.Context, res *Resource, ev *Event, key map[st
 		}
 		merged[st.Field] = v
 	}
-	return i.store.Put(ctx, res, merged, i.now())
+	if err := i.store.Put(ctx, res, merged, i.now()); err != nil {
+		return err
+	}
+	return i.recordDelivered(ctx, res, ev, key)
 }
 
 // setValue reads declared write out of the payload and coerces it to the

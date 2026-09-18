@@ -28,11 +28,11 @@
 		rather than the mirror's, and it is why the mirror never needs a
 		credential of its own to serve a read.
 
-		The static Authorization below is for the requests that have NO caller:
-		the periodic sweep and the delivery-gap replayer. A forwarded header
-		wins over a static one, so a consumer's own token still answers every
-		read they make. Unset, the header is skipped and the background jobs
-		get whatever an anonymous caller gets.
+		The background Authorization below is for the requests that have NO
+		caller: the periodic sweep, the consistency check and the delivery-gap
+		replayer. A caller's request never carries it. The forwarded one is
+		required, so a request without a token is refused with a 401 before
+		anything is served or forwarded.
 
 		<ratelimit> names the headers that carry a budget. Naming them is what
 		lets the Rate limit tab exist at all, and it is also what tells a
@@ -42,13 +42,38 @@
 	<upstream base="{{ .var.base }}" debounce="5s" retry-after="Retry-After">
 		<header name="Accept">application/vnd.github+json</header>
 		<header name="X-GitHub-Api-Version">2022-11-28</header>
-		<header name="Authorization"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
-		<forward name="Authorization"/>
+		<header name="Authorization" background="true"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
+		<!--
+			With an App configured, the mirror's own calls carry the App's
+			credential instead: the installation token of the owner a refresh
+			or check is about, and the App JWT for the delivery log. The
+			background header above stays the fallback for an owner the App is
+			not installed on.
+		-->
+		<app id="{{ .env.GITHUB_APP_ID }}" key="{{ .env.GITHUB_APP_PRIVATE_KEY }}"
+			key-file="{{ .env.GITHUB_APP_PRIVATE_KEY_PATH }}"
+			installations="/app/installations" account="account.login"
+			mint="/app/installations/{id}/access_tokens" owner-key="owner"/>
+		<forward name="Authorization" required="true"/>
 		<!-- A body-keyed route posts its question, and it has to arrive typed. -->
 		<forward name="Content-Type"/>
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
-			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"/>
+			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"
+			refusal="secondary rate limit" answer="/rate_limit" poll="/rate_limit" poll-field="resources"/>
 	</upstream>
+
+	<!--
+		A caller is a GitHub user by numeric id, which survives a login rename
+		and every token rotation, so earned grants outlive the token that
+		earned them. A token GET /user will not answer for (an installation
+		token) keeps its fingerprint. An App whose installation tokens rotate
+		hourly asserts its identity with an App JWT, which GET /app accepts
+		only when the App's private key signed it.
+	-->
+	<identity ttl="1h">
+		<user path="/user" principal="user:{{ .doc.id }}" name="{{ .doc.login }}"/>
+		<assertion header="X-Mirror-Identity" as="Authorization" scheme="Bearer" path="/app" principal="app:{{ .doc.id }}" name="{{ .doc.slug }}"/>
+	</identity>
 
 	<!--
 		A repository. Its visibility is load-bearing twice over: it is the fast
@@ -59,7 +84,11 @@
 	<resource name="repo" ttl="6h">
 		<key name="owner" from="owner.login" fold="true"/>
 		<key name="name" from="name" fold="true"/>
+		<!-- The keys fold for lookup; these answer the spelling GitHub states. -->
+		<field name="owner_login" type="text">owner.login</field>
+		<field name="name_given" type="text">name</field>
 		<field name="repo_id" type="int">id</field>
+		<field name="full_name" type="text">full_name</field>
 		<field name="visibility" type="text">visibility</field>
 		<field name="private" type="bool">private</field>
 		<field name="default_branch" type="text">default_branch</field>
@@ -78,7 +107,10 @@
 	<resource name="pull" ttl="1h">
 		<key name="owner" from="base.repo.owner.login" fold="true"/>
 		<key name="repo" from="base.repo.name" fold="true"/>
-		<key name="number" from="number"/>
+		<!-- The keys fold for lookup; these answer the spelling GitHub states. -->
+		<field name="owner_login" type="text">base.repo.owner.login</field>
+		<field name="repo_given" type="text">base.repo.name</field>
+		<key name="number" from="number" type="int"/>
 		<field name="title" type="text">title</field>
 		<field name="state" type="text">state</field>
 		<field name="draft" type="bool">draft</field>
@@ -88,7 +120,15 @@
 		<field name="base_sha" type="text">base.sha</field>
 		<field name="merged" type="bool">merged</field>
 		<field name="merge_commit_sha" type="text">merge_commit_sha</field>
-		<field name="updated_at" type="time">updated_at</field>
+		<field name="updated_at" type="time" version="true">updated_at</field>
+		<field name="user_login" type="text">user.login</field>
+		<field name="labels" type="json">labels</field>
+		<field name="auto_merge" type="json">auto_merge</field>
+		<field name="mergeable" type="bool">mergeable</field>
+		<field name="mergeable_state" type="text">mergeable_state</field>
+		<field name="additions" type="int">additions</field>
+		<field name="deletions" type="int">deletions</field>
+		<field name="changed_files" type="int">changed_files</field>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>
@@ -107,6 +147,20 @@
 		<key name="repo" fold="true"/>
 		<key name="ref"/>
 		<field name="tip_sha" type="text">object.sha</field>
+		<!-- The key is the short name a route names; GitHub answers the full ref. -->
+		<field name="ref_full" type="text">ref</field>
+		<field name="object_type" type="text">object.type</field>
+		<!--
+			An open pull request states its base sha on its own deliveries, so
+			a lost push leaves the pull row disagreeing with this one. A pull's
+			base sha lags its branch, which is why one refetch settles a value.
+		-->
+		<contradicted-by resource="pull" field="base_sha" against="tip_sha">
+			<on key="owner" column="owner"/>
+			<on key="repo" column="repo"/>
+			<on key="ref" column="base_ref"/>
+			<only column="state" value="open"/>
+		</contradicted-by>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>
@@ -122,7 +176,7 @@
 		<key name="context"/>
 		<field name="state" type="text">state</field>
 		<field name="description" type="text">description</field>
-		<field name="updated_at" type="time">updated_at</field>
+		<field name="updated_at" type="time" version="true">updated_at</field>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>
@@ -131,25 +185,16 @@
 	</resource>
 
 	<!--
-		One historical status POST. Append-only: GitHub never mutates or
-		deletes a posted status, it only adds a newer one for the same
-		context. Keyed by GitHub's own status id, so a redelivered or
-		re-fetched post upserts onto itself rather than duplicating. Distinct
-		from `commit_status` above, which holds the latest-per-context
-		rollup; this one holds the full history the raw list endpoint (a
-		bare array, unlike the enveloped combined-status endpoint) answers
-		with.
+		A page of a commit's status history, as the upstream ordered it:
+		newest first. Stored whole per page, because rows absorbed from
+		different pages and sorted by id cannot answer a page or its order.
 	-->
-	<resource name="status_post" ttl="10m">
+	<resource name="statuses_list" store="document" ttl="10m">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="sha"/>
-		<key name="id"/>
-		<field name="context" type="text">context</field>
-		<field name="state" type="text">state</field>
-		<field name="description" type="text">description</field>
-		<field name="target_url" type="text">target_url</field>
-		<field name="created_at" type="time">created_at</field>
+		<key name="per_page"/>
+		<key name="page"/>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>
@@ -432,12 +477,51 @@
 		</reveal>
 	</resource>
 
+	<!--
+		A page of a repository's pull requests, exactly as asked: state, head,
+		base, sort, direction and paging all change which PRs are on it and in
+		what order, so each is part of the key. The single pull rows cannot
+		answer this, because they hold closed PRs too and know nothing of pages.
+	-->
+	<resource name="pulls_list" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="state"/>
+		<key name="head"/>
+		<key name="base"/>
+		<key name="sort"/>
+		<key name="direction"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
 	<resource name="pull_files" store="document" ttl="24h">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="number"/>
 		<key name="per_page"/>
 		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		A pull request's unified diff, kept byte for byte. GitHub refuses a
+		diff past its size limit with 406, and that verdict is as stable as
+		the diff itself, so it is kept too.
+	-->
+	<resource name="pull_diff" store="raw" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="number"/>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>
@@ -465,12 +549,16 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/pulls" resource="pull" list="true">
+	<route method="GET" path="/repos/{owner}/{repo}/pulls" resource="pulls_list" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
-		<param name="state" type="text" default="open"/>
-		<param name="per_page" type="int" default="30" min="1" max="100"/>
-		<param name="page" type="int" default="1" min="1" max="100"/>
+		<param name="state" type="text" default="open" key="true"/>
+		<param name="head" type="text" default="" key="true"/>
+		<param name="base" type="text" default="" key="true"/>
+		<param name="sort" type="text" default="created" key="true"/>
+		<param name="direction" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull">
@@ -479,7 +567,14 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref}" resource="branch">
+	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull_diff">
+		<accept>application/vnd.github.diff</accept>
+		<accept>application/vnd.github.v3.diff</accept>
+		<absorb status="404"/>
+		<absorb status="406"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref*}" resource="branch">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
@@ -491,11 +586,11 @@
 		`complete="true"`: statuses are append-only history, so a page never
 		omits something that was deleted. There is nothing here to delete.
 	-->
-	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}/statuses" resource="status_post" list="true">
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}/statuses" resource="statuses_list" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
-		<param name="per_page" type="int" default="30" min="1" max="100"/>
-		<param name="page" type="int" default="1" min="1" max="100"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<!--
@@ -504,14 +599,14 @@
 		caller using the old path shares the cache with one using the new, and
 		a delivery that moves those rows moves the answer to both.
 	-->
-	<route method="GET" path="/repos/{owner}/{repo}/statuses/{sha}" resource="status_post" list="true">
+	<route method="GET" path="/repos/{owner}/{repo}/statuses/{sha}" resource="statuses_list" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
-		<param name="per_page" type="int" default="30" min="1" max="100"/>
-		<param name="page" type="int" default="1" min="1" max="100"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/contents/{path}" resource="contents">
+	<route method="GET" path="/repos/{owner}/{repo}/contents/{path*}" resource="contents">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
@@ -525,7 +620,7 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir}" resource="readme_dir">
+	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir*}" resource="readme_dir">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
@@ -557,13 +652,13 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/git/ref/{ref}" resource="git_ref">
+	<route method="GET" path="/repos/{owner}/{repo}/git/ref/{ref*}" resource="git_ref">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/git/matching-refs/heads/{prefix}" resource="matching_refs">
+	<route method="GET" path="/repos/{owner}/{repo}/git/matching-refs/heads/{prefix*}" resource="matching_refs">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -578,7 +673,7 @@
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/compare/{basehead}" resource="compare">
+	<route method="GET" path="/repos/{owner}/{repo}/compare/{basehead*}" resource="compare">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
@@ -639,21 +734,21 @@
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/branches" resource="branches_list" list="true" complete="true">
+	<route method="GET" path="/repos/{owner}/{repo}/branches" resource="branches_list" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/files" resource="pull_files" list="true" complete="true">
+	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/files" resource="pull_files" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
-	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/commits" resource="pull_commits" list="true" complete="true">
+	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/commits" resource="pull_commits" list="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -701,11 +796,17 @@
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>
 
-		<event type="repository" resource="repo" clock="repository.updated_at">
+		<!-- GitHub sends these three to every App whether or not it subscribes. -->
+		<subscriptions path="/app" field="events" always="installation,installation_repositories,github_app_authorization"/>
+
+		<event type="repository" resource="repo" clock="repository.updated_at" when='{{ ne .payload.action "deleted" }}'>
 			<subject>repo:<value name="payload.repository.full_name"/></subject>
 			<apply>
 				<set field="owner">repository.owner.login</set>
 				<set field="name">repository.name</set>
+				<set field="owner_login">repository.owner.login</set>
+				<set field="name_given">repository.name</set>
+				<set field="full_name">repository.full_name</set>
 				<set field="repo_id">repository.id</set>
 				<set field="visibility">repository.visibility</set>
 				<set field="private">repository.private</set>
@@ -724,14 +825,23 @@
 			once are two independent views, and ordering them against each
 			other would discard one.
 		-->
-		<event type="push" resource="branch" clock="repository.pushed_at">
+		<event type="push" resource="branch" clock="repository.pushed_at" when='{{ and (hasPrefix "refs/heads/" .payload.ref) (not .payload.deleted) }}'>
 			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
 			<apply>
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
+				<set field="ref_full">ref</set>
+				<set field="object_type" expr="commit"/>
 				<set field="tip_sha">after</set>
 			</apply>
+		</event>
+		<event type="push" resource="branch" clock="repository.pushed_at" when='{{ and (hasPrefix "refs/heads/" .payload.ref) .payload.deleted }}'>
+			<subject>ref-deleted:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
+			<invalidate reason="a deleting push states an all-zero after, which is no tip; the row must stop being served"/>
 		</event>
 
 		<!--
@@ -807,6 +917,8 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">number</set>
+				<set field="owner_login">repository.owner.login</set>
+				<set field="repo_given">repository.name</set>
 				<set field="title">pull_request.title</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
@@ -817,6 +929,13 @@
 				<set field="merged">pull_request.merged</set>
 				<set field="merge_commit_sha">pull_request.merge_commit_sha</set>
 				<set field="updated_at">pull_request.updated_at</set>
+				<set field="user_login">pull_request.user.login</set>
+				<set field="labels">pull_request.labels</set>
+				<set field="auto_merge" null="allow">pull_request.auto_merge</set>
+				<!-- A null mergeable is GitHub recomputing the merge after a push, so
+				the old verdict describes a head that no longer exists. -->
+				<set field="mergeable" null="allow">pull_request.mergeable</set>
+				<set field="mergeable_state">pull_request.mergeable_state</set>
 			</apply>
 		</event>
 
@@ -885,6 +1004,8 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">pull_request.number</set>
+				<set field="owner_login">repository.owner.login</set>
+				<set field="repo_given">repository.name</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
 				<set field="head_sha">pull_request.head.sha</set>
@@ -962,6 +1083,218 @@
 			one has to go as well. The key therefore stops at the repository and
 			reaches every label in it.
 		-->
+		<!--
+			Every answer a push moves beyond the branch row: the ref lookups, the
+			commit and branch listings, and compares against any ref. The payload
+			states one ref's new tip, and each of these is keyed by a ref
+			spelling, a page or a base...head pair the payload cannot name, so
+			the key stops at the repository. A stale compare is the worst of
+			them: a cached behind_by of 0 stops a PR from ever being updated.
+		-->
+		<event type="push" resource="git_ref" clock="repository.pushed_at">
+			<subject>git-ref:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answers are keyed by ref spelling, and the payload names one ref in one spelling"/>
+		</event>
+
+		<event type="push" resource="matching_refs" clock="repository.pushed_at">
+			<subject>matching-refs:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answer is every ref under a prefix, and the payload states one"/>
+		</event>
+
+		<event type="push" resource="commits_list" clock="repository.pushed_at">
+			<subject>commits:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a page of history shifts with every new commit, and the payload cannot say which page a commit lands on"/>
+		</event>
+
+		<event type="push" resource="compare" clock="repository.pushed_at">
+			<subject>compare:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a compare's ahead_by, behind_by and files are computed by the upstream against both tips, and the payload moves one of them"/>
+		</event>
+
+		<event type="push" resource="branches_list" clock="repository.pushed_at">
+			<subject>branches:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answer is a page of branches with their tips, and the payload cannot say which page this branch is on"/>
+		</event>
+
+		<!--
+			A pull request's files and commits change on every synchronize, and
+			the payload states the new head, not the diff or the commit list.
+		-->
+		<event type="pull_request" resource="pulls_list" clock="pull_request.updated_at">
+			<subject>pulls-list:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the stored answer is a filtered, ordered page, and the payload cannot say which pages this PR enters or leaves"/>
+		</event>
+
+		<event type="pull_request" resource="pull_files" clock="pull_request.updated_at">
+			<subject>pull-files:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="number">number</key>
+			<invalidate reason="the payload states the new head sha and never the changed files"/>
+		</event>
+
+		<!--
+			An installation created, deleted, suspended or given other
+			repositories changes what that App may mint and which repositories
+			it covers. The payload names the installation and the App, never
+			the new coverage or token, so the App's answers are dropped.
+		-->
+		<!--
+			A deleted repository is gone, and a renamed one stops answering to
+			its old name: the row filed under that name is dropped. The rename's
+			new row is written by the repository handler above.
+		-->
+		<event type="repository" resource="repo" clock="repository.updated_at" action="deleted">
+			<subject>repo-gone:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="name">repository.name</key>
+			<invalidate reason="the payload states the repository was deleted, and there is no row to write"/>
+		</event>
+		<event type="repository" resource="repo" clock="repository.updated_at" action="renamed">
+			<subject>repo-renamed:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="name">changes.repository.name.from</key>
+			<invalidate reason="the old name no longer names this repository"/>
+		</event>
+		<event type="repository" resource="repo" clock="repository.updated_at" action="transferred">
+			<subject>repo-transferred:<value name="payload.repository.full_name"/></subject>
+			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
+			<key field="name">repository.name</key>
+			<invalidate reason="the old owner no longer names this repository"/>
+		</event>
+		<event type="repository" resource="org_repos" clock="repository.updated_at" action="transferred">
+			<subject>org-repos-transferred:<value name="payload.repository.full_name"/></subject>
+			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
+			<invalidate reason="the repository left the old owner's list, which can only be refetched"/>
+		</event>
+		<event type="repository" resource="owner_user_repos" clock="repository.updated_at" action="transferred">
+			<subject>user-repos-transferred:<value name="payload.repository.full_name"/></subject>
+			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
+			<invalidate reason="the repository left the old owner's list, which can only be refetched"/>
+		</event>
+
+		<event type="installation" resource="install_token" clock="installation.updated_at">
+			<subject>install-token:<value name="payload.installation.id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<key field="id">installation.id</key>
+			<invalidate reason="the payload states the installation changed, never the token a mint would now return"/>
+		</event>
+		<event type="installation" resource="app_installations" clock="installation.updated_at">
+			<subject>app-installations:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="the listing is stored per page, and the payload cannot say which page the installation sits on"/>
+		</event>
+		<event type="installation" resource="repo_installation" clock="installation.updated_at">
+			<subject>repo-installation:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="a not-installed verdict names no installation, so every one the App holds may now be wrong"/>
+		</event>
+		<event type="installation" resource="owner_installation" clock="installation.updated_at">
+			<subject>owner-installation:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="a not-installed verdict names no installation, so every one the App holds may now be wrong"/>
+		</event>
+		<event type="installation_repositories" resource="install_token" clock="installation.updated_at">
+			<subject>install-token-repos:<value name="payload.installation.id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<key field="id">installation.id</key>
+			<invalidate reason="a token minted before the coverage changed reaches the old repositories"/>
+		</event>
+		<event type="installation_repositories" resource="repo_installation" clock="installation.updated_at">
+			<subject>repo-installation-repos:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="the payload lists what was added and removed, and a stored not-installed verdict for an added repository is now wrong"/>
+		</event>
+		<!--
+			A merge arrives twice: as a push to the base branch and as this
+			closed pull request, which names the commit the merge put on the
+			base. Sharing the push's subject lets the watermark order the two.
+		-->
+		<event type="pull_request" resource="branch" clock="pull_request.merged_at" action="closed" when="{{ .payload.pull_request.merged }}">
+			<subject>ref:<value name="payload.repository.full_name"/>:refs/heads/<value name="payload.pull_request.base.ref"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="repo">repository.name</set>
+				<set field="ref">pull_request.base.ref</set>
+				<set field="ref_full" expr="refs/heads/{{ .payload.pull_request.base.ref }}"/>
+				<set field="object_type" expr="commit"/>
+				<set field="tip_sha">pull_request.merge_commit_sha</set>
+			</apply>
+		</event>
+		<event type="installation_repositories" resource="installation_repos" clock="installation.updated_at">
+			<subject>installation-repos:<value name="payload.installation.id"/></subject>
+			<invalidate all="true" reason="the rows are keyed by installation token, which no delivery names, and the payload says the covered repositories changed"/>
+		</event>
+		<event type="installation" resource="installation_repos" clock="installation.updated_at">
+			<subject>installation-repos-lifecycle:<value name="payload.installation.id"/></subject>
+			<invalidate all="true" reason="the rows are keyed by installation token, which no delivery names, and a deleted or suspended installation lists nothing"/>
+		</event>
+
+		<event type="pull_request" resource="pull_diff" clock="pull_request.updated_at">
+			<subject>pull-diff:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="number">number</key>
+			<invalidate reason="the payload states the new head sha and never the diff"/>
+		</event>
+
+		<event type="pull_request" resource="pull_commits" clock="pull_request.updated_at">
+			<subject>pull-commits:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="number">number</key>
+			<invalidate reason="the payload states the new head sha and never the commit list"/>
+		</event>
+
+		<!--
+			A status changes the combined rollup the served route answers. The
+			rollup is keyed by the ref the caller asked with, a sha or a branch
+			name, and the payload names only the sha, so the key stops at the
+			repository.
+		-->
+		<event type="status" resource="commit_status_rollup" clock="updated_at">
+			<subject>rollup:<value name="payload.repository.full_name"/>:<value name="payload.sha"/>:<value name="payload.context"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the rollup is recomputed upstream across every context, and it is keyed by whatever ref spelling the caller used"/>
+		</event>
+
+		<event type="status" resource="statuses_list" clock="updated_at">
+			<subject>statuses:<value name="payload.repository.full_name"/>:<value name="payload.sha"/>:<value name="payload.context"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="sha">sha</key>
+			<invalidate reason="a new status is prepended to the history, which shifts every page after it"/>
+		</event>
+
+		<event type="check_run" resource="check_run" clock="check_run.completed_at">
+			<subject>check-run:<value name="payload.repository.full_name"/>:<value name="payload.check_run.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="check_run_id">check_run.id</key>
+			<invalidate reason="the stored answer is a trimmed document whose shape the delivery's check_run object does not match field for field"/>
+		</event>
+
+		<event type="workflow_job" resource="workflow_job" clock="workflow_job.started_at">
+			<subject>single-job:<value name="payload.repository.full_name"/>:<value name="payload.workflow_job.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="job_id">workflow_job.id</key>
+			<invalidate reason="the stored answer is a trimmed document whose shape the delivery's workflow_job object does not match field for field"/>
+		</event>
+
 		<event type="label" resource="label" clock="repository.updated_at">
 			<subject>label:<value name="payload.repository.full_name"/>:<value name="payload.label.name"/></subject>
 			<key field="owner">repository.owner.login</key>
@@ -988,13 +1321,26 @@
 		correct here, since the TTL below is well under GitHub's token
 		lifetime, so a "hit" is still a live, usable token.
 	-->
-	<resource name="install_token" store="document" ttl="50m">
-		<key name="token_fp" credential="true"/>
+	<!--
+		The request body narrows the token (repositories, permissions), so it
+		is part of the key and travels upstream: a mint asked for one repo must
+		never be answered with a token minted for all of them.
+	-->
+	<!--
+		The App-JWT routes below are asked with a JWT the App re-signs every
+		few minutes, so a row keyed by its fingerprint would never be read
+		twice. assert="true" verifies the bearer through <identity><assertion>
+		(GET /app) and credential="principal" keys the row by the verified
+		app:<id>; a bearer that does not verify is forwarded uncached.
+	-->
+	<resource name="install_token" store="document" ttl="50m" revoke-on-refusal="token">
+		<key name="app" credential="principal"/>
 		<key name="id"/>
+		<key name="request"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token"/>
+	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token" body-key="request" assert="true"/>
 
 	<!--
 		Which installation covers a repository or an owner. An App asks this
@@ -1007,20 +1353,20 @@
 		installed on asks this over and over.
 	-->
 	<resource name="repo_installation" store="document" ttl="1h">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="GET" path="/repos/{owner}/{repo}/installation" resource="repo_installation">
+	<route method="GET" path="/repos/{owner}/{repo}/installation" resource="repo_installation" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<resource name="owner_installation" store="document" ttl="1h">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<key name="kind"/>
 		<key name="owner" fold="true"/>
 		<reveal><credential/></reveal>
@@ -1031,14 +1377,14 @@
 		shape, so they share a resource and the kind key keeps a user named
 		like an org from answering the other question.
 	-->
-	<route method="GET" path="/orgs/{owner}/installation" resource="owner_installation">
+	<route method="GET" path="/orgs/{owner}/installation" resource="owner_installation" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="kind" type="text" default="org" key="true"/>
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/users/{owner}/installation" resource="owner_installation">
+	<route method="GET" path="/users/{owner}/installation" resource="owner_installation" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="kind" type="text" default="user" key="true"/>
@@ -1080,16 +1426,6 @@
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
-	</route>
-
-	<resource name="rate_limit" store="document" ttl="1m">
-		<key name="token_fp" credential="true"/>
-		<reveal><credential/></reveal>
-	</resource>
-
-	<route method="GET" path="/rate_limit" resource="rate_limit">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="org_runners" store="document">
@@ -1228,7 +1564,12 @@
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="POST" path="/graphql" resource="graphql" body-key="query">
+	<!--
+		A mutation is a write. Cached, a retry inside the TTL would be answered
+		from the row and never run, so any body naming one is forwarded.
+	-->
+	<route method="POST" path="/graphql" resource="graphql" body-key="query"
+		bypass='"query"\s*:\s*"[^"]*\bmutation\b'>
 		<accept>application/json</accept>
 	</route>
 
@@ -1301,28 +1642,29 @@
 	</route>
 
 	<!--
-		App-JWT-authenticated: the App's own identity, its installations, and
-		one installation's repo coverage. Still credential-keyed: a JWT is
-		still a caller's own credential, so the same shape applies.
+		The App's own identity and its installations, asked with the App JWT
+		and keyed by the verified app:<id> like the mint. One installation's
+		repo coverage is asked with an installation token, and keeps that
+		token's fingerprint.
 	-->
 	<resource name="app_identity" store="document">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="GET" path="/app" resource="app_identity">
+	<route method="GET" path="/app" resource="app_identity" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="app_installations" store="document">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<key name="per_page"/>
 		<key name="page"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="GET" path="/app/installations" resource="app_installations">
+	<route method="GET" path="/app/installations" resource="app_installations" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -1359,6 +1701,10 @@
 	-->
 	<dashboard path="/_mirror" title="GitHub mirror">
 		<token><value name="env.MIRROR_ADMIN_TOKEN"/></token>
+		<!-- Sign-in stays off until both OAuth App credentials are set. -->
+		<sign-in client-id="{{ .env.GITHUB_OAUTH_CLIENT_ID }}" client-secret="{{ .env.GITHUB_OAUTH_CLIENT_SECRET }}"
+			authorize="https://github.com/login/oauth/authorize" exchange="https://github.com/login/oauth/access_token"
+			user="/user" login="login" admins='{{ or .env.ADMIN_LOGINS "PazerOP" }}' secret="{{ .env.SESSION_SECRET }}" base-url="{{ .env.BASE_URL }}"/>
 	</dashboard>
 
 	<!--
@@ -1372,8 +1718,16 @@
 		cross-origin script, so a page cannot read the budget it is spending.
 		The engine adds its own X-Mirror-* headers to whatever is listed here.
 	-->
+	<!-- Consumers of github-state-mirror read its X-GSM-* spellings. -->
+	<alias from="X-Mirror-Cache" to="X-GSM-Cache"/>
+	<alias from="X-Mirror-Stale" to="X-GSM-Stale"/>
+	<alias from="X-Mirror-Fetched-At" to="X-GSM-Last-Fetched"/>
+
 	<cors max-age="10m">
 		<origin>*</origin>
+		<expose>X-GSM-Cache</expose>
+		<expose>X-GSM-Stale</expose>
+		<expose>X-GSM-Last-Fetched</expose>
 		<expose>X-RateLimit-Limit</expose>
 		<expose>X-RateLimit-Remaining</expose>
 		<expose>X-RateLimit-Used</expose>
@@ -1411,7 +1765,7 @@
 		which value would start it.
 	-->
 	<replay interval="5m" method="POST" lookback="24h" max="25"
-		requires="env.GITHUB_BACKGROUND_TOKEN">
+		requires="env.GITHUB_APP_ID">
 		<list>/app/hook/deliveries?status=failure</list>
 		<redeliver>/app/hook/deliveries/<value name="delivery.id"/>/attempts</redeliver>
 		<id>id</id>

@@ -73,7 +73,15 @@ has — `updated_at` is exactly the name an API uses.
 `<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is
 a path into the absorbed document (`owner.login`) or a template. `store="document"`
 on the resource stores the response body itself rather than columns, for a route
-whose answer is a blob nobody needs to query.
+whose answer is a blob nobody needs to query. `store="raw"` keeps a non-JSON body
+byte for byte: its route asks the upstream for, and answers in, the media type
+of its first `<accept>`, and a route on the same path with a different
+`<accept>` answers the JSON.
+
+`version="true"` on a time or int field makes it the row's clock. A write whose
+version is older than the stored row's is refused, whether it comes from a fetch
+or a delivery, because the delivery watermark only orders deliveries against
+each other.
 
 ### `<route>` — what a consumer asks for
 
@@ -281,6 +289,24 @@ has ingested the delivery and gets the state that delivery was about to replace.
 `<notify>` lets them register an endpoint and sends an HMAC-signed notification
 AFTER the write lands. Registrations live in a separate database file, because
 the cache nuke is safe only for rows the upstream still has a copy of.
+
+A consumer manages its own subscriptions at `path` with its own credential, and
+sees and changes only its own. A notification reaches a subscriber only when its
+principal could read the delivery's row without a probe: the row is public, or
+the principal holds live proof. The fan-out has no caller credential to probe
+with, so anything short of that is silence.
+
+A probe's grant is keyed by the path it asked, not by the row that asked it, so
+every resource proving access with the same question shares one answer.
+
+### `<identity>` — who is asking
+
+`<user>` asks the upstream who a bearer is and names the principal from the
+answer, so grants survive a rotated token. A credential the upstream says is not
+a user keeps its fingerprint; one it cannot answer about fails the request.
+`<assertion>` lets a caller name an identity the upstream verifies, and a route
+with `assert="true"` treats its bearer as that assertion. A key with
+`credential="principal"` files rows under the verified principal.
 
 ### `<cors>`, `<health>`, and debouncing
 

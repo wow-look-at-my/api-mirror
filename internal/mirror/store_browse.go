@@ -190,24 +190,36 @@ func (s *Store) CountDenials(ctx context.Context, now time.Time) (int64, error) 
 	return n, nil
 }
 
-// Rows reads resource's stored rows for the truth browser.
-//
-// The cap is applied here rather than in SQL because List is the read path
-// a resource table has, and a would be a set of rules about
-// what a row means.
-func (s *Store) Rows(ctx context.Context, res *Resource, limit int) ([]Row, bool, error) {
+// Rows reads a resource's stored rows for the truth browser, narrowed to the
+// columns scope names. a single row past the cap is read so a truncated answer
+// says so.
+func (s *Store) Rows(ctx context.Context, res *Resource, scope map[string]string, limit int) ([]Row, bool, error) {
 	if limit <= 0 || limit > browseLimit {
 		limit = browseLimit
 	}
-	rows, err := s.List(ctx, res, nil)
+	cols := columnsOf(res)
+	where, args := keyPredicate(res, scope)
+	rows, err := s.db.QueryContext(ctx, selectStmt(res, where, true)+" LIMIT ?", append(args, limit+1)...)
 	if err != nil {
+		return nil, false, fmt.Errorf("browse %s: %w", res.Name, err)
+	}
+	defer rows.Close()
+	out := make([]Row, 0, limit)
+	for rows.Next() {
+		row, err := scanRow(rows, cols)
+		if err != nil {
+			return nil, false, fmt.Errorf("browse %s: %w", res.Name, err)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, false, err
 	}
-	if len(rows) > limit {
-		// Reported, never silent: quiet rows of, read as all of them.
-		return rows[:limit], true, nil
+	if len(out) > limit {
+		// Reported, never silent: the earliest rows of a table read as all of it.
+		return out[:limit], true, nil
 	}
-	return rows, false, nil
+	return out, false, nil
 }
 
 // asUnix reads a MAX() out of SQLite. The driver answers an aggregate as int64

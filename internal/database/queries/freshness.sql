@@ -33,6 +33,17 @@ ON CONFLICT (kind, key) DO UPDATE SET
 -- name: DeleteFreshness :execrows
 DELETE FROM mirror_freshness WHERE kind = ? AND key = ?;
 
+-- An invalidation names a key or a prefix of one, and every answer stored
+-- beneath it has to be asked again. A prefix compare rather than LIKE, so a key
+-- holding % or _ cannot widen the delete.
+-- name: DeleteFreshnessUnder :execrows
+DELETE FROM mirror_freshness
+WHERE kind = sqlc.arg(kind)
+  AND (key = sqlc.arg(key) OR substr(key, 1, length(sqlc.arg(below))) = sqlc.arg(below));
+
+-- name: DeleteFreshnessKind :execrows
+DELETE FROM mirror_freshness WHERE kind = ?;
+
 -- The sweep asks for the keys of one kind that have aged out, oldest first.
 -- A row still inside its error backoff is included: the sweep is a deliberate
 -- refresh, and a deliberate refresh is exactly what the backoff does not hold

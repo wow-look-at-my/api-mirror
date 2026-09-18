@@ -1,7 +1,7 @@
 # Drives a real api-mirror server with api-cli's own (upstream, not vendored)
 # GitHub sample config, against a deterministic fake upstream. Proves the
 # whole stack end to end: a genuine independent HTTP client gets correctly
-# shaped data on a miss, and a second call is byte-identical with zero new
+# shaped data on a miss, and another call is byte-identical with empty new
 # upstream requests.
 #
 # The docker sandbox falls back for us (no bwrap on the CI runner) and runs
@@ -39,24 +39,26 @@ tests:
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
 		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19931/_requests && curl -s -o /dev/null http://127.0.0.1:19930/nonexistent && break; sleep 0.1; done
-		echo "=== miss ==="
-		GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
-		curl -s http://127.0.0.1:19931/_requests > {outputs.after-miss.txt}
-		echo "=== hit ==="
-		GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
-		curl -s http://127.0.0.1:19931/_requests > {outputs.after-hit.txt}
+		calls() { echo "$(curl -s http://127.0.0.1:19931/_requests) $(curl -s http://127.0.0.1:19931/_log)"; }
+		echo "anonymous-status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19930/repos/octo/demo)"
+		echo "after-anonymous=$(calls)"
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json > {outputs.miss.json}
+		echo "after-miss=$(calls)"
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json > {outputs.hit.json}
+		echo "after-hit=$(calls)"
+		echo "hit-matches-miss=$(cmp -s {outputs.miss.json} {outputs.hit.json} && echo yes || echo no)"
 	  outputs:
 		stdout:
-			- "=== miss ==="
-			- '"default": "main"'
-			- '"archived": false'
-			- '"private": false'
-		!stdout:
-			- "error:"
+			0: "^anonymous-status=401$"
+			1: "^after-anonymous=0 "
+			2: "^after-miss=3 GET:/user GET:/repos/octo/demo GET:/repos/octo/demo$"
+			3: "^after-hit=3 "
+			4: "^hit-matches-miss=yes$"
 		files:
-			after-miss.txt:
+			miss.json:
 				match:
-					- "^3$"
-			after-hit.txt:
-				match:
-					- "^3$"
+					- '"default": "main"'
+					- '"archived": false'
+					- '"private": false'
+				notMatch:
+					- "error:"

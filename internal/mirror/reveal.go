@@ -75,14 +75,17 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 		return Verdict{Allowed: true}, nil
 	}
 
-	k := keyString(res, key)
+	scope, k, err := rv.proofOf(res, key)
+	if err != nil {
+		return refuse(http.StatusBadGateway), err
+	}
 	now := rv.now()
 
 	// A caller the engine could not name holds no proof and can be given none.
 	// Their probe still runs -- their own credential answers it -- but nothing
 	// remembers the answer, so every request pays for.
 	if principal != "" {
-		ok, err := rv.store.HasGrant(ctx, principal, res.Name, k, now)
+		ok, err := rv.store.HasGrant(ctx, principal, scope, k, now)
 		if err != nil {
 			return refuse(http.StatusBadGateway), err
 		}
@@ -90,7 +93,7 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 			return Verdict{Allowed: true}, nil
 		}
 
-		status, found, err := rv.store.Denial(ctx, principal, res.Name, k, now)
+		status, found, err := rv.store.Denial(ctx, principal, scope, k, now)
 		if err != nil {
 			return refuse(http.StatusBadGateway), err
 		}
@@ -99,7 +102,53 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 		}
 	}
 
-	return rv.probe(ctx, principal, res, key, k, forward)
+	return rv.probe(ctx, principal, res, key, scope, k, forward)
+}
+
+// proofScope names grants and denials earned by a probe. They are keyed by the
+// probe's own path, so every resource that proves access by asking the same
+// question shares a single answer: reading a repository's pulls, files and
+// statuses costs a single probe, not a single per row.
+const proofScope = "probe"
+
+func (rv *Revealer) proofOf(res *Resource, key map[string]string) (scope, k string, err error) {
+	if res.Reveal.Probe == nil {
+		return res.Name, keyString(res, key), nil
+	}
+	path, err := rv.probePath(res, key)
+	if err != nil {
+		return "", "", err
+	}
+	return proofScope, path, nil
+}
+
+// Visible reports, without asking the upstream, whether a principal may see
+// this key: a public row, or live proof. Anything short of that is no, because
+// a fan-out has no caller credential to probe with, and a private row's news
+// must never reach someone who has not proven they may read it.
+func (rv *Revealer) Visible(ctx context.Context, principal string, res *Resource, key map[string]string) bool {
+	if res.Reveal == nil || res.Reveal.Credential || principal == "" {
+		return false
+	}
+	public, err := rv.public(ctx, res, key)
+	if err != nil {
+		logf("reveal: visible %s: %v", res.Name, err)
+		return false
+	}
+	if public {
+		return true
+	}
+	scope, k, err := rv.proofOf(res, key)
+	if err != nil {
+		logf("reveal: visible %s: %v", res.Name, err)
+		return false
+	}
+	ok, err := rv.store.HasGrant(ctx, principal, scope, k, rv.now())
+	if err != nil {
+		logf("reveal: visible %s: %v", res.Name, err)
+		return false
+	}
+	return ok
 }
 
 // public evaluates the resource's public predicate against the stored row.
@@ -109,7 +158,7 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 // the fast path opens only on a predicate that positively said yes.
 func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]string) (bool, error) {
 	if res.Reveal.Public == "" {
-		return false, nil
+		return rv.probedPublic(ctx, res, key)
 	}
 	var row Row
 	if completeKey(res, key) {
@@ -129,6 +178,41 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 	return isTruthy(out), nil
 }
 
+// probedPublic answers a probe from what is already stored. When the probe
+// asks a path a route serves from a resource with its own public predicate,
+// and the stored row there is public, everything proven by that probe is
+// public too: a public repository's pulls need no probe.
+func (rv *Revealer) probedPublic(ctx context.Context, res *Resource, key map[string]string) (bool, error) {
+	rule := res.Reveal.Probe
+	if rule == nil || rv.store.spec == nil {
+		return false, nil
+	}
+	path, err := rv.probePath(res, key)
+	if err != nil {
+		return false, nil
+	}
+	for _, rt := range rv.store.spec.Routes {
+		if rt.Method != rule.Method || rt.List {
+			continue
+		}
+		params, ok := matchPath(rt.Path, path)
+		if !ok {
+			continue
+		}
+		target, ok := rv.store.Resource(rt.Resource)
+		if !ok || target == res || target.Reveal == nil || target.Reveal.Public == "" {
+			continue
+		}
+		tkey := make(map[string]string, len(params))
+		for p, v := range params {
+			name := rt.column(p)
+			tkey[name] = foldFor(target, name, v)
+		}
+		return rv.public(ctx, target, tkey)
+	}
+	return false, nil
+}
+
 // probe asks the upstream, with the CALLER's own forwarded credential, whether
 // this caller may read this key.
 //
@@ -138,16 +222,13 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 // transport error, a status that says nothing about access -- is remembered
 // nowhere, because a bad minute upstream must not lock a caller out of their
 // own data for the whole deny window.
-func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, key map[string]string, k string, forward http.Header) (Verdict, error) {
+func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, key map[string]string, scope, k string, forward http.Header) (Verdict, error) {
 	rule := res.Reveal
 	if rule.Probe == nil {
 		// The predicate said no and there is nothing left to ask. The refusal
 		return Verdict{Status: http.StatusNotFound, Reason: DenyNoProof}, nil
 	}
-	path, err := rv.probePath(res, key)
-	if err != nil {
-		return refuse(http.StatusBadGateway), err
-	}
+	path := k
 
 	// Its own lane: the fetch lane would hide what proving access costs.
 	ans, err := rv.up.Call(withLane(ctx, LaneProbe, principal, res.Name), rule.Probe.Method, path, rv.context(key, nil), forward, nil)
@@ -161,7 +242,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 		if principal != "" {
 			g := Grant{
 				Principal: principal,
-				Resource:  res.Name,
+				Resource:  scope,
 				Key:       k,
 				Source:    grantSourceProbe,
 				ExpiresAt: now.Add(rule.GrantTTL),
@@ -179,7 +260,7 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 			fmt.Errorf("reveal probe %s: upstream answered %d, which states nothing about access", res.Name, ans.Status)
 
 	case ans.Status == http.StatusNotFound, ans.Status == http.StatusForbidden:
-		rv.remember(ctx, principal, res, k, ans.Status, now.Add(rule.DenyTTL))
+		rv.remember(ctx, principal, scope, k, ans.Status, now.Add(rule.DenyTTL))
 		return Verdict{Status: ans.Status, Reason: DenyProbe}, nil
 
 	default:
@@ -198,18 +279,18 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 // A bookkeeping failure here does not change the verdict. The upstream proved
 // the refusal; failing to write it down costs extra probe next time, and
 // the log says so.
-func (rv *Revealer) remember(ctx context.Context, principal string, res *Resource, k string, status int, expires time.Time) {
+func (rv *Revealer) remember(ctx context.Context, principal, scope, k string, status int, expires time.Time) {
 	if principal == "" {
 		return
 	}
-	if err := rv.store.RecordDenial(ctx, principal, res.Name, k, status, expires); err != nil {
-		logf("reveal: record denial %s %s/%s: %v", principal, res.Name, k, err)
+	if err := rv.store.RecordDenial(ctx, principal, scope, k, status, expires); err != nil {
+		logf("reveal: record denial %s %s/%s: %v", principal, scope, k, err)
 	}
 	if status != http.StatusForbidden {
 		return
 	}
-	if _, err := rv.store.RevokeGrant(ctx, principal, res.Name, k); err != nil {
-		logf("reveal: revoke grant %s %s/%s: %v", principal, res.Name, k, err)
+	if _, err := rv.store.RevokeGrant(ctx, principal, scope, k); err != nil {
+		logf("reveal: revoke grant %s %s/%s: %v", principal, scope, k, err)
 	}
 }
 
@@ -226,16 +307,20 @@ func (rv *Revealer) RenewOn2xx(ctx context.Context, principal string, res *Resou
 	if res.Reveal == nil || res.Reveal.GrantTTL <= 0 {
 		return
 	}
-	k := keyString(res, key)
+	scope, k, err := rv.proofOf(res, key)
+	if err != nil {
+		logf("reveal: renew grant %s %s: %v", principal, res.Name, err)
+		return
+	}
 	g := Grant{
 		Principal: principal,
-		Resource:  res.Name,
+		Resource:  scope,
 		Key:       k,
 		Source:    grantSourceProbe,
 		ExpiresAt: rv.now().Add(res.Reveal.GrantTTL),
 	}
 	if err := rv.store.RecordGrant(ctx, g); err != nil {
-		logf("reveal: renew grant %s %s/%s: %v", principal, res.Name, k, err)
+		logf("reveal: renew grant %s %s/%s: %v", principal, scope, k, err)
 	}
 }
 

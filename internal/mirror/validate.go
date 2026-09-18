@@ -43,6 +43,14 @@ func (s *Spec) validate() error {
 		}
 		byName[r.Name] = r
 	}
+	for _, r := range s.Resources {
+		if r.Contradiction == nil {
+			continue
+		}
+		if err := r.Contradiction.validate(r, byName); err != nil {
+			return err
+		}
+	}
 	for _, rt := range s.Routes {
 		if err := rt.validate(byName); err != nil {
 			return err
@@ -119,6 +127,17 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 			return fmt.Errorf("<notify> has nothing to announce: this spec declares no <events>")
 		}
 	}
+	if err := s.Identity.validate(s.Upstream.Forward); err != nil {
+		return err
+	}
+	if err := s.Upstream.App.validate(); err != nil {
+		return err
+	}
+	for _, rt := range s.Routes {
+		if rt.Assert && (s.Identity == nil || s.Identity.Assertion == nil) {
+			return fmt.Errorf("route %s: assert=\"true\" verifies the bearer with <identity><assertion>, which the spec does not declare", rt.Path)
+		}
+	}
 	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
 		return fmt.Errorf("<health> names no path, so it registers nothing and every check falls through to the upstream")
 	}
@@ -157,7 +176,7 @@ func (r *Resource) validate() error {
 		if len(r.Fields) == 0 {
 			return fmt.Errorf("resource %q stores columns but declares no <field>: it would serve an empty answer", r.Name)
 		}
-	case StoreDocument:
+	case StoreDocument, StoreRaw:
 		if len(r.Fields) > 0 {
 			return fmt.Errorf("resource %q stores a document, so its <field> declarations would never be read", r.Name)
 		}
@@ -180,6 +199,15 @@ func (r *Resource) validate() error {
 		if (f.From == "") == (f.Expr == "") {
 			return fmt.Errorf("resource %q field %q: give it a source path or an expr, not both and not neither", r.Name, f.Name)
 		}
+		if f.Version && f.Type != FieldTime && f.Type != FieldInt {
+			return fmt.Errorf("resource %q field %q: a version column orders writes, so it must be a time or an int", r.Name, f.Name)
+		}
+	}
+	if r.RevokeOn != "" && r.Store != StoreDocument {
+		return fmt.Errorf("resource %q: revoke-on-refusal names a path in a stored document, and this resource stores %s", r.Name, r.Store)
+	}
+	if len(versionFields(r)) > 1 {
+		return fmt.Errorf("resource %q: more than one version=\"true\" field, and two clocks cannot order a row", r.Name)
 	}
 	for _, k := range r.Keep {
 		if k.Name == "" {
@@ -267,7 +295,15 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if rt.Complete && !rt.List {
 		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
 	}
-	if !rt.List {
+	if rt.Complete && res.whole() {
+		return fmt.Errorf("route %s: complete=\"true\" replace-syncs rows, and a document resource stores each page whole", rt.Path)
+	}
+	// A document resource stores a single answer per key, a list page
+	// included, so every route onto a single must name the whole key or pages share a row.
+	if res.Store == StoreRaw && (rt.List || len(rt.Accept) == 0) {
+		return fmt.Errorf("route %s: a raw resource answers one body in the media type of its first <accept>, so the route needs one and cannot be a list", rt.Path)
+	}
+	if !rt.List || res.whole() {
 		for _, k := range res.Keys {
 			if k.Credential {
 				// The engine fills this from the request, not a route param.
@@ -410,7 +446,7 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
 	}
 	// The path may name a PREFIX of the key, and the delete reaches everything
-	// beneath it. A gap is refused: a key named after a missing one would
+	// beneath it. A gap is refused: a key named after a missing a single would
 	// widen the delete past what the path says.
 	params := pathParams(p.Path)
 	named, missing := 0, ""
@@ -451,7 +487,7 @@ func pathParams(path string) []string {
 	var out []string
 	for _, seg := range strings.Split(path, "/") {
 		if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
-			out = append(out, seg[1:len(seg)-1])
+			out = append(out, strings.TrimSuffix(seg[1:len(seg)-1], "*"))
 		}
 	}
 	return out
@@ -476,10 +512,11 @@ func (e *Events) validate(resources map[string]*Resource) error {
 			return fmt.Errorf("<event> needs a type")
 		}
 		// A type is declared per resource it moves. Repeating a resource stays a mistake: the later declaration silently decides the row.
-		if seen.Contains(ev.Type + "\x00" + ev.Resource) {
+		handler := ev.Type + "\x00" + ev.Resource + "\x00" + strings.Join(ev.Actions, ",") + "\x00" + ev.When
+		if seen.Contains(handler) {
 			return fmt.Errorf("event %q declared twice for resource %q", ev.Type, ev.Resource)
 		}
-		seen.Add(ev.Type + "\x00" + ev.Resource)
+		seen.Add(handler)
 		res, ok := resources[ev.Resource]
 		if !ok {
 			return fmt.Errorf("event %q names resource %q, which is not declared", ev.Type, ev.Resource)
@@ -502,7 +539,7 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		if ev.Invalidate != nil && strings.TrimSpace(ev.Invalidate.Reason) == "" {
 			return fmt.Errorf("event %q: <invalidate> needs a reason stating why the payload cannot answer -- throwing away a value the upstream just handed us is the bug this asks you to justify", ev.Type)
 		}
-		if res.Store == StoreDocument && len(ev.Sets) > 0 {
+		if res.whole() && len(ev.Sets) > 0 {
 			return fmt.Errorf("event %q writes fields into resource %q, which stores a document", ev.Type, res.Name)
 		}
 		known := set.New[string]()
@@ -549,7 +586,13 @@ func validateEventKeys(ev *Event, res *Resource) error {
 	}
 	if ev.Invalidate != nil {
 		// A partial key is legitimate here and deletes everything beneath it,
-		// but naming none of them would delete the resource.
+		// but naming none of them would delete the resource unless it says so.
+		if ev.Invalidate.All {
+			if len(ev.Keys) > 0 {
+				return fmt.Errorf("event %q invalidates all of resource %q: a <key> would narrow nothing", ev.Type, res.Name)
+			}
+			return nil
+		}
 		if len(ev.Keys) == 0 {
 			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about",
 				ev.Type, res.Name)

@@ -161,7 +161,8 @@ func TestTransientUpstreamFailureIsNotStored(t *testing.T) {
 	}))
 
 	first := get(t, e, "/widgets/7")
-	assert.Equal(t, http.StatusBadGateway, first.Code)
+	assert.Equal(t, http.StatusInternalServerError, first.Code,
+		"the caller whose request met the outage gets the upstream's own answer")
 
 	// The failure is remembered only for its backoff window, and the window is
 	require.NoError(t, clearBackoff(e, "widget", "7"))
@@ -186,10 +187,71 @@ func TestBackoffReplaysTheStoredFailure(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 
-	assert.Equal(t, http.StatusBadGateway, get(t, e, "/widgets/7").Code)
+	assert.Equal(t, http.StatusInternalServerError, get(t, e, "/widgets/7").Code)
 	assert.Equal(t, http.StatusBadGateway, get(t, e, "/widgets/7").Code)
 	assert.EqualValues(t, 1, calls.Load(),
 		"a failing upstream is asked once per window, not once per request")
+}
+
+func TestOneCallersRefusalIsRelayedToThemAlone(t *testing.T) {
+	var calls atomic.Int32
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Header.Get("Authorization") == "token revoked" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Trace", "upstream-only")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"message":"Bad credentials"}`))
+			return
+		}
+		w.Write([]byte(`{"id":"7","title":"hello"}`))
+	}), func(s *Spec) { s.Upstream.Forward = append(s.Upstream.Forward, "Authorization") })
+
+	getAs := func(auth string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/widgets/7", nil)
+		req.Header.Set("Authorization", auth)
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	bad := getAs("token revoked")
+	assert.Equal(t, http.StatusUnauthorized, bad.Code)
+	assert.JSONEq(t, `{"message":"Bad credentials"}`, bad.Body.String())
+	assert.Equal(t, "relayed", bad.Header().Get("X-Mirror-Cache"))
+	assert.Empty(t, bad.Header().Get("X-Trace"), "only the headers a client acts on are relayed")
+
+	good := getAs("token fine")
+	assert.Equal(t, http.StatusOK, good.Code,
+		"one caller's refusal must not hold the key off for everyone else")
+	assert.EqualValues(t, 2, calls.Load())
+}
+
+func TestBackgroundRefusalIsNeverStored(t *testing.T) {
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`{"id":"7","title":"private"}`))
+	}), func(s *Spec) {
+		s.Upstream.Forward = append(s.Upstream.Forward, "Authorization")
+		s.Routes[0].Absorb = []int{http.StatusNotFound}
+	})
+
+	res := mustResource(t, e, "widget")
+	plan := &fetchPlan{route: e.spec.Routes[0], res: res, key: map[string]string{"id": "7"}, path: "/widgets/7"}
+	ctx := withForward(withPlan(context.Background(), plan), nil)
+	_, err := e.fresh.Refresh(ctx, "widget", keyString(res, plan.key))
+	var relayed *RelayedAnswer
+	require.ErrorAs(t, err, &relayed)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/widgets/7", nil)
+	req.Header.Set("Authorization", "token member")
+	e.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"a 404 the mirror's own identity got must not answer a caller who can see the row")
 }
 
 func TestAbsorbedNotFoundIsRemembered(t *testing.T) {

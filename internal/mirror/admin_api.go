@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"cmp"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,8 +58,15 @@ type TimelineView struct {
 	Stats  TimelineStats `json:"stats"`
 }
 
+// timeline answers the frames after ?since=<seq>, so a page polling every few
+// seconds is sent what is new rather than the whole ring each time.
 func (a *Admin) timeline(w http.ResponseWriter, r *http.Request) {
-	frames := a.engine.tel.Timeline.Frames()
+	since, err := strconv.ParseUint(cmp.Or(r.URL.Query().Get("since"), "0"), 10, 64)
+	if err != nil {
+		http.Error(w, "since: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	frames := a.engine.tel.Timeline.Since(since)
 	if lane := r.URL.Query().Get("lane"); lane != "" {
 		filtered := frames[:0:0]
 		for _, f := range frames {
@@ -77,14 +85,26 @@ type RatesView struct {
 	// Declared separates "no traffic yet" from "cannot read a budget at all".
 	Declared bool        `json:"declared"`
 	Headers  RateHeaders `json:"headers"`
+	// Live is asked per App installation; LiveNote says why it is empty.
+	Live     []LiveRate `json:"live"`
+	LiveNote string     `json:"live_note,omitempty"`
+	// Names are the verified display names of the principals above.
+	Names map[string]string `json:"names"`
 }
 
-func (a *Admin) rates(w http.ResponseWriter, _ *http.Request) {
+func (a *Admin) rates(w http.ResponseWriter, r *http.Request) {
 	h := a.engine.spec.Upstream.Rate
+	live, note := a.engine.liveRates(r.Context())
+	if live == nil {
+		live = []LiveRate{}
+	}
 	writeJSON(w, http.StatusOK, RatesView{
 		Budgets:  a.engine.tel.Rates.Snapshot(),
 		Declared: h.declared(),
 		Headers:  h,
+		Live:     live,
+		LiveNote: note,
+		Names:    a.engine.ids.names(),
 	})
 }
 
@@ -108,11 +128,15 @@ type PrincipalsView struct {
 	Principals []PrincipalStanding `json:"principals"`
 	Standing   *Standing           `json:"standing,omitempty"`
 	Denials    int64               `json:"denials"`
+	// Names and LastSeen are live views: names from the identity verdicts
+	// still held, last-seen since this process started.
+	Names    map[string]string    `json:"names"`
+	LastSeen map[string]time.Time `json:"last_seen"`
 }
 
 func (a *Admin) principals(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	view := PrincipalsView{}
+	view := PrincipalsView{Names: a.engine.ids.names(), LastSeen: a.engine.tel.LastSeen()}
 	list, err := a.engine.store.Principals(r.Context(), now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -181,7 +205,7 @@ func (a *Admin) resources(w http.ResponseWriter, r *http.Request) {
 	for _, res := range a.engine.spec.Resources {
 		view := describeResource(a.engine, res)
 		if want != "" && res.Name == want {
-			rows, truncated, err := a.engine.store.Rows(r.Context(), res, intParam(r, "limit", browseLimit))
+			rows, truncated, err := a.engine.store.Rows(r.Context(), res, scopeOf(r, res), intParam(r, "limit", browseLimit))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -204,6 +228,25 @@ func (a *Admin) resources(w http.ResponseWriter, r *http.Request) {
 		out = append(out, view)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// scopeOf reads the query parameters named after a resource's columns, such
+// as ?owner=acme, as the rows an operator is asking about. A key column is
+// folded as the resource folds it, so the scope matches what was stored.
+func scopeOf(r *http.Request, res *Resource) map[string]string {
+	q := r.URL.Query()
+	scope := map[string]string{}
+	for _, k := range res.Keys {
+		if q.Has(k.Name) {
+			scope[k.Name] = foldKey(k, q.Get(k.Name))
+		}
+	}
+	for _, f := range res.Fields {
+		if q.Has(f.Name) {
+			scope[f.Name] = q.Get(f.Name)
+		}
+	}
+	return scope
 }
 
 func describeResource(e *Engine, res *Resource) ResourceView {
@@ -248,6 +291,13 @@ type EventsView struct {
 	Declared   []EventView   `json:"declared"`
 	Replay     ReplayStats   `json:"replay"`
 	Configured bool          `json:"configured"`
+	// Log is the most recent arrivals and applies, newest earliest.
+	Log        []DeliveryRecord `json:"log"`
+	LogDropped int              `json:"log_dropped"`
+	Ordering   OrderingView     `json:"ordering"`
+	// Missing is absent, never empty, when the upstream could not be asked.
+	Missing           []MissingSubscription `json:"missing_subscriptions,omitempty"`
+	SubscriptionError string                `json:"subscription_error,omitempty"`
 }
 
 // EventView is declared event and how it is ordered.
@@ -256,13 +306,15 @@ type EventView struct {
 	Resource  string `json:"resource"`
 	Clock     string `json:"clock,omitempty"`
 	Unordered bool   `json:"unordered,omitempty"`
+	Actions   string `json:"actions,omitempty"`
+	When      string `json:"when,omitempty"`
 	Sets      int    `json:"sets"`
 	// Invalidate is the escape hatch's stated reason; empty means it applies.
 	Invalidate string `json:"invalidate,omitempty"`
 }
 
-func (a *Admin) events(w http.ResponseWriter, _ *http.Request) {
-	view := EventsView{Replay: a.engine.replay.Stats(), Declared: []EventView{}}
+func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
+	view := EventsView{Replay: a.engine.replay.Stats(), Declared: []EventView{}, Log: []DeliveryRecord{}}
 	if a.engine.spec.Events == nil {
 		writeJSON(w, http.StatusOK, view)
 		return
@@ -270,12 +322,24 @@ func (a *Admin) events(w http.ResponseWriter, _ *http.Request) {
 	view.Configured = a.engine.ingest != nil
 	view.Path = a.engine.spec.Events.Path
 	view.Stats = a.engine.ingest.Stats()
+	if in := a.engine.ingest; in != nil {
+		view.Log, view.LogDropped = in.log.recent()
+		view.Ordering = in.ordering.view(in.window)
+	}
+	missing, err := a.engine.missingSubscriptions(r.Context())
+	if err != nil {
+		logf("read event subscriptions: %v", err)
+		view.SubscriptionError = err.Error()
+	}
+	view.Missing = missing
 	for _, ev := range a.engine.spec.Events.List {
 		e := EventView{
 			Type:      ev.Type,
 			Resource:  ev.Resource,
 			Clock:     ev.Clock,
 			Unordered: ev.Unordered,
+			Actions:   strings.Join(ev.Actions, ","),
+			When:      ev.When,
 			Sets:      len(ev.Sets),
 		}
 		if ev.Invalidate != nil {

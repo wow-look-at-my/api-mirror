@@ -39,11 +39,15 @@ type Notifier struct {
 	subs   *Subscriptions
 	client *http.Client
 	tel    *Telemetry
+	// gate decides whether a subscriber's principal may hear about a delivery.
+	// Nil lets through only the operator's own subscriptions.
+	gate func(ctx context.Context, principal string, d *Delivery) bool
 
 	wg sync.WaitGroup
 
 	mu        sync.Mutex
 	sent      int
+	gated     int
 	failed    int
 	disabled  int
 	lastSent  time.Time
@@ -107,10 +111,20 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 	if n == nil {
 		return
 	}
-	subs, err := n.subs.Matching(ctx, d.Type)
+	matching, err := n.subs.Matching(ctx, d.Type)
 	if err != nil {
 		logf("notify: list subscriptions: %v", err)
 		return
+	}
+	subs := matching[:0]
+	for _, s := range matching {
+		if s.Principal == operatorPrincipal || (n.gate != nil && n.gate(ctx, s.Principal, d)) {
+			subs = append(subs, s)
+			continue
+		}
+		n.mu.Lock()
+		n.gated++
+		n.mu.Unlock()
 	}
 	if len(subs) == 0 {
 		return
@@ -256,6 +270,7 @@ type NotifyStats struct {
 	Enabled       bool      `json:"enabled"`
 	Subscriptions int       `json:"subscriptions"`
 	Sent          int       `json:"sent"`
+	Gated         int       `json:"gated"`
 	Failed        int       `json:"failed"`
 	Disabled      int       `json:"disabled"`
 	LastSent      time.Time `json:"last_sent,omitempty"`
@@ -272,6 +287,7 @@ func (n *Notifier) Stats(ctx context.Context) NotifyStats {
 	s := NotifyStats{
 		Enabled:   true,
 		Sent:      n.sent,
+		Gated:     n.gated,
 		Failed:    n.failed,
 		Disabled:  n.disabled,
 		LastSent:  n.lastSent,

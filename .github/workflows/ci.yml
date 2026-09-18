@@ -15,6 +15,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Dependencies here ship their generated files; running their generators needs stringer and yy.
+    env:
+      GOGENERATEDEPS: 'off'
     steps:
       - uses: actions/checkout@v4
       - uses: wow-look-at-my/go-toolchain@master

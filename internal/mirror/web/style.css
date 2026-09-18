@@ -186,29 +186,18 @@ section + section { margin-top: var(--sp-6, 32px); }
 
 .lane {
 	display: grid;
-	grid-template-columns: 150px 1fr;
+	grid-template-columns: 320px 1fr;
 	align-items: center;
 	gap: var(--sp-2, 8px);
 }
 
 .track {
-	position: relative;
+	display: block;
+	width: 100%;
 	height: 20px;
 	background: var(--bg-elevated, rgba(232, 236, 244, 0.06));
 	border: 1px solid var(--border-light, #1e222c);
-	overflow: hidden;
 }
-
-.bar {
-	position: absolute;
-	top: 3px;
-	height: 12px;
-	min-width: 2px;
-	background: var(--accent, #ffae00);
-	opacity: 0.8;
-}
-
-.bar.err { background: var(--danger, #ff4444); opacity: 1; }
 
 .axis {
 	display: flex;

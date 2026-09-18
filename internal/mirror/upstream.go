@@ -24,6 +24,8 @@ type Upstreamer struct {
 	headers []Header
 	client  *http.Client
 	observe Observer
+	// app signs the mirror's own calls; nil falls back to background headers.
+	app *appAuth
 }
 
 // NewUpstreamer resolves the upstream's base URL and static headers.
@@ -40,14 +42,20 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 	if observe == nil {
 		observe = funcObserver(func(Exchange) {})
 	}
-	return &Upstreamer{
+	u := &Upstreamer{
 		spec:    spec,
 		base:    base,
 		headers: spec.Upstream.Headers,
 		// Reports from its transport: no call site can forget to.
 		client:  observedClient(upstreamClient, LaneFetch, observe),
 		observe: observe,
-	}, nil
+	}
+	app, err := newAppAuth(spec.Upstream.App, vars, u)
+	if err != nil {
+		return nil, err
+	}
+	u.app = app
+	return u, nil
 }
 
 // Answer is what the upstream said.
@@ -65,6 +73,10 @@ type Answer struct {
 // A non-2xx is a real answer, not an error: a is what the upstream knows,
 // and the route decides whether that is worth storing. Only a transport failure
 // returns an error.
+//
+// A nil forward is the mirror asking on its own behalf, and only that call
+// carries the background headers. A caller's request, even a single
+// carrying no headers at all, is sent as that caller and nobody else.
 func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header, reqBody []byte) (*Answer, error) {
 	url := u.base + path
 	var send io.Reader
@@ -77,6 +89,9 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 	}
 	req.ContentLength = int64(len(reqBody))
 	for _, h := range u.headers {
+		if h.Background && forward != nil {
+			continue
+		}
 		name, err := renderString(h.Name, vars)
 		if err != nil {
 			return nil, fmt.Errorf("upstream header name: %w", err)
@@ -93,6 +108,18 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 	for _, name := range u.spec.Upstream.Forward {
 		if v := forward.Get(name); v != "" {
 			req.Header.Set(name, v)
+		}
+	}
+	if m := mediaFrom(ctx); m != "" {
+		req.Header.Set("Accept", m)
+	}
+	if forward == nil && u.app != nil {
+		auth, ok, err := u.app.authorization(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("app credential for %s %s: %w", method, path, err)
+		}
+		if ok {
+			req.Header.Set("Authorization", auth)
 		}
 	}
 	// A buffered body must be plain bytes: the mirror parses and rebuilds it,
@@ -144,10 +171,12 @@ func (u *Upstreamer) RateLimited(a *Answer) bool {
 	if a.Header.Get(retryAfter) != "" {
 		return true
 	}
-	if name := u.spec.Upstream.Rate.Remaining; name != "" {
-		return a.Header.Get(name) == "0"
+	if name := u.spec.Upstream.Rate.Remaining; name != "" && a.Header.Get(name) == "0" {
+		return true
 	}
-	return false
+	marker := u.spec.Upstream.Rate.Refusal
+	return marker != "" && a.Status >= 400 &&
+		strings.Contains(strings.ToLower(string(a.Body)), strings.ToLower(marker))
 }
 
 // Transient reports whether an answer is that must never be stored: a

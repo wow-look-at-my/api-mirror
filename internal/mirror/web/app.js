@@ -1,12 +1,12 @@
 // The dashboard.
 //
 // Plain ES modules, no build step and no dependencies. The page is served from
-// the binary, so a toolchain between the source and what ships would be one
-// more thing that can be stale in a way nothing checks.
+// the binary, so a toolchain between the source and what ships would be a
+// single more thing that can be stale in a way nothing checks.
 
 const token = new URLSearchParams(location.search).get('token') || '';
 
-// api fetches one admin endpoint, carrying the token the page was opened with.
+// api fetches a single admin endpoint, carrying the token the page was opened with.
 async function api(path, options = {}) {
 	const headers = { ...(options.headers || {}) };
 	if (token) headers['X-Mirror-Token'] = token;
@@ -16,9 +16,9 @@ async function api(path, options = {}) {
 	return resp.json();
 }
 
-// el builds one element. Children may be nodes or text; an object of attributes
-// is applied first. It is here so no view has to touch innerHTML with a value
-// that came off the wire.
+// el builds a single element. Children may be nodes or text; an object of
+// attributes is applied earliest. It is here so no view has to touch innerHTML
+// with a value that came off the wire.
 function el(tag, attrs = {}, ...children) {
 	const node = document.createElement(tag);
 	for (const [k, v] of Object.entries(attrs)) {
@@ -84,7 +84,7 @@ function panel(...children) {
 function table(headers, rows) {
 	if (!rows.length) return panel(el('div', { class: 'empty' }, 'Nothing yet.'));
 	// A number is right-aligned, and its heading follows it: a left heading
-	// over a right column reads as two columns that failed to line up.
+	// over a right column reads as columns that failed to line up.
 	const numeric = headers.map((_, i) => rows.some((cells) => typeof cells[i] === 'number'));
 	return panel(el('table', {},
 		el('thead', {}, el('tr', {}, headers.map((h, i) => el('th', { class: numeric[i] ? 'num' : null }, h)))),
@@ -108,7 +108,7 @@ const PILL_VARIANT = {
 
 function pill(text) {
 	const word = String(text).toLowerCase();
-	// A danger chip is not one of the shipped variants, so it borrows the plain
+	// A danger chip is not any of the shipped variants, so it borrows the plain
 	// key chip and takes its colour from a token here rather than from a
 	// variant the library does not have.
 	const variant = PILL_VARIANT[word] || 'key';
@@ -122,8 +122,8 @@ function section(title, ...body) {
 	return el('section', {}, el('h2', {}, title), ...body);
 }
 
-// dispositions renders one group's tally as a row of pills, so a shape that is
-// half hit and half passthrough reads as exactly that.
+// dispositions renders a single group's tally as a row of pills, so a shape
+// that is half hit and half passthrough reads as exactly that.
 function dispositions(map) {
 	const entries = Object.entries(map || {}).filter(([, n]) => n > 0);
 	if (!entries.length) return el('span', { class: 'muted' }, '-');
@@ -154,6 +154,7 @@ views.overview = async () => {
 		tile('Passed through', fmt.int(o.passthrough), 'still unmodelled'),
 		tile('Modelled', `${modelled}%`, 'of requests answered here'),
 		tile('Pulled upstream', fmt.bytes(o.upstream_bytes), 'this process'),
+		tile('Cache on disk', fmt.bytes(o.db_bytes), `${fmt.bytes(o.wal_bytes)} write-ahead log`),
 		tile('Principals', fmt.int(o.principals), `${fmt.int(o.denials)} live denials`),
 		tile('Deliveries', fmt.int(o.deliveries.total), `last ${fmt.ago(o.deliveries.last)}`),
 		tile('Started', fmt.ago(o.started), o.fingerprint.slice(0, 12)))));
@@ -222,59 +223,102 @@ views.passthrough = async () => {
 				item.samples && item.samples.length
 					? el('span', { class: 'muted mono' }, `e.g. ${item.samples.join('  ')}`)
 					: null),
-			el('pre', {}, item.sketch)));
+			el('div', { class: 'row muted' },
+				el('span', {}, `answered ${Object.entries(item.statuses || {}).map(([s, n]) => `${s} x${n}`).join(', ') || '-'}`),
+				el('span', { class: 'mono wrap' }, `by ${Object.entries(item.callers || {}).map(([p, n]) => `${p || 'anonymous'} x${n}`).join(', ') || '-'}`)),
+			el('pre', {}, item.sketch),
+			el('scratch-button', { type: 'button', onclick: () => navigator.clipboard.writeText(JSON.stringify(item, null, '\t')) }, 'Copy JSON')));
 	}
 	return out;
 };
 
+// The page keeps the frames it has seen and asks only for newer ones, so a
+// poll costs what arrived since the last, never the whole ring. A restarted
+// server hands back a cursor below ours, which resets the copy.
+const ring = { seq: 0, frames: [] };
+
+async function pollTimeline() {
+	const v = await api(`api/timeline?since=${ring.seq}`);
+	if (v.stats.seq < ring.seq) {
+		ring.seq = 0;
+		ring.frames = [];
+		return pollTimeline();
+	}
+	ring.frames.push(...v.frames);
+	ring.seq = v.stats.seq;
+	const cutoff = Date.now() - 24 * 3600 * 1000;
+	let drop = 0;
+	while (drop < ring.frames.length && new Date(ring.frames[drop].at).getTime() < cutoff) drop++;
+	if (drop) ring.frames.splice(0, drop);
+	return v.stats;
+}
+
+// drawTrack paints a single row's frames on a canvas. A DOM node per frame
+// stops scaling long before the ring's cap does.
+function drawTrack(canvas, frames, first, span) {
+	const width = canvas.clientWidth || 600;
+	const ratio = window.devicePixelRatio || 1;
+	canvas.width = width * ratio;
+	canvas.height = 20 * ratio;
+	const ctx = canvas.getContext('2d');
+	ctx.scale(ratio, ratio);
+	const style = getComputedStyle(document.body);
+	const ok = style.getPropertyValue('--accent').trim() || '#ffae00';
+	const bad = style.getPropertyValue('--danger').trim() || '#ff4444';
+	for (const f of frames) {
+		const x = ((new Date(f.at).getTime() - first) / span) * width;
+		const w = Math.max((f.duration_ns / 1e6 / span) * width, 1);
+		ctx.fillStyle = f.error || f.status >= 400 ? bad : ok;
+		ctx.fillRect(x, 3, w, 14);
+	}
+}
+
 views.timeline = async () => {
-	const v = await api('api/timeline');
+	const s = await pollTimeline();
+	const frames = ring.frames;
 	const out = el('div', {});
-	const s = v.stats;
 	out.append(section('The ring', el('div', { class: 'tiles' },
 		tile('Frames', fmt.int(s.frames), `window ${s.window}`),
 		tile('Dropped', fmt.int(s.dropped), s.dropped ? 'oldest frames evicted' : 'nothing lost'),
 		tile('Since', fmt.ago(s.since), 'resets on restart'))));
 
-	if (!v.frames.length) {
+	if (!frames.length) {
 		out.append(panel(el('div', { class: 'empty' }, 'No traffic recorded yet.')));
 		return out;
 	}
 
-	// One row per lane, bars positioned by time. Everything the mirror
-	// exchanged is here; a gap in a lane is a real gap, not a filter.
-	const lanes = new Map();
-	for (const f of v.frames) {
-		if (!lanes.has(f.lane)) lanes.set(f.lane, []);
-		lanes.get(f.lane).push(f);
+	// A row per lane and group: a resource, an event type, a route shape.
+	// Everything the mirror exchanged is here; a gap in a row is a real gap.
+	const rowsBy = new Map();
+	let first = Infinity;
+	for (const f of frames) {
+		const key = `${f.lane}|${f.group || ''}`;
+		if (!rowsBy.has(key)) rowsBy.set(key, { lane: f.lane, group: f.group || '', frames: [] });
+		rowsBy.get(key).frames.push(f);
+		first = Math.min(first, new Date(f.at).getTime());
 	}
-	const times = v.frames.map((f) => new Date(f.at).getTime());
-	const first = Math.min(...times);
-	const last = Math.max(...times, Date.now());
+	const last = Date.now();
 	const span = Math.max(last - first, 1);
 
 	const rows = el('div', { class: 'lanes' });
-	for (const [lane, frames] of [...lanes].sort((a, b) => b[1].length - a[1].length)) {
-		const track = el('div', { class: 'track' });
-		for (const f of frames) {
-			const left = ((new Date(f.at).getTime() - first) / span) * 100;
-			const width = Math.max((f.duration_ns / 1e6 / span) * 100, 0.4);
-			track.append(el('div', {
-				class: `bar${f.error || f.status >= 400 ? ' err' : ''}`,
-				style: `left:${left}%;width:${width}%`,
-				title: `${f.method} ${f.path} -> ${f.status || 'error'} (${fmt.dur(f.duration_ns)})`,
-			}));
-		}
+	const pending = [];
+	const ordered = [...rowsBy.values()].sort((a, b) => a.lane.localeCompare(b.lane) || b.frames.length - a.frames.length);
+	for (const row of ordered) {
+		const canvas = el('canvas', { class: 'track' });
+		pending.push(() => drawTrack(canvas, row.frames, first, span));
 		rows.append(el('div', { class: 'lane' },
-			el('span', {}, pill(lane), ' ', el('span', { class: 'muted' }, fmt.int(frames.length))),
-			track));
+			el('span', { class: 'wrap' }, pill(row.lane), ' ', el('span', { class: 'mono' }, row.group), ' ',
+				el('span', { class: 'muted' }, fmt.int(row.frames.length))),
+			canvas));
 	}
+	// A canvas has no width until it is in the page.
+	requestAnimationFrame(() => pending.forEach((draw) => draw()));
 	out.append(section('Everything exchanged', rows,
 		el('div', { class: 'axis' },
 			el('span', {}, new Date(first).toLocaleTimeString()),
 			el('span', {}, new Date(last).toLocaleTimeString()))));
 
-	const recent = v.frames.slice(-100).reverse();
+	const recent = frames.slice(-100).reverse();
 	out.append(section('Latest frames', table(
 		['At', 'Lane', 'Method', 'Path', 'Status', 'Bytes', 'Took', 'Detail'],
 		recent.map((f) => [fmt.when(f.at), pill(f.lane), f.method,
@@ -291,24 +335,32 @@ views.rates = async () => {
 			'This spec names no rate-limit headers, so no budget can be read. Declare <ratelimit> on <upstream> to fill this tab.')));
 		return out;
 	}
-	out.append(section('Budgets observed', table(
-		['Principal', 'Resource', 'Remaining', 'Limit', 'Used', 'Resets', 'Seen'],
-		v.budgets.map((b) => {
-			const share = b.limit ? (b.remaining / b.limit) * 100 : 0;
-			const meter = el('div', { class: `meter${share < 20 ? ' low' : ''}` },
-				el('span', { style: `width:${Math.max(share, 2)}%` }));
-			return [
-				el('span', { class: 'mono' }, b.principal),
-				b.resource,
-				el('div', { class: 'row' }, meter, el('span', { class: 'num' }, fmt.int(b.remaining))),
-				b.limit,
-				b.used,
-				// A reset already in the past is said plainly. Rendering it as
-				// "resets now" would read as a budget about to refresh.
-				b.stale ? el('span', { class: 'muted' }, `${fmt.ago(b.reset)} - stale`) : fmt.ago(b.reset),
-				fmt.ago(b.observed_at),
-			];
-		}))));
+	const names = v.names || {};
+	const row = (b) => {
+		const share = b.limit ? (b.remaining / b.limit) * 100 : 0;
+		const meter = el('div', { class: `meter${share < 20 ? ' low' : ''}` },
+			el('span', { style: `width:${Math.max(share, 2)}%` }));
+		return [
+			el('span', {}, el('span', { class: 'mono' }, b.principal),
+				names[b.principal] ? el('span', { class: 'muted' }, ` ${names[b.principal]}`) : null),
+			b.resource,
+			el('div', { class: 'row' }, meter, el('span', { class: 'num' }, fmt.int(b.remaining))),
+			b.limit,
+			b.used,
+			// A reset already in the past is said plainly. Rendering it as
+			// "resets now" would read as a budget about to refresh.
+			b.stale ? el('span', { class: 'muted' }, `${fmt.ago(b.reset)} - stale`) : fmt.ago(b.reset),
+			fmt.ago(b.observed_at),
+		];
+	};
+	const head = ['Principal', 'Resource', 'Remaining', 'Limit', 'Used', 'Resets', 'Seen'];
+	out.append(section('Per installation, asked now', v.live.length
+		? table(['Account', ...head.slice(1, 6), 'Error'],
+			v.live.flatMap((l) => l.error
+				? [[l.account, '-', '-', '-', '-', '-', el('span', { class: 'bad' }, l.error)]]
+				: l.resources.map((b) => [l.account, ...row(b).slice(1, 6), '-'])))
+		: panel(el('div', { class: 'empty' }, v.live_note || 'The App is installed nowhere.'))));
+	out.append(section('Budgets observed', table(head, v.budgets.map(row))));
 	return out;
 };
 
@@ -325,23 +377,54 @@ views.webhooks = async () => {
 		tile('Last', fmt.ago(s.last), `reorder window ${s.reorder_window}`),
 		tile('Since', fmt.ago(s.since), 'counts reset on restart'))));
 
+	// The upstream's own answer. Absent means it could not be asked, which
+	// claims nothing; a quiet type in the table below is not evidence either way.
+	if (v.missing_subscriptions && v.missing_subscriptions.length) {
+		out.append(section('Missing subscriptions', table(['Type', 'Resources left to their TTL'],
+			v.missing_subscriptions.map((m) => [el('span', { class: 'mono' }, m.type), m.resources.join(', ')]))));
+	} else if (v.subscription_error) {
+		out.append(section('Subscriptions', panel(el('div', { class: 'empty' }, `Could not ask the upstream: ${v.subscription_error}`))));
+	}
+
 	out.append(section('Outcomes', el('div', { class: 'row' }, dispositions(s.dispositions))));
 
-	// Declared types with a zero are the point of this table: a type the
-	// provider was never subscribed to looks exactly like a quiet week.
+	const o = v.ordering;
+	const secs = (n) => `${(n || 0).toFixed(1)}s`;
+	out.append(section('Ordering', el('div', { class: 'tiles' },
+		tile('Ordered', fmt.int(o.ordered), `${fmt.int(o.unordered)} unordered`),
+		tile('Superseded', fmt.int(o.superseded), 'refused as older than a view applied'),
+		tile('Lag', secs(o.mean_lag_seconds), `worst ${secs(o.worst_lag_seconds)}, upstream clock to arrival`),
+		tile('Held', fmt.int(o.held), `${fmt.int(o.reordered)} batches reordered, window ${secs(o.reorder_window_seconds)}`))));
+
+	// Declared types with a empty are the point of this table: a type
+	// the provider was never subscribed to looks exactly like a quiet week.
 	const seen = new Map((s.types || []).map((t) => [t.type, t.count]));
 	out.append(section('Event types', table(
-		['Type', 'Resource', 'Clock', 'Sets', 'Received'],
+		['Type', 'Resource', 'Filter', 'Clock', 'Sets', 'Received'],
 		v.declared.map((d) => [
 			el('span', { class: 'mono' }, d.type),
 			d.resource,
+			el('span', { class: 'mono wrap' }, [d.actions && `action ${d.actions}`, d.when].filter(Boolean).join('; ') || '-'),
 			d.invalidate ? el('span', { class: 'muted' }, `invalidates: ${d.invalidate}`)
 				: (d.unordered ? el('span', { class: 'muted' }, 'unordered') : el('span', { class: 'mono' }, d.clock)),
 			d.sets,
 			seen.get(d.type) || 0,
 		]))));
 
-	// Declared-but-off and never-declared are different answers, and only one of
+	out.append(section(`Recent deliveries${v.log_dropped ? ` (${fmt.int(v.log_dropped)} older dropped)` : ''}`, v.log.length
+		? table(['When', 'Kind', 'Type', 'Resource', 'Subject', 'Lag', 'Outcome'],
+			v.log.map((r) => [
+				fmt.ago(r.at),
+				r.kind,
+				el('span', { class: 'mono' }, r.action ? `${r.type}.${r.action}` : r.type),
+				r.resource || '-',
+				el('span', { class: 'mono wrap' }, r.subject || (r.status ? String(r.status) : '-')),
+				r.lag_seconds ? secs(r.lag_seconds) : '-',
+				r.error ? el('span', { class: 'bad', title: r.error }, `${r.disposition}: ${r.error}`) : r.disposition,
+			]))
+		: panel(el('div', { class: 'empty' }, 'Nothing has arrived since this process started.'))));
+
+	// Declared-but-off and never-declared are different answers, and only any of
 	// them is somebody's mistake. Reporting both as "no replay" hides which.
 	out.append(section('Delivery-gap replay', v.replay.enabled
 		? table(['Interval', 'Cycles', 'Listed', 'Re-sent', 'Errors', 'Last'],
@@ -405,13 +488,13 @@ const checkResults = new Map();
 
 // checkSection drives the consistency check.
 //
-// Every other view here reports what this process has SEEN. This is the only
-// one that asks the upstream whether the stored answers are still right, which
-// is the only way a delivery that never arrived ever surfaces.
+// Every other view here reports what this process has SEEN. This is the only a
+// single that asks the upstream whether the stored answers are still right,
+// which is the only way a delivery that never arrived ever surfaces.
 function checkSection(kind) {
 	// The page re-reads on a timer, which rebuilds this whole panel. A check
-	// takes one upstream call per key, so its result has to outlive that: it is
-	// held per kind and redrawn, or a long check finishes into a discarded DOM.
+	// takes a single upstream call per key, so its result has to outlive that:
+	// it is held per kind and redrawn, or a long check finishes into a discarded DOM.
 	const held = checkResults.get(kind);
 	const results = el('div', { class: 'panel scroll' },
 		held ? checkTable(held.lines) : el('div', { class: 'empty' }, 'Not run. The check asks the upstream once per stored key.'));
@@ -423,9 +506,6 @@ function checkSection(kind) {
 		results.replaceChildren(el('div', { class: 'empty' }, 'Asking the upstream...'));
 		status.textContent = '';
 		try {
-			// The stream is read as it arrives rather than awaited whole: a check
-			// is one upstream call per key, so a large kind takes minutes and a
-			// buffered read cannot be told apart from a wedged one.
 			await readNDJSON(`api/check?kind=${encodeURIComponent(kind)}${repair ? '&apply=true' : ''}&stream=1`,
 				repair ? 'POST' : 'GET',
 				(line) => {
@@ -483,8 +563,6 @@ function verdictPill(line) {
 	return el('span', { class: 'row' }, chip, pill('repaired'));
 }
 
-// readNDJSON reads one line-delimited JSON stream, handing over each object as
-// it lands rather than after the last one.
 async function readNDJSON(path, method, onLine) {
 	const headers = token ? { 'X-Mirror-Token': token } : {};
 	const resp = await fetch(path, { method, headers });
@@ -523,11 +601,15 @@ views.principals = async () => {
 	const out = el('div', {});
 	out.append(section('Who has proven what', el('p', { class: 'muted' },
 		`Grants and denials are the only per-caller tables. Everything else this mirror stores is global. ${fmt.int(v.denials)} refusals are currently being replayed without asking upstream.`)));
-	out.append(table(['Principal', 'Grants', 'Newest'],
+	const names = v.names || {};
+	const seen = v.last_seen || {};
+	out.append(table(['Principal', 'Name', 'Grants', 'Newest grant', 'Last seen'],
 		v.principals.map((p) => [
 			el('a', { href: `#principals?principal=${encodeURIComponent(p.principal)}`, onclick: () => setTimeout(render, 0) },
 				el('span', { class: 'mono' }, p.principal)),
-			p.grants, fmt.ago(p.newest)])));
+			names[p.principal] || el('span', { class: 'muted' }, '-'),
+			p.grants, fmt.ago(p.newest),
+			seen[p.principal] ? fmt.ago(seen[p.principal]) : el('span', { class: 'muted' }, 'not since restart')])));
 
 	if (v.standing) {
 		out.append(section(`${v.standing.principal} grants`, table(
@@ -551,7 +633,7 @@ views.subscriptions = async () => {
 		return out;
 	}
 	out.append(section('Registered consumers', el('p', { class: 'muted' },
-		'A subscriber is told AFTER a delivery is applied, so they stop racing this mirror’s ingestion with their own copy of the upstream’s webhooks.')));
+		'A subscriber is told AFTER a delivery is applied, so they stop racing this mirror's ingestion with their own copy of the upstream's webhooks.')));
 	out.append(table(['Principal', 'URL', 'Events', 'State', 'Failures', 'Last delivered'],
 		list.map((s) => [
 			el('span', { class: 'mono' }, s.principal),
@@ -571,7 +653,21 @@ views.spec = async () => {
 		section('Derived DDL', el('pre', {}, v.ddl)));
 };
 
-const tabs = [
+// me is a signed-in person's own standing: what their principal has proven.
+views.me = async () => {
+	const v = await api('api/me');
+	return el('div', {},
+		section(`Proven access for ${v.principal}`, v.grants.length
+			? table(['Resource', 'Key', 'Source', 'Expires'],
+				v.grants.map((g) => [g.resource, el('span', { class: 'mono wrap' }, g.key), g.source, fmt.ago(g.expires_at)]))
+			: panel(el('div', { class: 'empty' }, 'Nothing proven yet. Access is proven the first time you read something through this mirror.'))),
+		section('Remembered denials', v.denials.length
+			? table(['Resource', 'Key', 'Status', 'Expires'],
+				v.denials.map((d) => [d.resource, el('span', { class: 'mono wrap' }, d.key), d.status, fmt.ago(d.expires_at)]))
+			: panel(el('div', { class: 'empty' }, 'None.'))));
+};
+
+let tabs = [
 	['overview', 'Overview'],
 	['requests', 'Requests'],
 	['passthrough', 'Passthrough'],
@@ -586,7 +682,7 @@ const tabs = [
 
 function currentTab() {
 	const name = location.hash.replace('#', '').split('?')[0];
-	return views[name] ? name : 'overview';
+	return tabs.some(([id]) => id === name) ? name : tabs[0][0];
 }
 
 // drawTabs fills <scratch-tabs strip-only>, which renders the strip and leaves
@@ -599,8 +695,8 @@ function drawTabs() {
 	const active = tabs.findIndex(([id]) => id === currentTab());
 	if (!tabStrip) {
 		// The strip is built from the children present when the component is
-		// inserted, so it arrives whole. Filling an empty one already in the
-		// page leaves a bar with no buttons.
+		// inserted, so it arrives whole. Filling an empty a single already
+		// in the page leaves a bar with no buttons.
 		tabStrip = el('scratch-tabs', { 'strip-only': true },
 			tabs.map(([id, label], i) => el('scratch-tab', { label, 'data-tab': id, selected: i === active })));
 		tabStrip.addEventListener('change', (e) => {
@@ -625,11 +721,25 @@ async function render() {
 	document.getElementById('clock').textContent = `updated ${new Date().toLocaleTimeString()}`;
 }
 
-api('api/overview').then(nameTheMirror).catch(() => {});
+// The page asks who is looking before it draws anything: a signed-in
+// non-admin gets their own standing and nothing else.
+async function start() {
+	const who = await api('api/whoami');
+	if (!who.admin) {
+		tabs = [['me', 'My access']];
+	} else {
+		api('api/overview').then(nameTheMirror).catch(() => {});
+	}
+	if (who.login) {
+		document.getElementById('clock').before(el('a', { href: 'auth/logout', class: 'muted' }, `${who.login} - sign out`), ' ');
+	}
+	window.addEventListener('hashchange', render);
+	document.getElementById('reload').addEventListener('click', render);
+	render();
+	// The page re-reads on a fixed cadence.
+	setInterval(render, 15000);
+}
 
-window.addEventListener('hashchange', render);
-document.getElementById('reload').addEventListener('click', render);
-render();
-// The page re-reads on a fixed cadence. It is a live view of a running process,
-// so a stale one is worse than a slow one.
-setInterval(render, 15000);
+start().catch((e) => {
+	document.getElementById('view').replaceChildren(el('div', { class: 'err' }, String(e.message || e)));
+});

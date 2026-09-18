@@ -18,6 +18,7 @@ const (
 	DispPassthrough Disposition = "passthrough" // forwarded, with a reason
 	DispDenied      Disposition = "denied"      // the reveal layer refused
 	DispRefusal     Disposition = "refusal"     // an upstream refusal the route absorbed
+	DispRelayed     Disposition = "relayed"     // an upstream answer handed back unstored
 	DispError       Disposition = "error"       // the mirror could not answer
 	DispDelivery    Disposition = "delivery"    // an inbound webhook
 	DispAdmin       Disposition = "admin"       // the dashboard's own surface
@@ -50,18 +51,25 @@ type RequestLog struct {
 
 // RequestGroup is every request that shared route shape.
 type RequestGroup struct {
-	Shape        string                 `json:"shape"`
-	Method       string                 `json:"method"`
-	Resource     string                 `json:"resource,omitempty"`
-	Count        int                    `json:"count"`
-	Dispositions map[Disposition]int    `json:"dispositions"`
-	Reasons      map[string]int         `json:"reasons,omitempty"`
-	Bytes        int                    `json:"bytes"`
-	TotalNanos   int64                  `json:"-"`
-	Last         time.Time              `json:"last"`
-	Samples      []string               `json:"samples,omitempty"`
-	extra        map[string]interface{} `json:"-"`
+	Shape        string              `json:"shape"`
+	Method       string              `json:"method"`
+	Resource     string              `json:"resource,omitempty"`
+	Count        int                 `json:"count"`
+	Dispositions map[Disposition]int `json:"dispositions"`
+	Reasons      map[string]int      `json:"reasons,omitempty"`
+	Bytes        int                 `json:"bytes"`
+	TotalNanos   int64               `json:"-"`
+	Last         time.Time           `json:"last"`
+	Samples      []string            `json:"samples,omitempty"`
+	// Statuses is what callers were answered; Callers who asked, capped at
+	// groupCallers distinct principals so a single noisy shape stays bounded.
+	Statuses map[int]int            `json:"statuses,omitempty"`
+	Callers  map[string]int         `json:"callers,omitempty"`
+	extra    map[string]interface{} `json:"-"`
 }
+
+// groupCallers bounds how many distinct principals a shape remembers.
+const groupCallers = 20
 
 // MeanDuration is the average shown beside the count. A total with no count
 // behind it is a division, not a measurement, so it reports.
@@ -116,8 +124,14 @@ func (l *RequestLog) Record(r Request) {
 			Resource:     r.Resource,
 			Dispositions: map[Disposition]int{},
 			Reasons:      map[string]int{},
+			Statuses:     map[int]int{},
+			Callers:      map[string]int{},
 		}
 		l.groups[key] = g
+	}
+	g.Statuses[r.Status]++
+	if _, known := g.Callers[r.Principal]; known || len(g.Callers) < groupCallers {
+		g.Callers[r.Principal]++
 	}
 	g.Count++
 	g.Bytes += r.Bytes
@@ -162,6 +176,11 @@ func (l *RequestLog) Groups() []*RequestGroup {
 		copied.Dispositions = maps(g.Dispositions)
 		copied.Reasons = mapsString(g.Reasons)
 		copied.Samples = append([]string(nil), g.Samples...)
+		copied.Statuses = make(map[int]int, len(g.Statuses))
+		for k, v := range g.Statuses {
+			copied.Statuses[k] = v
+		}
+		copied.Callers = mapsString(g.Callers)
 		out = append(out, &copied)
 	}
 	sort.Slice(out, func(i, j int) bool {

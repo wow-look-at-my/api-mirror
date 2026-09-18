@@ -2,7 +2,9 @@ package mirror
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -133,6 +135,21 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Health = h
+		case "alias":
+			if err := checkAttrs(child, "from", "to"); err != nil {
+				return nil, err
+			}
+			al := HeaderAlias{From: child.Attr("from"), To: child.Attr("to")}
+			if al.From == "" || al.To == "" || http.CanonicalHeaderKey(al.From) == http.CanonicalHeaderKey(al.To) {
+				return nil, fmt.Errorf("<alias> needs a from and a different to, got %q -> %q", al.From, al.To)
+			}
+			spec.Aliases = append(spec.Aliases, al)
+		case "identity":
+			id, err := buildIdentity(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Identity = id
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}
@@ -191,8 +208,17 @@ func buildUpstream(n *node) (Upstream, error) {
 				return Upstream{}, err
 			}
 			up.Headers = append(up.Headers, h)
+		case "app":
+			if err := checkAttrs(child, "id", "key", "key-file", "installations", "account", "mint", "owner-key"); err != nil {
+				return Upstream{}, err
+			}
+			up.App = &App{
+				ID: child.Attr("id"), Key: child.Attr("key"), KeyFile: child.Attr("key-file"),
+				Installations: child.Attr("installations"), Account: child.Attr("account"),
+				Mint: child.Attr("mint"), OwnerKey: child.Attr("owner-key"),
+			}
 		case "forward":
-			if err := checkAttrs(child, "name"); err != nil {
+			if err := checkAttrs(child, "name", "required"); err != nil {
 				return Upstream{}, err
 			}
 			name := child.Attr("name")
@@ -200,6 +226,9 @@ func buildUpstream(n *node) (Upstream, error) {
 				return Upstream{}, fmt.Errorf("<forward>: name is required")
 			}
 			up.Forward = append(up.Forward, name)
+			if child.Attr("required") == "true" {
+				up.Require = append(up.Require, name)
+			}
 		default:
 			return Upstream{}, fmt.Errorf("<upstream>: unexpected child element <%s>", child.Name())
 		}
@@ -208,7 +237,7 @@ func buildUpstream(n *node) (Upstream, error) {
 }
 
 func buildHeader(n *node) (Header, error) {
-	if err := checkAttrs(n, "name"); err != nil {
+	if err := checkAttrs(n, "name", "background"); err != nil {
 		return Header{}, err
 	}
 	name := n.Attr("name")
@@ -219,14 +248,14 @@ func buildHeader(n *node) (Header, error) {
 	if err != nil {
 		return Header{}, fmt.Errorf("<header name=%q>: %w", name, err)
 	}
-	return Header{Name: name, Value: value}, nil
+	return Header{Name: name, Value: value, Background: n.Attr("background") == "true"}, nil
 }
 
 func buildResource(n *node) (*Resource, error) {
-	if err := checkAttrs(n, "name", "ttl", "store"); err != nil {
+	if err := checkAttrs(n, "name", "ttl", "store", "revoke-on-refusal"); err != nil {
 		return nil, err
 	}
-	r := &Resource{Name: n.Attr("name"), Store: StoreColumns}
+	r := &Resource{Name: n.Attr("name"), Store: StoreColumns, RevokeOn: n.Attr("revoke-on-refusal")}
 	if s := n.Attr("store"); s != "" {
 		r.Store = StoreMode(s)
 	}
@@ -248,14 +277,20 @@ func buildResource(n *node) (*Resource, error) {
 func addResourceChild(r *Resource, child *node) error {
 	switch child.Name() {
 	case "key":
-		if err := checkAttrs(child, "name", "from", "fold", "credential"); err != nil {
+		if err := checkAttrs(child, "name", "from", "fold", "credential", "type"); err != nil {
 			return err
 		}
+		typ := FieldType(child.Attr("type"))
+		if typ != "" && typ != FieldText && typ != FieldInt {
+			return fmt.Errorf("resource %q key %q: a key is answered as text or int, not %q", r.Name, child.Attr("name"), typ)
+		}
 		r.Keys = append(r.Keys, Key{
-			Name:       child.Attr("name"),
-			From:       child.Attr("from"),
-			Fold:       child.Attr("fold") == "true",
-			Credential: child.Attr("credential") == "true",
+			Name:        child.Attr("name"),
+			From:        child.Attr("from"),
+			Fold:        child.Attr("fold") == "true",
+			Credential:  child.Attr("credential") == "true" || child.Attr("credential") == "principal",
+			ByPrincipal: child.Attr("credential") == "principal",
+			Type:        typ,
 		})
 	case "field":
 		f, err := buildField(child)
@@ -288,6 +323,12 @@ func addResourceChild(r *Resource, child *node) error {
 			return fmt.Errorf("resource %q: %w", r.Name, err)
 		}
 		r.Reveal = rv
+	case "contradicted-by":
+		c, err := buildContradiction(child)
+		if err != nil {
+			return fmt.Errorf("resource %q: %w", r.Name, err)
+		}
+		r.Contradiction = c
 	default:
 		return fmt.Errorf("<resource name=%q>: unexpected child element <%s>", r.Name, child.Name())
 	}
@@ -295,10 +336,10 @@ func addResourceChild(r *Resource, child *node) error {
 }
 
 func buildField(n *node) (Field, error) {
-	if err := checkAttrs(n, "name", "type", "expr"); err != nil {
+	if err := checkAttrs(n, "name", "type", "expr", "version"); err != nil {
 		return Field{}, err
 	}
-	f := Field{Name: n.Attr("name"), Type: FieldType(n.Attr("type")), Expr: n.Attr("expr")}
+	f := Field{Name: n.Attr("name"), Type: FieldType(n.Attr("type")), Expr: n.Attr("expr"), Version: n.Attr("version") == "true"}
 	if f.Type == "" {
 		f.Type = FieldText
 	}
@@ -370,8 +411,16 @@ func ttlAttr(n *node, what string) (time.Duration, error) {
 }
 
 func buildRoute(n *node) (*Route, error) {
-	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list", "complete", "body-key"); err != nil {
+	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list", "complete", "body-key", "bypass", "assert"); err != nil {
 		return nil, err
+	}
+	var bypass *regexp.Regexp
+	if src := n.Attr("bypass"); src != "" {
+		re, err := regexp.Compile(src)
+		if err != nil {
+			return nil, fmt.Errorf("route %s bypass: %w", n.Attr("path"), err)
+		}
+		bypass = re
 	}
 	rt := &Route{
 		Method:   strings.ToUpper(n.Attr("method")),
@@ -380,6 +429,8 @@ func buildRoute(n *node) (*Route, error) {
 		List:     n.Attr("list") == "true",
 		Complete: n.Attr("complete") == "true",
 		BodyKey:  n.Attr("body-key"),
+		Bypass:   bypass,
+		Assert:   n.Attr("assert") == "true",
 	}
 	if rt.Method == "" {
 		rt.Method = "GET"

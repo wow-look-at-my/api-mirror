@@ -1,6 +1,9 @@
 package mirror
 
-import "time"
+import (
+	"regexp"
+	"time"
+)
 
 // Spec is mirror declaration: the whole contents of a mirror XML file.
 type Spec struct {
@@ -27,6 +30,11 @@ type Spec struct {
 	Replay *Replay
 	// Health declares the liveness and pre-update paths an orchestrator polls.
 	Health *Health
+	// Aliases repeat response headers under the names older clients read.
+	Aliases []HeaderAlias
+	// Identity resolves a credential to a stable principal. Nil keys a caller
+	// by their credential's fingerprint.
+	Identity *Identity
 }
 
 // Dashboard is the operator surface: the tabs, the admin JSON, and the token
@@ -38,6 +46,9 @@ type Dashboard struct {
 	Token string
 	// Title is what the page calls this mirror.
 	Title string
+	// SignIn lets a human in through the upstream's OAuth. Nil leaves the
+	// token as the only way in.
+	SignIn *SignIn
 }
 
 // CORS is the browser-facing policy.
@@ -121,18 +132,25 @@ type Upstream struct {
 	Headers []Header
 	// Forward names the request headers copied from the caller to the upstream.
 	Forward []string
+	// Require names forwarded headers a caller must send.
+	Require []string
 	// Rate names the budget headers. Their spelling is the upstream's, not ours.
 	Rate RateHeaders
 	// Debounce holds an eligible passthrough READ so identical reads share call.
 	Debounce time.Duration
 	// RetryAfter names the header saying a refusal is about waiting, not access.
 	RetryAfter string
+	// App is the mirror's own signed identity for the calls it makes itself.
+	App *App
 }
 
 // Header is header sent upstream.
 type Header struct {
 	Name  string
 	Value string // template source
+	// Background sends this header only on the mirror's own calls: refresh,
+	// replay and check. A caller's request never carries it.
+	Background bool
 }
 
 // StoreMode says what a resource keeps per key.
@@ -143,7 +161,15 @@ const (
 	StoreColumns StoreMode = "columns"
 	// StoreDocument keeps the response document itself, minus the declared
 	StoreDocument StoreMode = "document"
+	// StoreRaw keeps the response body byte for byte, for a media type that is
+	// not JSON. Its route's earliest <accept> is the type asked for and served.
+	StoreRaw StoreMode = "raw"
 )
+
+// whole reports whether the resource keeps each answer in a single stored cell.
+func (r *Resource) whole() bool {
+	return r.Store == StoreDocument || r.Store == StoreRaw
+}
 
 // Resource is kind of stored fact: derived SQLite table, row per
 // key. There is deliberately no actor column and no way to declare --
@@ -161,6 +187,12 @@ type Resource struct {
 	Keep []Keep
 	// Reveal gates every read of this resource. A resource without cannot
 	Reveal *Reveal
+	// RevokeOn is the document path holding a credential this resource hands
+	// out. A row whose credential the upstream refuses is dropped.
+	RevokeOn string
+	// Contradiction names another resource whose later rows can prove a
+	// stored row stale.
+	Contradiction *Contradiction
 }
 
 // Key is component of a resource's identity.
@@ -172,6 +204,12 @@ type Key struct {
 	Fold bool
 	// Credential fills this from the caller's own request, not the document.
 	Credential bool
+	// ByPrincipal fills a credential key with the caller's resolved principal
+	// instead of the credential's fingerprint, so a rotated credential of the
+	// same identity finds the same row.
+	ByPrincipal bool
+	// Type is how the key is answered; it is always stored as text.
+	Type FieldType
 }
 
 // FieldType is a stored column's type. The set is deliberately small: a mirror
@@ -193,6 +231,9 @@ type Field struct {
 	From string
 	// Expr is template source evaluated against the absorbed document.
 	Expr string
+	// Version marks the column the upstream advances on every change. A write
+	// carrying an older value than the stored row is refused.
+	Version bool
 }
 
 // Keep rescues document key from a resource's Drop patterns.
@@ -239,6 +280,13 @@ type Route struct {
 	// for a route whose question travels in its body. Naming it also makes
 	// that body travel: the fetch replays it upstream.
 	BodyKey string
+	// Bypass is a regular expression over the request body. A body it matches
+	// is a write, such as a GraphQL mutation, and is forwarded uncached.
+	Bypass *regexp.Regexp
+	// Assert says the caller's bearer is itself an identity assertion, verified
+	// by the <identity><assertion> rule. A bearer that does not verify is
+	// forwarded uncached.
+	Assert bool
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
@@ -302,6 +350,8 @@ type Events struct {
 	// ReorderWindow holds a delivery so other deliveries for the same subject
 	ReorderWindow time.Duration
 	List          []*Event
+	// Subscriptions asks the upstream which types it sends. Nil reports none.
+	Subscriptions *EventSubscriptions
 }
 
 // Event maps delivery to stored rows.
@@ -316,6 +366,12 @@ type Event struct {
 	Unordered bool
 	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
 	AbsorbWhenSuperseded bool
+	// Actions limits the event to deliveries whose action is any of these.
+	// Empty handles every action.
+	Actions []string
+	// When is template source over `.payload`. The event handles a delivery
+	// only when it renders truthy.
+	When string
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set
 	Sets []Set
@@ -336,4 +392,6 @@ type Set struct {
 // Invalidate drops the stored row for this event's subject.
 type Invalidate struct {
 	Reason string
+	// All drops every row of the resource, for rows no delivery can key.
+	All bool
 }

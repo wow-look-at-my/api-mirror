@@ -108,14 +108,15 @@ func (r *Replayer) Stop() {
 
 // cycle reads the failure log and asks for what is still missing.
 //
-// A lost delivery is the quietest failure a mirror has. The provider sends
-// , nothing retries, and every cache that delivery would have moved serves
-// its last answer for the whole TTL -- well-formed, recent-looking and wrong.
-// A shorter TTL shrinks that window and hides it; it does not close it.
+// A lost delivery is the quietest failure a mirror has. The provider sends,
+// nothing retries, and every cache that delivery would have moved serves its
+// last answer for the whole TTL -- well-formed, recent-looking and wrong. A
+// shorter TTL shrinks that window and hides it; it does not close it.
 func (r *Replayer) cycle() {
 	ctx, cancel := context.WithTimeout(context.Background(), replayCycleTimeout)
 	defer cancel()
-	ctx = withLane(ctx, LaneReplay, "", "list")
+	// The delivery log belongs to the App, so it is asked as the App.
+	ctx = withAppCall(withLane(ctx, LaneReplay, "", "list"))
 
 	answer, err := r.engine.up.Call(ctx, "GET", r.rule.List, r.engine.vars, nil, nil)
 	if err != nil {
@@ -200,7 +201,7 @@ func (r *Replayer) ask(ctx context.Context, item any, id string) error {
 	if method == "" {
 		method = "POST"
 	}
-	answer, err := r.engine.up.Call(withLane(ctx, LaneReplay, "", "redeliver"), method, path, r.engine.vars, nil, nil)
+	answer, err := r.engine.up.Call(withAppCall(withLane(ctx, LaneReplay, "", "redeliver")), method, path, r.engine.vars, nil, nil)
 	if err != nil {
 		return err
 	}

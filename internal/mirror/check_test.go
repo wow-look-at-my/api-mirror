@@ -17,7 +17,7 @@ import (
 func collect(t *testing.T, e *Engine, kind string, repair bool) []KeyCheck {
 	t.Helper()
 	var out []KeyCheck
-	require.NoError(t, e.Check(context.Background(), kind, repair, func(k KeyCheck) { out = append(out, k) }))
+	require.NoError(t, e.Check(context.Background(), kind, nil, repair, func(k KeyCheck) { out = append(out, k) }))
 	return out
 }
 

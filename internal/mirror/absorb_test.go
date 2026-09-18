@@ -177,11 +177,25 @@ func TestAbsorbAndRebuild_ProjectOnlyTheDeclaredFields(t *testing.T) {
 	out, err := rebuild(res, row)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{
-		"owner": "wowlookatmy",
-		"stars": int64(5),
-		"live":  false,
-		"slug":  "WowLookAtMy/api-mirror",
-	}, out, "the rebuilt answer's shape is the spec's, not whatever the upstream added this week")
+		"owner":            map[string]any{"login": "wowlookatmy"},
+		"stargazers_count": int64(5),
+		"archived":         false,
+		"slug":             "WowLookAtMy/api-mirror",
+	}, out, "each value is answered where the upstream document had it; an expr field under its own name")
+}
+
+func TestRebuild_AnIntKeyIsAnsweredAsANumber(t *testing.T) {
+	res := &Resource{
+		Name: "pull", Store: StoreColumns,
+		Keys:   []Key{{Name: "number", From: "number", Type: FieldInt}, {Name: "fp", Credential: true}},
+		Fields: []Field{{Name: "head_sha", Type: FieldText, From: "head.sha"}},
+	}
+	out, err := rebuild(res, Row{"number": "42", "fp": "secret", "head_sha": "abc"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"number": int64(42),
+		"head":   map[string]any{"sha": "abc"},
+	}, out, "a credential fingerprint is never answered")
 }
 
 func TestAbsorb_ReportsWhichFieldRefusedTheValue(t *testing.T) {

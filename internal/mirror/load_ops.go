@@ -27,6 +27,27 @@ func buildDashboard(n *node) (Dashboard, error) {
 				return Dashboard{}, fmt.Errorf("<dashboard><token>: %w", err)
 			}
 			d.Token = t
+		case "sign-in":
+			attrs := []string{"client-id", "client-secret", "authorize", "exchange", "user", "login", "admins", "secret", "base-url"}
+			if err := checkAttrs(child, attrs...); err != nil {
+				return Dashboard{}, err
+			}
+			for _, required := range attrs[:6] {
+				if child.Attr(required) == "" {
+					return Dashboard{}, fmt.Errorf("<dashboard><sign-in> needs %s", required)
+				}
+			}
+			d.SignIn = &SignIn{
+				ClientID:     child.Attr("client-id"),
+				ClientSecret: child.Attr("client-secret"),
+				Authorize:    child.Attr("authorize"),
+				Exchange:     child.Attr("exchange"),
+				User:         child.Attr("user"),
+				Login:        child.Attr("login"),
+				Admins:       child.Attr("admins"),
+				Secret:       child.Attr("secret"),
+				BaseURL:      child.Attr("base-url"),
+			}
 		default:
 			return Dashboard{}, fmt.Errorf("<dashboard>: unexpected child element <%s>", child.Name())
 		}
@@ -196,15 +217,56 @@ func buildHealth(n *node) (*Health, error) {
 	return &Health{Live: n.Attr("live"), PreUpdate: n.Attr("pre-update")}, nil
 }
 
+func buildIdentity(n *node) (*Identity, error) {
+	if err := checkAttrs(n, "ttl"); err != nil {
+		return nil, err
+	}
+	id := &Identity{}
+	ttl, err := parseDuration("<identity> ttl", n.Attr("ttl"))
+	if err != nil {
+		return nil, err
+	}
+	id.TTL = ttl
+	for _, child := range n.Children() {
+		if err := checkAttrs(child, "header", "as", "scheme", "path", "principal", "name"); err != nil {
+			return nil, err
+		}
+		rule := &IdentityRule{
+			Header:    child.Attr("header"),
+			As:        child.Attr("as"),
+			Scheme:    child.Attr("scheme"),
+			Path:      child.Attr("path"),
+			Principal: child.Attr("principal"),
+			Name:      child.Attr("name"),
+		}
+		switch child.Name() {
+		case "user":
+			id.User = rule
+		case "assertion":
+			id.Assertion = rule
+		default:
+			return nil, fmt.Errorf("<identity>: unexpected child element <%s>", child.Name())
+		}
+	}
+	return id, nil
+}
+
 func buildRateHeaders(n *node) (RateHeaders, error) {
-	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource"); err != nil {
+	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource", "refusal", "answer", "poll", "poll-field"); err != nil {
 		return RateHeaders{}, err
 	}
+	if (n.Attr("poll") == "") != (n.Attr("poll-field") == "") {
+		return RateHeaders{}, fmt.Errorf("<ratelimit> poll and poll-field come together")
+	}
 	return RateHeaders{
+		Poll:      n.Attr("poll"),
+		PollField: n.Attr("poll-field"),
 		Limit:     n.Attr("limit"),
 		Remaining: n.Attr("remaining"),
 		Used:      n.Attr("used"),
 		Reset:     n.Attr("reset"),
 		Resource:  n.Attr("resource"),
+		Refusal:   n.Attr("refusal"),
+		Answer:    n.Attr("answer"),
 	}, nil
 }

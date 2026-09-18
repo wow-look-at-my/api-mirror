@@ -40,6 +40,20 @@ func buildEvents(n *node) (*Events, error) {
 				return nil, err
 			}
 			e.List = append(e.List, ev)
+		case "subscriptions":
+			if err := checkAttrs(child, "path", "field", "always"); err != nil {
+				return nil, err
+			}
+			if child.Attr("path") == "" || child.Attr("field") == "" {
+				return nil, fmt.Errorf("<subscriptions> needs a path and a field")
+			}
+			sub := &EventSubscriptions{Path: child.Attr("path"), Field: child.Attr("field")}
+			for _, t := range strings.Split(child.Attr("always"), ",") {
+				if t = strings.TrimSpace(t); t != "" {
+					sub.Always = append(sub.Always, t)
+				}
+			}
+			e.Subscriptions = sub
 		default:
 			return nil, fmt.Errorf("<events>: unexpected child element <%s>", child.Name())
 		}
@@ -66,8 +80,14 @@ func parseWindow(v string) (time.Duration, error) {
 }
 
 func buildEvent(n *node) (*Event, error) {
-	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded"); err != nil {
+	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded", "action", "when"); err != nil {
 		return nil, err
+	}
+	var actions []string
+	for _, a := range strings.Split(n.Attr("action"), ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			actions = append(actions, a)
+		}
 	}
 	ev := &Event{
 		Type:                 n.Attr("type"),
@@ -75,6 +95,8 @@ func buildEvent(n *node) (*Event, error) {
 		Clock:                n.Attr("clock"),
 		Unordered:            n.Attr("unordered") == "true",
 		AbsorbWhenSuperseded: n.Attr("absorb-when-superseded") == "true",
+		Actions:              actions,
+		When:                 strings.TrimSpace(n.Attr("when")),
 	}
 	for _, child := range n.Children() {
 		switch child.Name() {
@@ -104,10 +126,10 @@ func buildEvent(n *node) (*Event, error) {
 			}
 			ev.Keys = append(ev.Keys, k)
 		case "invalidate":
-			if err := checkAttrs(child, "reason"); err != nil {
+			if err := checkAttrs(child, "reason", "all"); err != nil {
 				return nil, err
 			}
-			ev.Invalidate = &Invalidate{Reason: child.Attr("reason")}
+			ev.Invalidate = &Invalidate{Reason: child.Attr("reason"), All: child.Attr("all") == "true"}
 		default:
 			return nil, fmt.Errorf("<event type=%q>: unexpected child element <%s>", ev.Type, child.Name())
 		}

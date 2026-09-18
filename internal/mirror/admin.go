@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"compress/gzip"
 	"crypto/subtle"
 	"net/http"
 	"strings"
@@ -18,12 +19,14 @@ type Admin struct {
 	// minted means generated for this process, so the startup log carries the URL.
 	minted bool
 	mux    *http.ServeMux
+	// signIn is the OAuth sign-in, nil when the spec declares none.
+	signIn *signIn
 }
 
 // NewAdmin builds the operator surface, always. A spec chooses where it lives
 // and what gates it, never whether it exists: an optional view is nobody
 // has when they need it.
-func NewAdmin(e *Engine) *Admin {
+func NewAdmin(e *Engine) (*Admin, error) {
 	d := e.spec.Dashboard
 	prefix := strings.TrimSuffix(d.Path, "/")
 	if prefix == "" {
@@ -41,8 +44,12 @@ func NewAdmin(e *Engine) *Admin {
 		a.token = randomHex(16)
 		a.minted = true
 	}
+	a.signIn, err = newSignIn(e)
+	if err != nil {
+		return nil, err
+	}
 	a.routes()
-	return a
+	return a, nil
 }
 
 // URL is the address that opens the dashboard, carrying a minted token.
@@ -92,19 +99,49 @@ func (a *Admin) routes() {
 	a.mux.HandleFunc("POST "+p+"/api/refresh", a.runRefresh)
 	a.mux.HandleFunc("GET "+p+"/api/check", a.check)
 	a.mux.HandleFunc("POST "+p+"/api/check", a.check)
+	a.mux.HandleFunc("GET "+p+"/api/jobs", a.jobs)
+	a.mux.HandleFunc("GET "+p+"/api/whoami", a.whoami)
+	a.mux.HandleFunc("GET "+p+"/api/me", a.me)
+	if a.signIn != nil {
+		a.mux.HandleFunc("GET "+p+"/auth/login", a.login)
+		a.mux.HandleFunc("GET "+p+"/auth/callback", a.callback)
+		a.mux.HandleFunc("GET "+p+"/auth/logout", a.logout)
+	}
 }
 
-// ServeHTTP gates the surface and dispatches.
+// ServeHTTP gates the surface and dispatches. The token opens everything. A
+// signed-in admin does too; anyone else signed in reaches only their own
+// standing.
 func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !a.authorized(r) {
-		// A mistyped token gets the same answer as a probe for the prefix.
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+	path := r.URL.Path
+	switch {
+	case a.signIn != nil && (path == a.prefix+"/auth/login" || path == a.prefix+"/auth/callback"):
+	case a.authorized(r):
+		a.keepToken(w, r)
+	default:
+		s, ok := a.sessionFrom(r)
+		if !ok {
+			if a.signIn != nil && r.Method == http.MethodGet && (path == a.prefix || path == a.prefix+"/") {
+				http.Redirect(w, r, a.prefix+"/auth/login", http.StatusFound)
+				return
+			}
+			// A mistyped token gets the same answer as a probe for the prefix.
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !s.Admin && !a.selfPath(path) {
+			http.Error(w, "this view is for admins; yours is at "+a.prefix+"/", http.StatusForbidden)
+			return
+		}
 	}
-	a.keepToken(w, r)
-	if r.URL.Path == a.prefix {
+	if path == a.prefix {
 		http.Redirect(w, r, a.prefix+"/", http.StatusMovedPermanently)
 		return
+	}
+	if compressible(r, a.prefix) {
+		zw := gzip.NewWriter(w)
+		defer zw.Close()
+		w = &gzipWriter{ResponseWriter: w, zw: zw}
 	}
 	a.engine.setCORS(w, r)
 	a.mux.ServeHTTP(w, r)
@@ -170,6 +207,9 @@ type Overview struct {
 	Principals    int             `json:"principals"`
 	Denials       int64           `json:"denials"`
 	UpstreamBytes int             `json:"upstream_bytes"`
+	// DBBytes and WALBytes are the cache file and its write-ahead log on disk.
+	DBBytes  int64 `json:"db_bytes"`
+	WALBytes int64 `json:"wal_bytes"`
 	// Passthrough is what the spec still does not model: how finished this is.
 	Passthrough int `json:"passthrough"`
 	Answered    int `json:"answered"`
@@ -196,6 +236,8 @@ func (a *Admin) overview(w http.ResponseWriter, r *http.Request) {
 		Notify:        e.notify.Stats(ctx),
 		Deliveries:    e.ingest.Stats(),
 		UpstreamBytes: e.tel.UpstreamBytes(),
+		DBBytes:       fileSize(e.store.path),
+		WALBytes:      fileSize(e.store.path + "-wal"),
 	}
 	if ov.Title == "" {
 		ov.Title = e.spec.Name
