@@ -204,7 +204,16 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		e.writeMessage(rec, http.StatusUnauthorized, "missing required header "+name)
 		return
 	}
+	asserting := e.assertingRoute(r)
+	if asserting {
+		r = withBearerAssertion(r)
+	}
 	principal, refused := e.ids.resolve(r.Context(), r)
+	if refused != nil && asserting {
+		// The upstream decides a bearer the mirror could not verify.
+		e.passthrough(rec, r, PassNoIdentity)
+		return
+	}
 	if refused != nil {
 		rec.note(DispDenied, e.shapeOf(r), "", "identity")
 		e.writeMessage(rec, refused.status, refused.message)
@@ -283,7 +292,7 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 			e.passthrough(w, r, PassUnrouted)
 			return
 		}
-		key, ok := purgeKey(res, params, r.Header.Get("Authorization"))
+		key, ok := purgeKey(res, params, r)
 		if !ok {
 			e.passthrough(w, r, PassNoIdentity)
 			return
@@ -313,14 +322,15 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 // purgeKey builds the row key a write addresses. A path parameter the
 // resource does not key on is dropped, so a write on the single item can
 // still name the listing it belongs to, which keys on fewer columns.
-func purgeKey(res *Resource, params map[string]string, auth string) (map[string]string, bool) {
+func purgeKey(res *Resource, params map[string]string, r *http.Request) (map[string]string, bool) {
 	key := make(map[string]string, len(res.Keys))
 	for _, k := range res.Keys {
 		if k.Credential {
-			if auth == "" {
+			v := credentialValue(k, r)
+			if v == "" {
 				return nil, false
 			}
-			key[k.Name] = fingerprint(auth)
+			key[k.Name] = v
 			continue
 		}
 		if value, ok := params[k.Name]; ok {

@@ -122,6 +122,11 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 	if err := s.Identity.validate(s.Upstream.Forward); err != nil {
 		return err
 	}
+	for _, rt := range s.Routes {
+		if rt.Assert && (s.Identity == nil || s.Identity.Assertion == nil) {
+			return fmt.Errorf("route %s: assert=\"true\" verifies the bearer with <identity><assertion>, which the spec does not declare", rt.Path)
+		}
+	}
 	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
 		return fmt.Errorf("<health> names no path, so it registers nothing and every check falls through to the upstream")
 	}

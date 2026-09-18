@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -116,6 +117,9 @@ func (id *identities) resolve(ctx context.Context, r *http.Request) (string, *id
 		if claim := r.Header.Get(a.Header); claim != "" {
 			return id.assert(ctx, a, claim)
 		}
+	}
+	if bearerAsserts(r) {
+		return id.assert(ctx, id.spec.Assertion, bearerOf(auth))
 	}
 	if auth == "" {
 		return "", nil
@@ -235,6 +239,52 @@ func (id *identities) remember(key string, v identityVerdict) {
 		}
 	}
 	id.cache[key] = v
+}
+
+// bearerOf strips the scheme from an Authorization value.
+func bearerOf(auth string) string {
+	if _, token, ok := strings.Cut(strings.TrimSpace(auth), " "); ok {
+		return strings.TrimSpace(token)
+	}
+	return strings.TrimSpace(auth)
+}
+
+// assertingRoute reports whether a route declaring assert="true" answers r.
+func (e *Engine) assertingRoute(r *http.Request) bool {
+	for _, rt := range e.spec.Routes {
+		if !rt.Assert || rt.Method != r.Method {
+			continue
+		}
+		if _, ok := matchPath(rt.Path, r.URL.EscapedPath()); ok {
+			return true
+		}
+	}
+	return false
+}
+
+type assertKey struct{}
+
+// withBearerAssertion marks a request whose bearer is itself an assertion.
+func withBearerAssertion(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), assertKey{}, true))
+}
+
+func bearerAsserts(r *http.Request) bool {
+	v, _ := r.Context().Value(assertKey{}).(bool)
+	return v && r.Header.Get("Authorization") != ""
+}
+
+// credentialValue fills a credential key: the caller's principal, or their
+// credential's fingerprint. Empty means the caller has neither.
+func credentialValue(k Key, r *http.Request) string {
+	if k.ByPrincipal {
+		return principalOf(r)
+	}
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		return ""
+	}
+	return fingerprint(auth)
 }
 
 type principalKey struct{}

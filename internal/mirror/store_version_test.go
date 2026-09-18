@@ -54,7 +54,7 @@ func TestVersion_PutOrdersByTheVersionColumn(t *testing.T) {
 
 func TestVersion_RefusesTwoClocksAndATextClock(t *testing.T) {
 	spec := versionedSpec()
-	spec.Resources[0].Fields[0].Version = true
+	spec.Resources[0].Fields[1].Version = true
 	assert.ErrorContains(t, spec.Resources[0].validate(), "more than one")
 
 	spec = versionedSpec()

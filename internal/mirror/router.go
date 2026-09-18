@@ -83,12 +83,12 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			if !k.Credential {
 				continue
 			}
-			auth := r.Header.Get("Authorization")
-			if auth == "" {
+			v := credentialValue(k, r)
+			if v == "" {
 				// No credential to key this row by; nothing to serve.
 				return nil, PassNoIdentity, nil
 			}
-			key[k.Name] = fingerprint(auth)
+			key[k.Name] = v
 		}
 		// The body IS the key here, and a consumed body cannot be re-read, so
 		// the match carries it for the fetch to replay.
@@ -107,7 +107,7 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			if rt.Bypass != nil && rt.Bypass.Match(b) {
 				return nil, PassBypass, nil
 			}
-			key[rt.BodyKey] = fingerprint(string(b))
+			key[rt.BodyKey] = bodyFingerprint(b)
 		}
 		return &match{route: rt, key: key, query: query, body: body}, "", nil
 	}
@@ -118,6 +118,20 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 		return nil, PassMethod, nil
 	}
 	return nil, PassUnrouted, nil
+}
+
+// bodyFingerprint keys a request body. A JSON body is re-marshalled so the
+// same question with its fields in another order finds the same row.
+func bodyFingerprint(b []byte) string {
+	doc, err := decodeJSON(b)
+	if err != nil {
+		return fingerprint(string(b))
+	}
+	canon, err := marshalJSON(doc)
+	if err != nil {
+		return fingerprint(string(b))
+	}
+	return fingerprint(string(canon))
 }
 
 // foldFor applies a key component's declared case folding, so a differently

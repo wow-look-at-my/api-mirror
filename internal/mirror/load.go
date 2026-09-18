@@ -279,8 +279,9 @@ func addResourceChild(r *Resource, child *node) error {
 			Name:       child.Attr("name"),
 			From:       child.Attr("from"),
 			Fold:       child.Attr("fold") == "true",
-			Credential: child.Attr("credential") == "true",
-			Type:       typ,
+			Credential:  child.Attr("credential") == "true" || child.Attr("credential") == "principal",
+			ByPrincipal: child.Attr("credential") == "principal",
+			Type:        typ,
 		})
 	case "field":
 		f, err := buildField(child)
@@ -395,7 +396,7 @@ func ttlAttr(n *node, what string) (time.Duration, error) {
 }
 
 func buildRoute(n *node) (*Route, error) {
-	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list", "complete", "body-key", "bypass"); err != nil {
+	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list", "complete", "body-key", "bypass", "assert"); err != nil {
 		return nil, err
 	}
 	var bypass *regexp.Regexp
@@ -414,6 +415,7 @@ func buildRoute(n *node) (*Route, error) {
 		Complete: n.Attr("complete") == "true",
 		BodyKey:  n.Attr("body-key"),
 		Bypass:   bypass,
+		Assert:   n.Attr("assert") == "true",
 	}
 	if rt.Method == "" {
 		rt.Method = "GET"

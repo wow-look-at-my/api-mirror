@@ -1179,14 +1179,21 @@
 		is part of the key and travels upstream: a mint asked for one repo must
 		never be answered with a token minted for all of them.
 	-->
+	<!--
+		The App-JWT routes below are asked with a JWT the App re-signs every
+		few minutes, so a row keyed by its fingerprint would never be read
+		twice. assert="true" verifies the bearer through <identity><assertion>
+		(GET /app) and credential="principal" keys the row by the verified
+		app:<id>; a bearer that does not verify is forwarded uncached.
+	-->
 	<resource name="install_token" store="document" ttl="50m">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<key name="id"/>
 		<key name="request"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token" body-key="request"/>
+	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token" body-key="request" assert="true"/>
 
 	<!--
 		Which installation covers a repository or an owner. An App asks this
@@ -1199,20 +1206,20 @@
 		installed on asks this over and over.
 	-->
 	<resource name="repo_installation" store="document" ttl="1h">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="GET" path="/repos/{owner}/{repo}/installation" resource="repo_installation">
+	<route method="GET" path="/repos/{owner}/{repo}/installation" resource="repo_installation" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<resource name="owner_installation" store="document" ttl="1h">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<key name="kind"/>
 		<key name="owner" fold="true"/>
 		<reveal><credential/></reveal>
@@ -1223,14 +1230,14 @@
 		shape, so they share a resource and the kind key keeps a user named
 		like an org from answering the other question.
 	-->
-	<route method="GET" path="/orgs/{owner}/installation" resource="owner_installation">
+	<route method="GET" path="/orgs/{owner}/installation" resource="owner_installation" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="kind" type="text" default="org" key="true"/>
 		<absorb status="404"/>
 	</route>
 
-	<route method="GET" path="/users/{owner}/installation" resource="owner_installation">
+	<route method="GET" path="/users/{owner}/installation" resource="owner_installation" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="kind" type="text" default="user" key="true"/>
@@ -1488,28 +1495,29 @@
 	</route>
 
 	<!--
-		App-JWT-authenticated: the App's own identity, its installations, and
-		one installation's repo coverage. Still credential-keyed: a JWT is
-		still a caller's own credential, so the same shape applies.
+		The App's own identity and its installations, asked with the App JWT
+		and keyed by the verified app:<id> like the mint. One installation's
+		repo coverage is asked with an installation token, and keeps that
+		token's fingerprint.
 	-->
 	<resource name="app_identity" store="document">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="GET" path="/app" resource="app_identity">
+	<route method="GET" path="/app" resource="app_identity" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="app_installations" store="document">
-		<key name="token_fp" credential="true"/>
+		<key name="app" credential="principal"/>
 		<key name="per_page"/>
 		<key name="page"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="GET" path="/app/installations" resource="app_installations">
+	<route method="GET" path="/app/installations" resource="app_installations" assert="true">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>

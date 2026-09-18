@@ -193,6 +193,10 @@ type Key struct {
 	Fold bool
 	// Credential fills this from the caller's own request, not the document.
 	Credential bool
+	// ByPrincipal fills a credential key with the caller's resolved principal
+	// instead of the credential's fingerprint, so a rotated credential of the
+	// same identity finds the same row.
+	ByPrincipal bool
 	// Type is how the key is answered; it is always stored as text.
 	Type FieldType
 }
@@ -268,6 +272,10 @@ type Route struct {
 	// Bypass is a regular expression over the request body. A body it matches
 	// is a write, such as a GraphQL mutation, and is forwarded uncached.
 	Bypass *regexp.Regexp
+	// Assert says the caller's bearer is itself an identity assertion, verified
+	// by the <identity><assertion> rule. A bearer that does not verify is
+	// forwarded uncached.
+	Assert bool
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
