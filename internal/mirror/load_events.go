@@ -66,8 +66,14 @@ func parseWindow(v string) (time.Duration, error) {
 }
 
 func buildEvent(n *node) (*Event, error) {
-	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded"); err != nil {
+	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded", "action"); err != nil {
 		return nil, err
+	}
+	var actions []string
+	for _, a := range strings.Split(n.Attr("action"), ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			actions = append(actions, a)
+		}
 	}
 	ev := &Event{
 		Type:                 n.Attr("type"),
@@ -75,6 +81,7 @@ func buildEvent(n *node) (*Event, error) {
 		Clock:                n.Attr("clock"),
 		Unordered:            n.Attr("unordered") == "true",
 		AbsorbWhenSuperseded: n.Attr("absorb-when-superseded") == "true",
+		Actions:              actions,
 	}
 	for _, child := range n.Children() {
 		switch child.Name() {

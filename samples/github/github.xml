@@ -1112,6 +1112,24 @@
 			it covers. The payload names the installation and the App, never
 			the new coverage or token, so the App's answers are dropped.
 		-->
+		<!--
+			A deleted repository is gone, and a renamed one stops answering to
+			its old name: the row filed under that name is dropped. The rename's
+			new row is written by the repository handler above.
+		-->
+		<event type="repository" resource="repo" clock="repository.updated_at" action="deleted">
+			<subject>repo-gone:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="name">repository.name</key>
+			<invalidate reason="the payload states the repository was deleted, and there is no row to write"/>
+		</event>
+		<event type="repository" resource="repo" clock="repository.updated_at" action="renamed">
+			<subject>repo-renamed:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="name">changes.repository.name.from</key>
+			<invalidate reason="the old name no longer names this repository"/>
+		</event>
+
 		<event type="installation" resource="install_token" clock="installation.updated_at">
 			<subject>install-token:<value name="payload.installation.id"/></subject>
 			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>

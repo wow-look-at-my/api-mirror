@@ -358,6 +358,9 @@ type Event struct {
 	Unordered bool
 	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
 	AbsorbWhenSuperseded bool
+	// Actions limits the event to deliveries whose action is any of these.
+	// Empty handles every action.
+	Actions []string
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set
 	Sets []Set

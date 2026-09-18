@@ -504,10 +504,10 @@ func (e *Events) validate(resources map[string]*Resource) error {
 			return fmt.Errorf("<event> needs a type")
 		}
 		// A type is declared per resource it moves. Repeating a resource stays a mistake: the later declaration silently decides the row.
-		if seen.Contains(ev.Type + "\x00" + ev.Resource) {
+		if seen.Contains(ev.Type + "\x00" + ev.Resource + "\x00" + strings.Join(ev.Actions, ",")) {
 			return fmt.Errorf("event %q declared twice for resource %q", ev.Type, ev.Resource)
 		}
-		seen.Add(ev.Type + "\x00" + ev.Resource)
+		seen.Add(ev.Type + "\x00" + ev.Resource + "\x00" + strings.Join(ev.Actions, ","))
 		res, ok := resources[ev.Resource]
 		if !ok {
 			return fmt.Errorf("event %q names resource %q, which is not declared", ev.Type, ev.Resource)

@@ -139,7 +139,11 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 	// Handlers order apart, each on its own subject. A shared subject makes the watermark refuse the rest.
 	id := deliveryID(raw)
 	deliveries := make([]*Delivery, 0, len(evs))
+	action := fmt.Sprint(lookupPath(payload, "action"))
 	for _, ev := range evs {
+		if len(ev.Actions) > 0 && !containsString(ev.Actions, action) {
+			continue
+		}
 		subject, at, err := orderOf(ev, payload)
 		if err != nil {
 			logf("delivery %s (%s -> %s): %v", id, typ, ev.Resource, err)
@@ -155,6 +159,10 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 			Subject: subject,
 			At:      at,
 		})
+	}
+	if len(deliveries) == 0 {
+		i.answer(w, DeliveryIgnored)
+		return
 	}
 
 	if i.window > 0 {
