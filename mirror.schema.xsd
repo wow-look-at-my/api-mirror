@@ -325,6 +325,7 @@
 		<xs:attribute name="unordered" type="xs:boolean"/>
 		<xs:attribute name="absorb-when-superseded" type="xs:boolean"/>
 		<xs:attribute name="action" type="xs:string"/>
+		<xs:attribute name="when" type="xs:string"/>
 	</xs:complexType>
 
 	<!--

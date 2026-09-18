@@ -139,9 +139,14 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 	// Handlers order apart, each on its own subject. A shared subject makes the watermark refuse the rest.
 	id := deliveryID(raw)
 	deliveries := make([]*Delivery, 0, len(evs))
-	action := fmt.Sprint(lookupPath(payload, "action"))
 	for _, ev := range evs {
-		if len(ev.Actions) > 0 && !containsString(ev.Actions, action) {
+		ok, err := handles(ev, payload)
+		if err != nil {
+			logf("delivery %s (%s -> %s): %v", id, typ, ev.Resource, err)
+			i.answer(w, DeliveryFailed)
+			return
+		}
+		if !ok {
 			continue
 		}
 		subject, at, err := orderOf(ev, payload)
@@ -185,6 +190,22 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		disp = foldDisposition(disp, one)
 	}
 	i.answer(w, disp)
+}
+
+// handles reports whether an event takes this delivery: its action is listed,
+// and its when predicate renders truthy.
+func handles(ev *Event, payload any) (bool, error) {
+	if len(ev.Actions) > 0 && !containsString(ev.Actions, fmt.Sprint(lookupPath(payload, "action"))) {
+		return false, nil
+	}
+	if ev.When == "" {
+		return true, nil
+	}
+	out, err := renderString(ev.When, map[string]any{"payload": payload})
+	if err != nil {
+		return false, fmt.Errorf("event %q when: %w", ev.Type, err)
+	}
+	return isTruthy(out), nil
 }
 
 // foldDisposition answers a fanned-out delivery with its worst outcome, so a

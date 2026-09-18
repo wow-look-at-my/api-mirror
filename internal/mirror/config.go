@@ -361,6 +361,9 @@ type Event struct {
 	// Actions limits the event to deliveries whose action is any of these.
 	// Empty handles every action.
 	Actions []string
+	// When is template source over `.payload`. The event handles a delivery
+	// only when it renders truthy.
+	When string
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set
 	Sets []Set

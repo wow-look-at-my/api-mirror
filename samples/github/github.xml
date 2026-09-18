@@ -799,7 +799,7 @@
 			once are two independent views, and ordering them against each
 			other would discard one.
 		-->
-		<event type="push" resource="branch" clock="repository.pushed_at">
+		<event type="push" resource="branch" clock="repository.pushed_at" when='{{ and (hasPrefix "refs/heads/" .payload.ref) (not .payload.deleted) }}'>
 			<subject>ref:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
 			<apply>
 				<set field="owner">repository.owner.login</set>
@@ -807,6 +807,13 @@
 				<set field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
 				<set field="tip_sha">after</set>
 			</apply>
+		</event>
+		<event type="push" resource="branch" clock="repository.pushed_at" when='{{ and (hasPrefix "refs/heads/" .payload.ref) .payload.deleted }}'>
+			<subject>ref-deleted:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
+			<invalidate reason="a deleting push states an all-zero after, which is no tip; the row must stop being served"/>
 		</event>
 
 		<!--
