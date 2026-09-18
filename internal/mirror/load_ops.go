@@ -27,6 +27,27 @@ func buildDashboard(n *node) (Dashboard, error) {
 				return Dashboard{}, fmt.Errorf("<dashboard><token>: %w", err)
 			}
 			d.Token = t
+		case "sign-in":
+			attrs := []string{"client-id", "client-secret", "authorize", "exchange", "user", "login", "admins", "secret", "base-url"}
+			if err := checkAttrs(child, attrs...); err != nil {
+				return Dashboard{}, err
+			}
+			for _, required := range attrs[:6] {
+				if child.Attr(required) == "" {
+					return Dashboard{}, fmt.Errorf("<dashboard><sign-in> needs %s", required)
+				}
+			}
+			d.SignIn = &SignIn{
+				ClientID:     child.Attr("client-id"),
+				ClientSecret: child.Attr("client-secret"),
+				Authorize:    child.Attr("authorize"),
+				Exchange:     child.Attr("exchange"),
+				User:         child.Attr("user"),
+				Login:        child.Attr("login"),
+				Admins:       child.Attr("admins"),
+				Secret:       child.Attr("secret"),
+				BaseURL:      child.Attr("base-url"),
+			}
 		default:
 			return Dashboard{}, fmt.Errorf("<dashboard>: unexpected child element <%s>", child.Name())
 		}

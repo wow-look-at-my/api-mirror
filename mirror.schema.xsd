@@ -366,6 +366,19 @@
 	<xs:complexType name="dashboard">
 		<xs:sequence>
 			<xs:element name="token" type="content" minOccurs="0"/>
+			<xs:element name="sign-in" minOccurs="0">
+				<xs:complexType>
+					<xs:attribute name="client-id" type="xs:string" use="required"/>
+					<xs:attribute name="client-secret" type="xs:string" use="required"/>
+					<xs:attribute name="authorize" type="xs:string" use="required"/>
+					<xs:attribute name="exchange" type="xs:string" use="required"/>
+					<xs:attribute name="user" type="xs:string" use="required"/>
+					<xs:attribute name="login" type="xs:string" use="required"/>
+					<xs:attribute name="admins" type="xs:string"/>
+					<xs:attribute name="secret" type="xs:string"/>
+					<xs:attribute name="base-url" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:sequence>
 		<xs:attribute name="path" type="xs:string"/>
 		<xs:attribute name="title" type="xs:string"/>

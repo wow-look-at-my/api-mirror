@@ -636,7 +636,21 @@ views.spec = async () => {
 		section('Derived DDL', el('pre', {}, v.ddl)));
 };
 
-const tabs = [
+// me is a signed-in person's own standing: what their principal has proven.
+views.me = async () => {
+	const v = await api('api/me');
+	return el('div', {},
+		section(`Proven access for ${v.principal}`, v.grants.length
+			? table(['Resource', 'Key', 'Source', 'Expires'],
+				v.grants.map((g) => [g.resource, el('span', { class: 'mono wrap' }, g.key), g.source, fmt.ago(g.expires_at)]))
+			: panel(el('div', { class: 'empty' }, 'Nothing proven yet. Access is proven the first time you read something through this mirror.'))),
+		section('Remembered denials', v.denials.length
+			? table(['Resource', 'Key', 'Status', 'Expires'],
+				v.denials.map((d) => [d.resource, el('span', { class: 'mono wrap' }, d.key), d.status, fmt.ago(d.expires_at)]))
+			: panel(el('div', { class: 'empty' }, 'None.'))));
+};
+
+let tabs = [
 	['overview', 'Overview'],
 	['requests', 'Requests'],
 	['passthrough', 'Passthrough'],
@@ -651,7 +665,7 @@ const tabs = [
 
 function currentTab() {
 	const name = location.hash.replace('#', '').split('?')[0];
-	return views[name] ? name : 'overview';
+	return tabs.some(([id]) => id === name) ? name : tabs[0][0];
 }
 
 // drawTabs fills <scratch-tabs strip-only>, which renders the strip and leaves
@@ -690,10 +704,25 @@ async function render() {
 	document.getElementById('clock').textContent = `updated ${new Date().toLocaleTimeString()}`;
 }
 
-api('api/overview').then(nameTheMirror).catch(() => {});
+// The page asks who is looking before it draws anything: a signed-in
+// non-admin gets their own standing and nothing else.
+async function start() {
+	const who = await api('api/whoami');
+	if (!who.admin) {
+		tabs = [['me', 'My access']];
+	} else {
+		api('api/overview').then(nameTheMirror).catch(() => {});
+	}
+	if (who.login) {
+		document.getElementById('clock').before(el('a', { href: 'auth/logout', class: 'muted' }, `${who.login} - sign out`), ' ');
+	}
+	window.addEventListener('hashchange', render);
+	document.getElementById('reload').addEventListener('click', render);
+	render();
+	// The page re-reads on a fixed cadence.
+	setInterval(render, 15000);
+}
 
-window.addEventListener('hashchange', render);
-document.getElementById('reload').addEventListener('click', render);
-render();
-// The page re-reads on a fixed cadence.
-setInterval(render, 15000);
+start().catch((e) => {
+	document.getElementById('view').replaceChildren(el('div', { class: 'err' }, String(e.message || e)));
+});

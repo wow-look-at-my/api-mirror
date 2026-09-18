@@ -46,6 +46,9 @@ type Dashboard struct {
 	Token string
 	// Title is what the page calls this mirror.
 	Title string
+	// SignIn lets a human in through the upstream's OAuth. Nil leaves the
+	// token as the only way in.
+	SignIn *SignIn
 }
 
 // CORS is the browser-facing policy.

@@ -1701,6 +1701,10 @@
 	-->
 	<dashboard path="/_mirror" title="GitHub mirror">
 		<token><value name="env.MIRROR_ADMIN_TOKEN"/></token>
+		<!-- Sign-in stays off until both OAuth App credentials are set. -->
+		<sign-in client-id="{{ .env.GITHUB_OAUTH_CLIENT_ID }}" client-secret="{{ .env.GITHUB_OAUTH_CLIENT_SECRET }}"
+			authorize="https://github.com/login/oauth/authorize" exchange="https://github.com/login/oauth/access_token"
+			user="/user" login="login" admins='{{ or .env.ADMIN_LOGINS "PazerOP" }}' secret="{{ .env.SESSION_SECRET }}" base-url="{{ .env.BASE_URL }}"/>
 	</dashboard>
 
 	<!--
