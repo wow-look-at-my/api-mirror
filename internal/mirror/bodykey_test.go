@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -77,6 +78,28 @@ func TestBodyKey_TheQuestionTravelsAndKeysTheAnswer(t *testing.T) {
 	defer mu.Unlock()
 	assert.Equal(t, []string{`1`, `2`}, seen,
 		"the body reaches the upstream verbatim, and the repeat costs no call at all")
+}
+
+func TestBodyKey_ABypassedBodyIsForwardedWholeEveryTime(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	e := bodyKeyEngine(t, &seen, &mu)
+	e.spec.Routes[len(e.spec.Routes)-1].Bypass = regexp.MustCompile(`"query"\s*:\s*"[^"]*\bmutation\b`)
+
+	mutation := `{"query":"mutation { addStar(input: {}) { clientMutationId } }"}`
+	for range 2 {
+		rec := postQuery(t, e, mutation)
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "passthrough", rec.Header().Get("X-Mirror-Cache"))
+		assert.Equal(t, string(PassBypass), rec.Header().Get("X-Mirror-Passthrough-Reason"))
+	}
+	query := `{"query":"query { viewer { login } }"}`
+	assert.Equal(t, string(OutcomeMiss), postQuery(t, e, query).Header().Get("X-Mirror-Cache"))
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{mutation, mutation, query}, seen,
+		"every mutation runs upstream with its body intact; a read is still cached")
 }
 
 func TestValidateRoute_BodyKey(t *testing.T) {

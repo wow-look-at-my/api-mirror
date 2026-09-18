@@ -210,6 +210,7 @@
 		<xs:attribute name="complete" type="xs:boolean"/>
 		<!-- The resource key the REQUEST body fills, for a route that posts its question. -->
 		<xs:attribute name="body-key" type="xs:string"/>
+		<xs:attribute name="bypass" type="xs:string"/>
 	</xs:complexType>
 
 	<!-- A write whose answer the mirror cannot derive: forward it, drop the row. -->

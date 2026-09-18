@@ -1229,7 +1229,12 @@
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="POST" path="/graphql" resource="graphql" body-key="query">
+	<!--
+		A mutation is a write. Cached, a retry inside the TTL would be answered
+		from the row and never run, so any body naming one is forwarded.
+	-->
+	<route method="POST" path="/graphql" resource="graphql" body-key="query"
+		bypass='"query"\s*:\s*"[^"]*\bmutation\b'>
 		<accept>application/json</accept>
 	</route>
 

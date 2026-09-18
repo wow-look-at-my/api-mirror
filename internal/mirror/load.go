@@ -3,6 +3,7 @@ package mirror
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -373,8 +374,16 @@ func ttlAttr(n *node, what string) (time.Duration, error) {
 }
 
 func buildRoute(n *node) (*Route, error) {
-	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list", "complete", "body-key"); err != nil {
+	if err := checkAttrs(n, "method", "path", "resource", "ttl", "list", "complete", "body-key", "bypass"); err != nil {
 		return nil, err
+	}
+	var bypass *regexp.Regexp
+	if src := n.Attr("bypass"); src != "" {
+		re, err := regexp.Compile(src)
+		if err != nil {
+			return nil, fmt.Errorf("route %s bypass: %w", n.Attr("path"), err)
+		}
+		bypass = re
 	}
 	rt := &Route{
 		Method:   strings.ToUpper(n.Attr("method")),
@@ -383,6 +392,7 @@ func buildRoute(n *node) (*Route, error) {
 		List:     n.Attr("list") == "true",
 		Complete: n.Attr("complete") == "true",
 		BodyKey:  n.Attr("body-key"),
+		Bypass:   bypass,
 	}
 	if rt.Method == "" {
 		rt.Method = "GET"

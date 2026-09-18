@@ -1,7 +1,9 @@
 package mirror
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strconv"
@@ -18,7 +20,8 @@ const (
 	PassQuery      PassReason = "unmodeled-query"
 	PassResponse   PassReason = "unmodeled-response" // the route models the request, not what came back
 	PassNoIdentity PassReason = "unverified-identity"
-	PassRelay      PassReason = "relayed" // a declared forward to a foreign host
+	PassRelay      PassReason = "relayed"     // a declared forward to a foreign host
+	PassBypass     PassReason = "bypass-body" // the body is a write the route declares uncacheable
 )
 
 // match is request resolved against a route.
@@ -94,6 +97,11 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 				return nil, PassQuery, fmt.Errorf("route %s: the request body is over the %d byte cap", rt.Path, maxBodyBytes)
 			}
 			body = b
+			// The passthrough needs the body the resolve just consumed.
+			r.Body = io.NopCloser(bytes.NewReader(b))
+			if rt.Bypass != nil && rt.Bypass.Match(b) {
+				return nil, PassBypass, nil
+			}
 			key[rt.BodyKey] = fingerprint(string(b))
 		}
 		return &match{route: rt, key: key, query: query, body: body}, "", nil

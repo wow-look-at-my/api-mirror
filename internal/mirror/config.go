@@ -1,6 +1,9 @@
 package mirror
 
-import "time"
+import (
+	"regexp"
+	"time"
+)
 
 // Spec is mirror declaration: the whole contents of a mirror XML file.
 type Spec struct {
@@ -244,6 +247,9 @@ type Route struct {
 	// for a route whose question travels in its body. Naming it also makes
 	// that body travel: the fetch replays it upstream.
 	BodyKey string
+	// Bypass is a regular expression over the request body. A body it matches
+	// is a write, such as a GraphQL mutation, and is forwarded uncached.
+	Bypass *regexp.Regexp
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
