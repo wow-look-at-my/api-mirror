@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"compress/gzip"
 	"crypto/subtle"
 	"net/http"
 	"strings"
@@ -98,6 +99,7 @@ func (a *Admin) routes() {
 	a.mux.HandleFunc("POST "+p+"/api/refresh", a.runRefresh)
 	a.mux.HandleFunc("GET "+p+"/api/check", a.check)
 	a.mux.HandleFunc("POST "+p+"/api/check", a.check)
+	a.mux.HandleFunc("GET "+p+"/api/jobs", a.jobs)
 	a.mux.HandleFunc("GET "+p+"/api/whoami", a.whoami)
 	a.mux.HandleFunc("GET "+p+"/api/me", a.me)
 	if a.signIn != nil {
@@ -135,6 +137,11 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path == a.prefix {
 		http.Redirect(w, r, a.prefix+"/", http.StatusMovedPermanently)
 		return
+	}
+	if compressible(r, a.prefix) {
+		zw := gzip.NewWriter(w)
+		defer zw.Close()
+		w = &gzipWriter{ResponseWriter: w, zw: zw}
 	}
 	a.engine.setCORS(w, r)
 	a.mux.ServeHTTP(w, r)
@@ -200,6 +207,9 @@ type Overview struct {
 	Principals    int             `json:"principals"`
 	Denials       int64           `json:"denials"`
 	UpstreamBytes int             `json:"upstream_bytes"`
+	// DBBytes and WALBytes are the cache file and its write-ahead log on disk.
+	DBBytes  int64 `json:"db_bytes"`
+	WALBytes int64 `json:"wal_bytes"`
 	// Passthrough is what the spec still does not model: how finished this is.
 	Passthrough int `json:"passthrough"`
 	Answered    int `json:"answered"`
@@ -226,6 +236,8 @@ func (a *Admin) overview(w http.ResponseWriter, r *http.Request) {
 		Notify:        e.notify.Stats(ctx),
 		Deliveries:    e.ingest.Stats(),
 		UpstreamBytes: e.tel.UpstreamBytes(),
+		DBBytes:       fileSize(e.store.path),
+		WALBytes:      fileSize(e.store.path + "-wal"),
 	}
 	if ov.Title == "" {
 		ov.Title = e.spec.Name
