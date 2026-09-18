@@ -91,6 +91,14 @@
 		<field name="merged" type="bool">merged</field>
 		<field name="merge_commit_sha" type="text">merge_commit_sha</field>
 		<field name="updated_at" type="time">updated_at</field>
+		<field name="user_login" type="text">user.login</field>
+		<field name="labels" type="json">labels</field>
+		<field name="auto_merge" type="json">auto_merge</field>
+		<field name="mergeable" type="bool">mergeable</field>
+		<field name="mergeable_state" type="text">mergeable_state</field>
+		<field name="additions" type="int">additions</field>
+		<field name="deletions" type="int">deletions</field>
+		<field name="changed_files" type="int">changed_files</field>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>
@@ -837,6 +845,13 @@
 				<set field="merged">pull_request.merged</set>
 				<set field="merge_commit_sha">pull_request.merge_commit_sha</set>
 				<set field="updated_at">pull_request.updated_at</set>
+				<set field="user_login">pull_request.user.login</set>
+				<set field="labels">pull_request.labels</set>
+				<set field="auto_merge" null="allow">pull_request.auto_merge</set>
+				<!-- A null mergeable is GitHub recomputing the merge after a push, so
+				the old verdict describes a head that no longer exists. -->
+				<set field="mergeable" null="allow">pull_request.mergeable</set>
+				<set field="mergeable_state">pull_request.mergeable_state</set>
 			</apply>
 		</event>
 
