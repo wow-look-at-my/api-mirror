@@ -1129,6 +1129,22 @@
 			<key field="name">changes.repository.name.from</key>
 			<invalidate reason="the old name no longer names this repository"/>
 		</event>
+		<event type="repository" resource="repo" clock="repository.updated_at" action="transferred">
+			<subject>repo-transferred:<value name="payload.repository.full_name"/></subject>
+			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
+			<key field="name">repository.name</key>
+			<invalidate reason="the old owner no longer names this repository"/>
+		</event>
+		<event type="repository" resource="org_repos" clock="repository.updated_at" action="transferred">
+			<subject>org-repos-transferred:<value name="payload.repository.full_name"/></subject>
+			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
+			<invalidate reason="the repository left the old owner's list, which can only be refetched"/>
+		</event>
+		<event type="repository" resource="owner_user_repos" clock="repository.updated_at" action="transferred">
+			<subject>user-repos-transferred:<value name="payload.repository.full_name"/></subject>
+			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
+			<invalidate reason="the repository left the old owner's list, which can only be refetched"/>
+		</event>
 
 		<event type="installation" resource="install_token" clock="installation.updated_at">
 			<subject>install-token:<value name="payload.installation.id"/></subject>
