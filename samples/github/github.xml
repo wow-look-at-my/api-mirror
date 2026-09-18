@@ -61,6 +61,7 @@
 		<key name="owner" from="owner.login" fold="true"/>
 		<key name="name" from="name" fold="true"/>
 		<field name="repo_id" type="int">id</field>
+		<field name="full_name" type="text">full_name</field>
 		<field name="visibility" type="text">visibility</field>
 		<field name="private" type="bool">private</field>
 		<field name="default_branch" type="text">default_branch</field>
@@ -79,7 +80,7 @@
 	<resource name="pull" ttl="1h">
 		<key name="owner" from="base.repo.owner.login" fold="true"/>
 		<key name="repo" from="base.repo.name" fold="true"/>
-		<key name="number" from="number"/>
+		<key name="number" from="number" type="int"/>
 		<field name="title" type="text">title</field>
 		<field name="state" type="text">state</field>
 		<field name="draft" type="bool">draft</field>

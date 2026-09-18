@@ -180,6 +180,8 @@ type Key struct {
 	Fold bool
 	// Credential fills this from the caller's own request, not the document.
 	Credential bool
+	// Type is how the key is answered; it is always stored as text.
+	Type FieldType
 }
 
 // FieldType is a stored column's type. The set is deliberately small: a mirror

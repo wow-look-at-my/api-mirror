@@ -130,6 +130,7 @@
 					<xs:attribute name="fold" type="xs:boolean"/>
 					<!-- The key is a fingerprint of the caller's own credential. -->
 					<xs:attribute name="credential" type="xs:boolean"/>
+					<xs:attribute name="type" type="fieldType"/>
 				</xs:complexType>
 			</xs:element>
 			<xs:element name="field">

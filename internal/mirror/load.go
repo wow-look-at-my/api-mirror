@@ -252,14 +252,19 @@ func buildResource(n *node) (*Resource, error) {
 func addResourceChild(r *Resource, child *node) error {
 	switch child.Name() {
 	case "key":
-		if err := checkAttrs(child, "name", "from", "fold", "credential"); err != nil {
+		if err := checkAttrs(child, "name", "from", "fold", "credential", "type"); err != nil {
 			return err
+		}
+		typ := FieldType(child.Attr("type"))
+		if typ != "" && typ != FieldText && typ != FieldInt {
+			return fmt.Errorf("resource %q key %q: a key is answered as text or int, not %q", r.Name, child.Attr("name"), typ)
 		}
 		r.Keys = append(r.Keys, Key{
 			Name:       child.Attr("name"),
 			From:       child.Attr("from"),
 			Fold:       child.Attr("fold") == "true",
 			Credential: child.Attr("credential") == "true",
+			Type:       typ,
 		})
 	case "field":
 		f, err := buildField(child)

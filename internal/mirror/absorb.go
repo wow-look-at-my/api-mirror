@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -181,20 +182,42 @@ func rebuild(r *Resource, row Row) (map[string]any, error) {
 	if r.Store == StoreDocument {
 		return nil, fmt.Errorf("rebuild %s: a document resource replays its stored document", r.Name)
 	}
+	// Each value goes back where the upstream document had it, so a column
+	// absorbed from owner.login is answered as {"owner":{"login":...}}.
 	out := make(map[string]any, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
-		if v, ok := row[k.Name]; ok {
-			out[k.Name] = v
+		v, ok := row[k.Name]
+		if !ok || k.Credential {
+			continue
 		}
+		placeAt(out, cmp.Or(k.From, k.Name), present(Field{Type: cmp.Or(k.Type, FieldText)}, v))
 	}
 	for _, f := range r.Fields {
 		v, ok := row[f.Name]
 		if !ok {
 			continue
 		}
-		out[f.Name] = present(f, v)
+		placeAt(out, cmp.Or(f.From, f.Name), present(f, v))
 	}
 	return out, nil
+}
+
+// placeAt sets a dotted path inside doc, building the objects on the way. A
+// segment already holding a non-object keeps its value.
+func placeAt(doc map[string]any, path string, v any) {
+	parts := strings.Split(path, ".")
+	for _, p := range parts[:len(parts)-1] {
+		next, ok := doc[p].(map[string]any)
+		if !ok {
+			if _, taken := doc[p]; taken {
+				return
+			}
+			next = map[string]any{}
+			doc[p] = next
+		}
+		doc = next
+	}
+	doc[parts[len(parts)-1]] = v
 }
 
 // present turns a stored cell back into its JSON shape.
@@ -215,6 +238,15 @@ func present(f Field, v any) any {
 			return v
 		}
 		return time.Unix(n.(int64), 0).UTC().Format(time.RFC3339)
+	case FieldInt:
+		s, ok := v.(string)
+		if !ok {
+			return v
+		}
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
+		}
+		return v
 	case FieldJSON:
 		s, ok := v.(string)
 		if !ok {
