@@ -255,6 +255,12 @@ func TestPurge_OneWriteDropsEveryAnswerItChanged(t *testing.T) {
 	assert.False(t, stored(widget, map[string]string{"id": "7"}), "the item the write changed")
 	assert.False(t, stored(pages, map[string]string{"id": "7", "page": "1"}), "the listing it appears in")
 	assert.False(t, stored(pages, map[string]string{"id": "7", "page": "2"}), "every page of that listing")
+
+	for _, path := range []string{"/widgets/7", "/widgets/7/pages?page=2"} {
+		rec := get(t, e, path)
+		assert.Equal(t, http.StatusOK, rec.Code, path)
+		assert.Equal(t, string(OutcomeMiss), rec.Header().Get("X-Mirror-Cache"), path)
+	}
 }
 
 func mustResource(t *testing.T, e *Engine, name string) *Resource {

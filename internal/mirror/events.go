@@ -274,6 +274,9 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		if _, err := i.store.Delete(ctx, res, key); err != nil {
 			return DeliveryFailed, err
 		}
+		if err := i.store.Forget(ctx, res, key); err != nil {
+			return DeliveryFailed, err
+		}
 		i.prune(ctx)
 		return DeliveryInvalidated, nil
 	}

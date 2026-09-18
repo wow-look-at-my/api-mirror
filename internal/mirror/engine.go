@@ -286,6 +286,9 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 		if _, err := e.store.Delete(r.Context(), res, keys[i]); err != nil {
 			logf("purge %s: %v", purges[i].Path, err)
 		}
+		if err := e.store.Forget(r.Context(), res, keys[i]); err != nil {
+			logf("purge %s: %v", purges[i].Path, err)
+		}
 	}
 }
 
