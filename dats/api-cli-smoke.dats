@@ -39,30 +39,26 @@ tests:
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
 		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19931/_requests && curl -s -o /dev/null http://127.0.0.1:19930/nonexistent && break; sleep 0.1; done
+		calls() { echo "$(curl -s http://127.0.0.1:19931/_requests) $(curl -s http://127.0.0.1:19931/_log)"; }
 		echo "anonymous-status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19930/repos/octo/demo)"
-		curl -s http://127.0.0.1:19931/_requests > {outputs.after-anonymous.txt}
-		echo "=== miss ==="
-		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
-		curl -s http://127.0.0.1:19931/_requests > {outputs.after-miss.txt}
-		echo "=== hit ==="
-		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
-		curl -s http://127.0.0.1:19931/_requests > {outputs.after-hit.txt}
+		echo "after-anonymous=$(calls)"
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json > {outputs.miss.json}
+		echo "after-miss=$(calls)"
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json > {outputs.hit.json}
+		echo "after-hit=$(calls)"
+		echo "hit-matches-miss=$(cmp -s {outputs.miss.json} {outputs.hit.json} && echo yes || echo no)"
 	  outputs:
 		stdout:
-			- "anonymous-status=401"
-			- "=== miss ==="
-			- '"default": "main"'
-			- '"archived": false'
-			- '"private": false'
-		!stdout:
-			- "error:"
+			0: "^anonymous-status=401$"
+			1: "^after-anonymous=0 "
+			2: "^after-miss=4 "
+			3: "^after-hit=4 "
+			4: "^hit-matches-miss=yes$"
 		files:
-			after-anonymous.txt:
+			miss.json:
 				match:
-					- "^0$"
-			after-miss.txt:
-				match:
-					- "^4$"
-			after-hit.txt:
-				match:
-					- "^4$"
+					- '"default": "main"'
+					- '"archived": false'
+					- '"private": false'
+				notMatch:
+					- "error:"

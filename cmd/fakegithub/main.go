@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -22,13 +24,24 @@ func main() {
 	flag.Parse()
 
 	var requests atomic.Int64
+	var mu sync.Mutex
+	var served []string
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_requests", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%d", requests.Load())
 	})
+	// /_log names every request served, so a failing count says which call it was.
+	mux.HandleFunc("/_log", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprint(w, strings.Join(served, " "))
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
+		mu.Lock()
+		served = append(served, r.Method+":"+r.URL.RequestURI())
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 
 		if r.URL.Path == "/user" {

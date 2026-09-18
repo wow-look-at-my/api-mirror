@@ -29,14 +29,10 @@ tests:
 		echo "signed=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-GitHub-Event: push' -H "X-Hub-Signature-256: $SIG" -H 'Content-Type: application/json' --data "$BODY" http://127.0.0.1:19950/webhook)"
 		sleep 3
 		echo "branch=$(curl -s -H 'Authorization: Bearer fake-token' -H 'Accept: application/vnd.github+json' http://127.0.0.1:19950/repos/octo/demo/git/ref/heads/main)"
-		curl -s http://127.0.0.1:19951/_requests > {outputs.upstream-calls.txt}
+		echo "calls=$(curl -s http://127.0.0.1:19951/_requests) $(curl -s http://127.0.0.1:19951/_log)"
 	  outputs:
 		stdout:
-			- "unsigned=403"
-			- "signed=202"
-			- "2222222222222222222222222222222222222222"
-			- "refs/heads/main"
-		files:
-			upstream-calls.txt:
-				match:
-					- "^1$"
+			0: "^unsigned=403$"
+			1: "^signed=202$"
+			2: '^branch=.*(refs/heads/main.*2{40}|2{40}.*refs/heads/main)'
+			3: "^calls=1 "

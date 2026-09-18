@@ -24,24 +24,24 @@ tests:
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
 		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19961/_requests && curl -s -o /dev/null http://127.0.0.1:19960/nonexistent && break; sleep 0.1; done
 		get() { curl -s -H 'Authorization: Bearer fake-token' -H 'Accept: application/vnd.github+json' "http://127.0.0.1:19960/repos/octo/demo/branches$1"; }
+		calls() { echo "$(curl -s http://127.0.0.1:19961/_requests) $(curl -s http://127.0.0.1:19961/_log)"; }
 		echo "miss=$(get '')"
-		echo "calls-after-miss=$(curl -s http://127.0.0.1:19961/_requests)"
+		echo "calls-after-miss=$(calls)"
 		echo "hit=$(get '')"
-		echo "calls-after-hit=$(curl -s http://127.0.0.1:19961/_requests)"
+		echo "calls-after-hit=$(calls)"
 		get '?per_page=1' > /dev/null
-		echo "calls-after-other-page=$(curl -s http://127.0.0.1:19961/_requests)"
+		echo "calls-after-other-page=$(calls)"
 		BODY='{"ref":"refs/heads/main","before":"1111111111111111111111111111111111111111","after":"2222222222222222222222222222222222222222","deleted":false,"repository":{"full_name":"octo/demo","name":"demo","owner":{"login":"octo"},"pushed_at":1787000000}}'
 		SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac dats-secret | sed 's/^.*= //')"
 		curl -s -o /dev/null -X POST -H 'X-GitHub-Event: push' -H "X-Hub-Signature-256: $SIG" -H 'Content-Type: application/json' --data "$BODY" http://127.0.0.1:19960/webhook
 		sleep 3
 		get '' > /dev/null
-		echo "calls-after-push=$(curl -s http://127.0.0.1:19961/_requests)"
+		echo "calls-after-push=$(calls)"
 	  outputs:
 		stdout:
-			- "miss=[{"
-			- "hit=[{"
-			- "3333333333333333333333333333333333333333"
-			- "calls-after-miss=2"
-			- "calls-after-hit=2"
-			- "calls-after-other-page=3"
-			- "calls-after-push=4"
+			0: '^miss=\[\{.*3{40}'
+			1: "^calls-after-miss=2 "
+			2: '^hit=\[\{.*3{40}'
+			3: "^calls-after-hit=2 "
+			4: "^calls-after-other-page=3 "
+			5: "^calls-after-push=4 "
