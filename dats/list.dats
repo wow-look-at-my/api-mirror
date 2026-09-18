@@ -40,8 +40,8 @@ tests:
 	  outputs:
 		stdout:
 			0: '^miss=\[\{.*3{40}'
-			1: "^calls-after-miss=2 "
+			1: "^calls-after-miss=3 GET:/user GET:/repos/octo/demo GET:/repos/octo/demo/branches"
 			2: '^hit=\[\{.*3{40}'
-			3: "^calls-after-hit=2 "
-			4: "^calls-after-other-page=3 "
-			5: "^calls-after-push=4 "
+			3: "^calls-after-hit=3 "
+			4: "^calls-after-other-page=4 .*per_page=1$"
+			5: "^calls-after-push=5 "

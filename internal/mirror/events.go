@@ -438,7 +438,10 @@ func (i *Ingest) merge(ctx context.Context, res *Resource, ev *Event, key map[st
 		}
 		merged[st.Field] = v
 	}
-	return i.store.Put(ctx, res, merged, i.now())
+	if err := i.store.Put(ctx, res, merged, i.now()); err != nil {
+		return err
+	}
+	return i.recordDelivered(ctx, res, ev, key)
 }
 
 // setValue reads declared write out of the payload and coerces it to the

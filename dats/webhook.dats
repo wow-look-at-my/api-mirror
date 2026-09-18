@@ -1,5 +1,6 @@
 # A signed push delivery states a branch tip, and the next read of that branch
-# answers it from the delivery: the only upstream call is the reveal probe.
+# answers it from the delivery: the only upstream calls are the caller's
+# identity and the reveal probe.
 sandbox:
 	image: buildpack-deps:bookworm-curl
 
@@ -35,4 +36,4 @@ tests:
 			0: "^unsigned=403$"
 			1: "^signed=202$"
 			2: '^branch=.*(refs/heads/main.*2{40}|2{40}.*refs/heads/main)'
-			3: "^calls=1 "
+			3: "^calls=2 GET:/user GET:/repos/octo/demo$"

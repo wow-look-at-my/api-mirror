@@ -51,8 +51,8 @@ tests:
 		stdout:
 			0: "^anonymous-status=401$"
 			1: "^after-anonymous=0 "
-			2: "^after-miss=4 "
-			3: "^after-hit=4 "
+			2: "^after-miss=3 GET:/user GET:/repos/octo/demo GET:/repos/octo/demo$"
+			3: "^after-hit=3 "
 			4: "^hit-matches-miss=yes$"
 		files:
 			miss.json:
