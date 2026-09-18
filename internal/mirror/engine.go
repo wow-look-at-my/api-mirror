@@ -387,7 +387,15 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
-	e.write(w, http.StatusOK, doc, outcome)
+	e.write(w, e.storedSuccess(ctx, kind, key), doc, outcome)
+}
+
+func (e *Engine) storedSuccess(ctx context.Context, kind, key string) int {
+	meta, err := e.store.Freshness(ctx, kind, key)
+	if err != nil || meta == nil || meta.Status < 200 || meta.Status >= 300 {
+		return http.StatusOK
+	}
+	return meta.Status
 }
 
 // dispositionOf maps a freshness outcome onto the log's vocabulary.

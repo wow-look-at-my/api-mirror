@@ -989,13 +989,19 @@
 		correct here, since the TTL below is well under GitHub's token
 		lifetime, so a "hit" is still a live, usable token.
 	-->
+	<!--
+		The request body narrows the token (repositories, permissions), so it
+		is part of the key and travels upstream: a mint asked for one repo must
+		never be answered with a token minted for all of them.
+	-->
 	<resource name="install_token" store="document" ttl="50m">
 		<key name="token_fp" credential="true"/>
 		<key name="id"/>
+		<key name="request"/>
 		<reveal><credential/></reveal>
 	</resource>
 
-	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token"/>
+	<route method="POST" path="/app/installations/{id}/access_tokens" resource="install_token" body-key="request"/>
 
 	<!--
 		Which installation covers a repository or an owner. An App asks this

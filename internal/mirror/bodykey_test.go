@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -123,4 +124,54 @@ func TestValidateRoute_BodyKey(t *testing.T) {
 		rt := &Route{Method: "POST", Path: "/graphql", Resource: "query", BodyKey: "nope"}
 		require.Error(t, rt.validate(resources))
 	})
+}
+
+func TestMint_TheScopeTravelsKeysTheTokenAndStaysCreated(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		seen = append(seen, string(body))
+		n := len(seen)
+		mu.Unlock()
+		answer, err := json.Marshal(map[string]string{"token": "t" + strconv.Itoa(n)})
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write(answer)
+	}), func(s *Spec) {
+		s.Upstream.Forward = append(s.Upstream.Forward, "Content-Type")
+		s.Resources = append(s.Resources, &Resource{
+			Name: "install_token", Store: StoreDocument,
+			Keys:   []Key{{Name: "token_fp", Credential: true}, {Name: "id"}, {Name: "request"}},
+			Reveal: &Reveal{Credential: true},
+		})
+		s.Routes = append(s.Routes, &Route{
+			Method: "POST", Path: "/app/installations/{id}/access_tokens", Resource: "install_token", BodyKey: "request",
+		})
+	})
+	mint := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/app/installations/9/access_tokens", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer app-jwt")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	all := mint(``)
+	scoped := mint(`{"repositories":["one"]}`)
+	again := mint(`{"repositories":["one"]}`)
+
+	assert.Equal(t, http.StatusCreated, all.Code)
+	assert.JSONEq(t, `{"token":"t1"}`, all.Body.String())
+	assert.JSONEq(t, `{"token":"t2"}`, scoped.Body.String(),
+		"a scoped mint must never be answered with the unscoped token")
+	assert.Equal(t, http.StatusCreated, again.Code, "a hit answers the status the upstream gave")
+	assert.Equal(t, string(OutcomeHit), again.Header().Get("X-Mirror-Cache"))
+	assert.JSONEq(t, `{"token":"t2"}`, again.Body.String())
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{``, `{"repositories":["one"]}`}, seen, "the scope reaches the upstream")
 }
