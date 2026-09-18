@@ -48,11 +48,15 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if answer.Status == 304 {
 		return FetchResult{ETag: etag}, nil
 	}
-	if !storable(e.up, plan.route, answer) {
-		// The route models the request but not this answer. Storing it anyway
-		// would be a guess written down as a fact.
-		return FetchResult{}, fmt.Errorf("upstream %s answered %d, which route %s does not absorb",
-			plan.path, answer.Status, plan.route.Path)
+	// A refusal the mirror's own identity got says nothing about what a
+	// caller with access would see, so it is never stored as the answer.
+	background := forwardFrom(ctx) == nil && answer.Status >= 400
+	if background || !storable(e.up, plan.route, answer) {
+		return FetchResult{}, &RelayedAnswer{
+			Answer: answer,
+			Outage: answer.Status >= 500 && !e.up.RateLimited(answer),
+			Route:  plan.route.Path,
+		}
 	}
 	if answer.Overflow {
 		return FetchResult{}, fmt.Errorf("upstream %s answered more than the %d byte cap", plan.path, maxBodyBytes)
@@ -72,6 +76,19 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return FetchResult{}, err
 	}
 	return result, nil
+}
+
+// RelayedAnswer is an upstream answer the route does not store.
+type RelayedAnswer struct {
+	Answer *Answer
+	// Outage marks the upstream itself failing, the a single case every
+	// caller of the key shares, so it alone holds the key off for the backoff.
+	Outage bool
+	Route  string
+}
+
+func (r *RelayedAnswer) Error() string {
+	return fmt.Sprintf("upstream answered %d, which route %s does not absorb", r.Answer.Status, r.Route)
 }
 
 // upstreamPath rebuilds the path this plan asks the upstream for, carrying only

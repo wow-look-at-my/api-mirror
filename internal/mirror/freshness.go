@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -175,6 +176,10 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 
 	res, err := f.fetch(fetchCtx, kind, key, etag)
 	now := f.now()
+	var relayed *RelayedAnswer
+	if errors.As(err, &relayed) && !relayed.Outage {
+		return OutcomeError, err
+	}
 	if err != nil {
 		retryAfter := now.Add(defaultErrorRetry)
 		if werr := f.store.MarkError(detached, kind, key, err.Error(), retryAfter); werr != nil {

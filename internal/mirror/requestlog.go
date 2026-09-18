@@ -18,6 +18,7 @@ const (
 	DispPassthrough Disposition = "passthrough" // forwarded, with a reason
 	DispDenied      Disposition = "denied"      // the reveal layer refused
 	DispRefusal     Disposition = "refusal"     // an upstream refusal the route absorbed
+	DispRelayed     Disposition = "relayed"     // an upstream answer handed back unstored
 	DispError       Disposition = "error"       // the mirror could not answer
 	DispDelivery    Disposition = "delivery"    // an inbound webhook
 	DispAdmin       Disposition = "admin"       // the dashboard's own surface

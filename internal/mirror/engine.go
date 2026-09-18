@@ -3,10 +3,12 @@ package mirror
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -348,6 +350,12 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		body:  m.body,
 	})
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
+	var relayed *RelayedAnswer
+	if errors.As(err, &relayed) {
+		w.note(DispRelayed, "", "", strconv.Itoa(relayed.Answer.Status))
+		e.relayAnswer(w, relayed.Answer)
+		return
+	}
 	if err != nil {
 		w.note(DispError, "", "", "upstream")
 		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
