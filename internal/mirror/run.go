@@ -33,9 +33,13 @@ func run(argv []string, out io.Writer) error {
 		dbPath   = fs.String("db", "mirror.db", "path to the cache database")
 		addr     = fs.String("listen", ":8080", "listen address")
 		check    = fs.Bool("check", false, "load the spec, report what it derives, and exit")
+		maxRows  = fs.Int64("max-rows", defaultMaxRows, "per-table row ceiling; the oldest rows beyond it are evicted")
 	)
 	if err := fs.Parse(argv[1:]); err != nil {
 		return err
+	}
+	if *maxRows < 1 {
+		return fmt.Errorf("--max-rows %d: must be at least 1", *maxRows)
 	}
 
 	spec, err := Load(*specPath)
@@ -52,6 +56,7 @@ func run(argv []string, out io.Writer) error {
 		return err
 	}
 	defer store.Close()
+	store.maxRows = *maxRows
 
 	engine, err := NewEngine(spec, store, nil)
 	if err != nil {

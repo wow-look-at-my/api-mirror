@@ -23,6 +23,9 @@ type Store struct {
 	spec *Spec
 	// byName resolves a resource, so no hot path does a linear scan.
 	byName map[string]*Resource
+	// maxRows is the ceiling on every resource table; capRows enforces it.
+	maxRows int64
+	counts  rowCounts
 }
 
 // Open opens (or creates) the database at path and brings it to the schema this
@@ -65,7 +68,12 @@ func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
 		}
 	}
 
-	s := &Store{db: db, path: path, q: dbgen.New(db), spec: spec, byName: make(map[string]*Resource, len(spec.Resources))}
+	s := &Store{
+		db: db, path: path, q: dbgen.New(db), spec: spec,
+		byName:  make(map[string]*Resource, len(spec.Resources)),
+		maxRows: defaultMaxRows,
+		counts:  rowCounts{n: map[string]int64{}},
+	}
 	for _, r := range spec.Resources {
 		s.byName[r.Name] = r
 	}

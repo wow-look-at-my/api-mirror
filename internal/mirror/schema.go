@@ -50,6 +50,8 @@ func resourceDDL(r *Resource) string {
 		names = append(names, k.Name)
 	}
 	fmt.Fprintf(&b, "\tPRIMARY KEY (%s)\n);\n", strings.Join(names, ", "))
+	// The row cap evicts oldest which this index makes a range read.
+	fmt.Fprintf(&b, "CREATE INDEX %s_written ON %s (mirror_written_at);\n", resourceTable(r.Name), resourceTable(r.Name))
 	return b.String()
 }
 
