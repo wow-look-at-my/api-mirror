@@ -84,6 +84,9 @@
 	<resource name="repo" ttl="6h">
 		<key name="owner" from="owner.login" fold="true"/>
 		<key name="name" from="name" fold="true"/>
+		<!-- The keys fold for lookup; these answer the spelling GitHub states. -->
+		<field name="owner_login" type="text">owner.login</field>
+		<field name="name_given" type="text">name</field>
 		<field name="repo_id" type="int">id</field>
 		<field name="full_name" type="text">full_name</field>
 		<field name="visibility" type="text">visibility</field>
@@ -104,6 +107,9 @@
 	<resource name="pull" ttl="1h">
 		<key name="owner" from="base.repo.owner.login" fold="true"/>
 		<key name="repo" from="base.repo.name" fold="true"/>
+		<!-- The keys fold for lookup; these answer the spelling GitHub states. -->
+		<field name="owner_login" type="text">base.repo.owner.login</field>
+		<field name="repo_given" type="text">base.repo.name</field>
 		<key name="number" from="number" type="int"/>
 		<field name="title" type="text">title</field>
 		<field name="state" type="text">state</field>
@@ -141,6 +147,9 @@
 		<key name="repo" fold="true"/>
 		<key name="ref"/>
 		<field name="tip_sha" type="text">object.sha</field>
+		<!-- The key is the short name a route names; GitHub answers the full ref. -->
+		<field name="ref_full" type="text">ref</field>
+		<field name="object_type" type="text">object.type</field>
 		<!--
 			An open pull request states its base sha on its own deliveries, so
 			a lost push leaves the pull row disagreeing with this one. A pull's
@@ -787,11 +796,14 @@
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>
 
-		<event type="repository" resource="repo" clock="repository.updated_at">
+		<event type="repository" resource="repo" clock="repository.updated_at" when='{{ ne .payload.action "deleted" }}'>
 			<subject>repo:<value name="payload.repository.full_name"/></subject>
 			<apply>
 				<set field="owner">repository.owner.login</set>
 				<set field="name">repository.name</set>
+				<set field="owner_login">repository.owner.login</set>
+				<set field="name_given">repository.name</set>
+				<set field="full_name">repository.full_name</set>
 				<set field="repo_id">repository.id</set>
 				<set field="visibility">repository.visibility</set>
 				<set field="private">repository.private</set>
@@ -816,6 +828,8 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
+				<set field="ref_full">ref</set>
+				<set field="object_type" expr="commit"/>
 				<set field="tip_sha">after</set>
 			</apply>
 		</event>
@@ -900,6 +914,8 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">number</set>
+				<set field="owner_login">repository.owner.login</set>
+				<set field="repo_given">repository.name</set>
 				<set field="title">pull_request.title</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
@@ -985,6 +1001,8 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">pull_request.number</set>
+				<set field="owner_login">repository.owner.login</set>
+				<set field="repo_given">repository.name</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
 				<set field="head_sha">pull_request.head.sha</set>
@@ -1207,6 +1225,8 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="ref">pull_request.base.ref</set>
+				<set field="ref_full" expr="refs/heads/{{ .payload.pull_request.base.ref }}"/>
+				<set field="object_type" expr="commit"/>
 				<set field="tip_sha">pull_request.merge_commit_sha</set>
 			</apply>
 		</event>

@@ -192,14 +192,30 @@ func rebuild(r *Resource, row Row) (map[string]any, error) {
 		}
 		placeAt(out, cmp.Or(k.From, k.Name), present(Field{Type: cmp.Or(k.Type, FieldText)}, v))
 	}
+	// A null field never covers a key answered at the same path: a display
+	// column a delivery did not write must not blank the key it spells.
 	for _, f := range r.Fields {
 		v, ok := row[f.Name]
-		if !ok {
+		if !ok || (v == nil && hasAt(out, cmp.Or(f.From, f.Name))) {
 			continue
 		}
 		placeAt(out, cmp.Or(f.From, f.Name), present(f, v))
 	}
 	return out, nil
+}
+
+// hasAt reports whether a dotted path inside doc already holds a value.
+func hasAt(doc map[string]any, path string) bool {
+	parts := strings.Split(path, ".")
+	for _, p := range parts[:len(parts)-1] {
+		next, ok := doc[p].(map[string]any)
+		if !ok {
+			return false
+		}
+		doc = next
+	}
+	_, ok := doc[parts[len(parts)-1]]
+	return ok
 }
 
 // placeAt sets a dotted path inside doc, building the objects on the way. A
