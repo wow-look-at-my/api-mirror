@@ -13,10 +13,15 @@ import (
 // Row is stored fact: column name to value, as read back from SQLite.
 type Row map[string]any
 
-// Put writes row of a resource, replacing what is there.
+// Put writes row of a resource, replacing what is there. On a versioned
+// resource it returns errStoredIsNewer when the stored row is later.
 func (s *Store) Put(ctx context.Context, r *Resource, row Row, at time.Time) error {
-	if _, err := s.db.ExecContext(ctx, insertStmt(r), rowArgs(r, row, at)...); err != nil {
+	res, err := s.db.ExecContext(ctx, insertStmt(r), rowArgs(r, row, at)...)
+	if err != nil {
 		return fmt.Errorf("store %s: %w", r.Name, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return errStoredIsNewer
 	}
 	return s.capRows(ctx, r, 1)
 }
@@ -151,6 +156,9 @@ func (s *Store) Delete(ctx context.Context, r *Resource, key map[string]string) 
 
 // insertStmt builds the write statement every resource write uses.
 func insertStmt(r *Resource) string {
+	if v := versionColumn(r); v != "" {
+		return upsertStmt(r, v)
+	}
 	cols := columnsOf(r)
 	return fmt.Sprintf(`INSERT OR REPLACE INTO %s (%s, mirror_written_at) VALUES (%s)`,
 		resourceTable(r.Name), strings.Join(cols, ", "), placeholders(len(cols)+1))

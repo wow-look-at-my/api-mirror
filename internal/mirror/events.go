@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -280,7 +281,12 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		i.prune(ctx)
 		return DeliveryInvalidated, nil
 	}
-	if err := i.merge(ctx, res, ev, key, d.Payload); err != nil {
+	err = i.merge(ctx, res, ev, key, d.Payload)
+	if errors.Is(err, errStoredIsNewer) {
+		// A fetch already stored a later view than this delivery carries.
+		return DeliverySuperseded, nil
+	}
+	if err != nil {
 		return DeliveryFailed, err
 	}
 	i.prune(ctx)

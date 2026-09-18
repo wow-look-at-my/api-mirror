@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -184,7 +185,10 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 	if err := requireKeys(plan.res, row); err != nil {
 		return fmt.Errorf("route %s: %w", plan.route.Path, err)
 	}
-	return e.store.Put(ctx, plan.res, row, now)
+	if err := e.store.Put(ctx, plan.res, row, now); !errors.Is(err, errStoredIsNewer) {
+		return err
+	}
+	return nil
 }
 
 // requireKeys refuses a row whose identity is incomplete. A row filed under a

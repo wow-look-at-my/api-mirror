@@ -90,7 +90,7 @@
 		<field name="base_sha" type="text">base.sha</field>
 		<field name="merged" type="bool">merged</field>
 		<field name="merge_commit_sha" type="text">merge_commit_sha</field>
-		<field name="updated_at" type="time">updated_at</field>
+		<field name="updated_at" type="time" version="true">updated_at</field>
 		<field name="user_login" type="text">user.login</field>
 		<field name="labels" type="json">labels</field>
 		<field name="auto_merge" type="json">auto_merge</field>
@@ -132,7 +132,7 @@
 		<key name="context"/>
 		<field name="state" type="text">state</field>
 		<field name="description" type="text">description</field>
-		<field name="updated_at" type="time">updated_at</field>
+		<field name="updated_at" type="time" version="true">updated_at</field>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>

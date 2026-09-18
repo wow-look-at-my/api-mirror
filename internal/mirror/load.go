@@ -314,10 +314,10 @@ func addResourceChild(r *Resource, child *node) error {
 }
 
 func buildField(n *node) (Field, error) {
-	if err := checkAttrs(n, "name", "type", "expr"); err != nil {
+	if err := checkAttrs(n, "name", "type", "expr", "version"); err != nil {
 		return Field{}, err
 	}
-	f := Field{Name: n.Attr("name"), Type: FieldType(n.Attr("type")), Expr: n.Attr("expr")}
+	f := Field{Name: n.Attr("name"), Type: FieldType(n.Attr("type")), Expr: n.Attr("expr"), Version: n.Attr("version") == "true"}
 	if f.Type == "" {
 		f.Type = FieldText
 	}

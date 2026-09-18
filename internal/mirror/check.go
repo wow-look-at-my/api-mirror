@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -172,7 +173,10 @@ func (e *Engine) rowFromAnswer(plan *fetchPlan, answer *Answer) (Row, error) {
 
 // absorbAnswerRow writes a row the check already projected.
 func (e *Engine) absorbAnswerRow(ctx context.Context, plan *fetchPlan, row Row) error {
-	return e.store.Put(ctx, plan.res, row, time.Now())
+	if err := e.store.Put(ctx, plan.res, row, time.Now()); !errors.Is(err, errStoredIsNewer) {
+		return err
+	}
+	return nil
 }
 
 // diffRows compares the columns the spec declares, in declaration order.

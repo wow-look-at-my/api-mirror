@@ -205,6 +205,9 @@ type Field struct {
 	From string
 	// Expr is template source evaluated against the absorbed document.
 	Expr string
+	// Version marks the column the upstream advances on every change. A write
+	// carrying an older value than the stored row is refused.
+	Version bool
 }
 
 // Keep rescues document key from a resource's Drop patterns.

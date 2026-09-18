@@ -180,6 +180,12 @@ func (r *Resource) validate() error {
 		if (f.From == "") == (f.Expr == "") {
 			return fmt.Errorf("resource %q field %q: give it a source path or an expr, not both and not neither", r.Name, f.Name)
 		}
+		if f.Version && f.Type != FieldTime && f.Type != FieldInt {
+			return fmt.Errorf("resource %q field %q: a version column orders writes, so it must be a time or an int", r.Name, f.Name)
+		}
+	}
+	if len(versionFields(r)) > 1 {
+		return fmt.Errorf("resource %q: more than one version=\"true\" field, and two clocks cannot order a row", r.Name)
 	}
 	for _, k := range r.Keep {
 		if k.Name == "" {
