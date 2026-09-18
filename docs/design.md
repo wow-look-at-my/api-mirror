@@ -73,7 +73,15 @@ has — `updated_at` is exactly the name an API uses.
 `<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is
 a path into the absorbed document (`owner.login`) or a template. `store="document"`
 on the resource stores the response body itself rather than columns, for a route
-whose answer is a blob nobody needs to query.
+whose answer is a blob nobody needs to query. `store="raw"` keeps a non-JSON body
+byte for byte: its route asks the upstream for, and answers in, the media type
+of its first `<accept>`, and a route on the same path with a different
+`<accept>` answers the JSON.
+
+`version="true"` on a time or int field makes it the row's clock. A write whose
+version is older than the stored row's is refused, whether it comes from a fetch
+or a delivery, because the delivery watermark only orders deliveries against
+each other.
 
 ### `<route>` — what a consumer asks for
 

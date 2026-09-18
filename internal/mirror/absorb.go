@@ -179,7 +179,7 @@ func toUnix(v any) (any, error) {
 // with cache state -- the class of bug where a consumer works until the cache
 // warms up.
 func rebuild(r *Resource, row Row) (map[string]any, error) {
-	if r.Store == StoreDocument {
+	if r.whole() {
 		return nil, fmt.Errorf("rebuild %s: a document resource replays its stored document", r.Name)
 	}
 	// Each value goes back where the upstream document had it, so a column

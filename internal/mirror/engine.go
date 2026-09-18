@@ -393,6 +393,9 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
+	if res.Store == StoreRaw {
+		w.Header().Set("Content-Type", m.route.Accept[0])
+	}
 	e.write(w, e.storedSuccess(ctx, kind, key), doc, outcome)
 }
 
@@ -440,7 +443,7 @@ func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
 	// A document resource keeps each answer whole, a paged list included, so
 	// the stored document IS the answer and is never wrapped another time.
-	if m.route.List && res.Store != StoreDocument {
+	if m.route.List && !res.whole() {
 		rows, err := e.store.List(ctx, res, m.key)
 		if err != nil {
 			return nil, err
@@ -467,8 +470,11 @@ func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error)
 
 // rebuildRow renders stored row as the document a consumer receives.
 func rebuildRow(res *Resource, row Row) (any, error) {
-	if res.Store == StoreDocument {
-		s, _ := row["document"].(string)
+	s, _ := row["document"].(string)
+	switch res.Store {
+	case StoreRaw:
+		return rawDoc(s), nil
+	case StoreDocument:
 		return decodeJSON([]byte(s))
 	}
 	return rebuild(res, row)
@@ -476,12 +482,16 @@ func rebuildRow(res *Resource, row Row) (any, error) {
 
 // write sends a rebuilt answer, saying plainly where it came from.
 func (e *Engine) write(w http.ResponseWriter, status int, doc any, outcome Outcome) {
-	body, err := marshalJSON(doc)
-	if err != nil {
-		http.Error(w, "render answer: "+err.Error(), http.StatusInternalServerError)
-		return
+	raw, isRaw := doc.(rawDoc)
+	body := []byte(raw)
+	if !isRaw {
+		var err error
+		if body, err = marshalJSON(doc); err != nil {
+			http.Error(w, "render answer: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 	}
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Mirror-Cache", string(outcome))
 	w.WriteHeader(status)
 	if _, err := w.Write(body); err != nil {

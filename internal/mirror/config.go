@@ -153,7 +153,15 @@ const (
 	StoreColumns StoreMode = "columns"
 	// StoreDocument keeps the response document itself, minus the declared
 	StoreDocument StoreMode = "document"
+	// StoreRaw keeps the response body byte for byte, for a media type that is
+	// not JSON. Its route's earliest <accept> is the type asked for and served.
+	StoreRaw StoreMode = "raw"
 )
+
+// whole reports whether the resource keeps each answer in a single stored cell.
+func (r *Resource) whole() bool {
+	return r.Store == StoreDocument || r.Store == StoreRaw
+}
 
 // Resource is kind of stored fact: derived SQLite table, row per
 // key. There is deliberately no actor column and no way to declare --

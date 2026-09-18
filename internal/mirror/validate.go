@@ -157,7 +157,7 @@ func (r *Resource) validate() error {
 		if len(r.Fields) == 0 {
 			return fmt.Errorf("resource %q stores columns but declares no <field>: it would serve an empty answer", r.Name)
 		}
-	case StoreDocument:
+	case StoreDocument, StoreRaw:
 		if len(r.Fields) > 0 {
 			return fmt.Errorf("resource %q stores a document, so its <field> declarations would never be read", r.Name)
 		}
@@ -273,12 +273,15 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if rt.Complete && !rt.List {
 		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
 	}
-	if rt.Complete && res.Store == StoreDocument {
+	if rt.Complete && res.whole() {
 		return fmt.Errorf("route %s: complete=\"true\" replace-syncs rows, and a document resource stores each page whole", rt.Path)
 	}
 	// A document resource stores a single answer per key, a list page
 	// included, so every route onto a single must name the whole key or pages share a row.
-	if !rt.List || res.Store == StoreDocument {
+	if res.Store == StoreRaw && (rt.List || len(rt.Accept) == 0) {
+		return fmt.Errorf("route %s: a raw resource answers one body in the media type of its first <accept>, so the route needs one and cannot be a list", rt.Path)
+	}
+	if !rt.List || res.whole() {
 		for _, k := range res.Keys {
 			if k.Credential {
 				// The engine fills this from the request, not a route param.
@@ -513,7 +516,7 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		if ev.Invalidate != nil && strings.TrimSpace(ev.Invalidate.Reason) == "" {
 			return fmt.Errorf("event %q: <invalidate> needs a reason stating why the payload cannot answer -- throwing away a value the upstream just handed us is the bug this asks you to justify", ev.Type)
 		}
-		if res.Store == StoreDocument && len(ev.Sets) > 0 {
+		if res.whole() && len(ev.Sets) > 0 {
 			return fmt.Errorf("event %q writes fields into resource %q, which stores a document", ev.Type, res.Name)
 		}
 		known := set.New[string]()

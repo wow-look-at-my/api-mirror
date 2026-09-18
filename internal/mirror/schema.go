@@ -35,8 +35,8 @@ func resourceDDL(r *Resource) string {
 	for _, k := range r.Keys {
 		fmt.Fprintf(&b, "\t%s TEXT NOT NULL,\n", k.Name)
 	}
-	switch r.Store {
-	case StoreDocument:
+	switch {
+	case r.whole():
 		b.WriteString("\tdocument TEXT NOT NULL,\n")
 	default:
 		for _, f := range r.Fields {
@@ -80,7 +80,7 @@ func columnsOf(r *Resource) []string {
 	for _, k := range r.Keys {
 		out = append(out, k.Name)
 	}
-	if r.Store == StoreDocument {
+	if r.whole() {
 		return append(out, "document")
 	}
 	for _, f := range r.Fields {
@@ -107,7 +107,7 @@ func (s *Spec) validateNames() error {
 			if err := validateIdent(fmt.Sprintf("resource %q column", r.Name), c); err != nil {
 				return err
 			}
-			if reservedColumns.Contains(c) && !(c == "document" && r.Store == StoreDocument) {
+			if reservedColumns.Contains(c) && !(c == "document" && r.whole()) {
 				return fmt.Errorf("resource %q: column %q is the engine's", r.Name, c)
 			}
 		}

@@ -102,6 +102,9 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 			req.Header.Set(name, v)
 		}
 	}
+	if m := mediaFrom(ctx); m != "" {
+		req.Header.Set("Accept", m)
+	}
 	// A buffered body must be plain bytes: the mirror parses and rebuilds it,
 	req.Header.Set("Accept-Encoding", "identity")
 

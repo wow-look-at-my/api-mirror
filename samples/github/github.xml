@@ -469,6 +469,22 @@
 		</reveal>
 	</resource>
 
+	<!--
+		A pull request's unified diff, kept byte for byte. GitHub refuses a
+		diff past its size limit with 406, and that verdict is as stable as
+		the diff itself, so it is kept too.
+	-->
+	<resource name="pull_diff" store="raw" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="number"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
 	<resource name="pull_commits" store="document" ttl="24h">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
@@ -505,6 +521,13 @@
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull_diff">
+		<accept>application/vnd.github.diff</accept>
+		<accept>application/vnd.github.v3.diff</accept>
+		<absorb status="404"/>
+		<absorb status="406"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref*}" resource="branch">
@@ -1057,6 +1080,14 @@
 			<key field="repo">repository.name</key>
 			<key field="number">number</key>
 			<invalidate reason="the payload states the new head sha and never the changed files"/>
+		</event>
+
+		<event type="pull_request" resource="pull_diff" clock="pull_request.updated_at">
+			<subject>pull-diff:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="number">number</key>
+			<invalidate reason="the payload states the new head sha and never the diff"/>
 		</event>
 
 		<event type="pull_request" resource="pull_commits" clock="pull_request.updated_at">

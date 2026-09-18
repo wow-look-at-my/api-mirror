@@ -42,7 +42,7 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if plan == nil {
 		return FetchResult{}, fmt.Errorf("fetch %s/%s: no plan on the context", kind, key)
 	}
-	answer, err := e.up.Call(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), plan.body)
+	answer, err := e.up.Call(plan.media(ctx), plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), plan.body)
 	if err != nil {
 		return FetchResult{}, err
 	}
@@ -69,6 +69,9 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return result, nil
 	}
 
+	if plan.res.Store == StoreRaw {
+		return result, e.store.Put(ctx, plan.res, plan.rawRow(answer.Body), time.Now())
+	}
 	doc, err := decodeJSON(answer.Body)
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("upstream %s: %w", plan.path, err)

@@ -44,7 +44,7 @@ type match struct {
 // with a method no route declares. Both are reported, because a route that
 // still forwards is unfinished work rather than a settled state.
 func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
-	pathKnown := false
+	pathKnown, mediaRefused := false, false
 	for _, rt := range e.spec.Routes {
 		params, ok := matchPath(rt.Path, r.URL.EscapedPath())
 		if !ok {
@@ -54,8 +54,10 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 		if rt.Method != r.Method {
 			continue
 		}
+		// Another route on this path may answer the asked media type.
 		if !acceptable(rt, r.Header.Get("Accept")) {
-			return nil, PassAccept, nil
+			mediaRefused = true
+			continue
 		}
 		query, err := modelQuery(rt, r)
 		if err != nil {
@@ -108,6 +110,9 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			key[rt.BodyKey] = fingerprint(string(b))
 		}
 		return &match{route: rt, key: key, query: query, body: body}, "", nil
+	}
+	if mediaRefused {
+		return nil, PassAccept, nil
 	}
 	if pathKnown {
 		return nil, PassMethod, nil

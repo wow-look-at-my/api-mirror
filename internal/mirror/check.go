@@ -84,7 +84,7 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 
 	fetchCtx, cancel := context.WithTimeout(withLane(ctx, LaneRefresh, "", "check"), checkKeyTimeout)
 	defer cancel()
-	answer, err := e.up.Call(fetchCtx, plan.route.Method, plan.upstreamPath(), e.vars, nil, nil)
+	answer, err := e.up.Call(plan.media(fetchCtx), plan.route.Method, plan.upstreamPath(), e.vars, nil, nil)
 	if err != nil {
 		out.Verdict = CheckUnreachable
 		out.Detail = err.Error()
@@ -146,6 +146,9 @@ func (e *Engine) rowFromAnswer(plan *fetchPlan, answer *Answer) (Row, error) {
 	if answer.Overflow {
 		return nil, fmt.Errorf("the upstream answered more than the %d byte cap", maxBodyBytes)
 	}
+	if plan.res.Store == StoreRaw {
+		return plan.rawRow(answer.Body), nil
+	}
 	doc, err := decodeJSON(answer.Body)
 	if err != nil {
 		return nil, err
@@ -186,7 +189,7 @@ func (e *Engine) absorbAnswerRow(ctx context.Context, plan *fetchPlan, row Row) 
 func diffRows(res *Resource, stored, fresh Row) []Difference {
 	var out []Difference
 	names := make([]string, 0, len(res.Fields)+1)
-	if res.Store == StoreDocument {
+	if res.whole() {
 		names = append(names, "document")
 	}
 	for _, f := range res.Fields {
