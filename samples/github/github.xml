@@ -1106,6 +1106,45 @@
 			<invalidate reason="the payload states the new head sha and never the changed files"/>
 		</event>
 
+		<!--
+			An installation created, deleted, suspended or given other
+			repositories changes what that App may mint and which repositories
+			it covers. The payload names the installation and the App, never
+			the new coverage or token, so the App's answers are dropped.
+		-->
+		<event type="installation" resource="install_token" clock="installation.updated_at">
+			<subject>install-token:<value name="payload.installation.id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<key field="id">installation.id</key>
+			<invalidate reason="the payload states the installation changed, never the token a mint would now return"/>
+		</event>
+		<event type="installation" resource="app_installations" clock="installation.updated_at">
+			<subject>app-installations:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="the listing is stored per page, and the payload cannot say which page the installation sits on"/>
+		</event>
+		<event type="installation" resource="repo_installation" clock="installation.updated_at">
+			<subject>repo-installation:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="a not-installed verdict names no installation, so every one the App holds may now be wrong"/>
+		</event>
+		<event type="installation" resource="owner_installation" clock="installation.updated_at">
+			<subject>owner-installation:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="a not-installed verdict names no installation, so every one the App holds may now be wrong"/>
+		</event>
+		<event type="installation_repositories" resource="install_token" clock="installation.updated_at">
+			<subject>install-token-repos:<value name="payload.installation.id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<key field="id">installation.id</key>
+			<invalidate reason="a token minted before the coverage changed reaches the old repositories"/>
+		</event>
+		<event type="installation_repositories" resource="repo_installation" clock="installation.updated_at">
+			<subject>repo-installation-repos:<value name="payload.installation.app_id"/></subject>
+			<key field="app" expr="app:{{ .payload.installation.app_id }}"/>
+			<invalidate reason="the payload lists what was added and removed, and a stored not-installed verdict for an added repository is now wrong"/>
+		</event>
+
 		<event type="pull_request" resource="pull_diff" clock="pull_request.updated_at">
 			<subject>pull-diff:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
 			<key field="owner">repository.owner.login</key>
