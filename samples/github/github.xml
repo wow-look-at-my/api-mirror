@@ -141,6 +141,17 @@
 		<key name="repo" fold="true"/>
 		<key name="ref"/>
 		<field name="tip_sha" type="text">object.sha</field>
+		<!--
+			An open pull request states its base sha on its own deliveries, so
+			a lost push leaves the pull row disagreeing with this one. A pull's
+			base sha lags its branch, which is why one refetch settles a value.
+		-->
+		<contradicted-by resource="pull" field="base_sha" against="tip_sha">
+			<on key="owner" column="owner"/>
+			<on key="repo" column="repo"/>
+			<on key="ref" column="base_ref"/>
+			<only column="state" value="open"/>
+		</contradicted-by>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
 			<grant ttl="24h"/>

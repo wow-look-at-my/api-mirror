@@ -35,6 +35,7 @@ type Engine struct {
 	debounce *Debouncer
 	vocab    set.Set[string]
 	ids      *identities
+	settled  settledValues
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.
@@ -382,6 +383,9 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		path:  r.URL.EscapedPath(),
 		body:  m.body,
 	})
+	if !m.route.List {
+		e.refetchIfContradicted(ctx, res, m.key)
+	}
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	var relayed *RelayedAnswer
 	if errors.As(err, &relayed) {

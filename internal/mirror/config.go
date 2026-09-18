@@ -187,6 +187,9 @@ type Resource struct {
 	// RevokeOn is the document path holding a credential this resource hands
 	// out. A row whose credential the upstream refuses is dropped.
 	RevokeOn string
+	// Contradiction names another resource whose later rows can prove a
+	// stored row stale.
+	Contradiction *Contradiction
 }
 
 // Key is component of a resource's identity.

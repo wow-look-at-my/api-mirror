@@ -323,6 +323,12 @@ func addResourceChild(r *Resource, child *node) error {
 			return fmt.Errorf("resource %q: %w", r.Name, err)
 		}
 		r.Reveal = rv
+	case "contradicted-by":
+		c, err := buildContradiction(child)
+		if err != nil {
+			return fmt.Errorf("resource %q: %w", r.Name, err)
+		}
+		r.Contradiction = c
 	default:
 		return fmt.Errorf("<resource name=%q>: unexpected child element <%s>", r.Name, child.Name())
 	}

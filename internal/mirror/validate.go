@@ -43,6 +43,14 @@ func (s *Spec) validate() error {
 		}
 		byName[r.Name] = r
 	}
+	for _, r := range s.Resources {
+		if r.Contradiction == nil {
+			continue
+		}
+		if err := r.Contradiction.validate(r, byName); err != nil {
+			return err
+		}
+	}
 	for _, rt := range s.Routes {
 		if err := rt.validate(byName); err != nil {
 			return err
