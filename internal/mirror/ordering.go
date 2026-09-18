@@ -40,8 +40,10 @@ func orderOf(ev *Event, payload any) (string, time.Time, error) {
 	}
 	raw := lookupPath(payload, ev.Clock)
 	if raw == nil {
-		// The spec named a clock field and this payload does not carry it. That
-		return subject, time.Time{}, fmt.Errorf("event %q: payload carries no %s", ev.Type, ev.Clock)
+		// A view that states no moment still carries the new value, so it is
+		// applied unordered rather than refused: GitHub leaves completed_at
+		// null on every check run that has not finished.
+		return subject, time.Time{}, nil
 	}
 	secs, err := toUnix(raw)
 	if err != nil {

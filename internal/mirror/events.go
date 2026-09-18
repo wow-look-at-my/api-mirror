@@ -296,7 +296,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 //
 // A failure APPLIES the delivery, loudly. A provider sends a delivery, so
 func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
-	if d.Event.Unordered {
+	if d.Event.Unordered || d.At.IsZero() {
 		return false
 	}
 	applied, err := i.store.ApplyWatermark(ctx, d.Subject, d.At)
