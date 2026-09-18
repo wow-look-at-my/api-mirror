@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"slices"
 	"strings"
 	"sync"
@@ -211,16 +212,16 @@ func (e *Engine) missingSubscriptions(ctx context.Context) ([]MissingSubscriptio
 	if !ok {
 		return nil, fmt.Errorf("%s carries no list at %q", rule.Path, rule.Field)
 	}
-	have := make(map[string]bool, len(listed)+len(rule.Always))
+	have := set.New[string]()
 	for _, t := range listed {
-		have[fmt.Sprint(t)] = true
+		have.Add(fmt.Sprint(t))
 	}
 	for _, t := range rule.Always {
-		have[t] = true
+		have.Add(t)
 	}
 	byType := map[string][]string{}
 	for _, ev := range e.spec.Events.List {
-		if !have[ev.Type] && !slices.Contains(byType[ev.Type], ev.Resource) {
+		if !have.Contains(ev.Type) && !slices.Contains(byType[ev.Type], ev.Resource) {
 			byType[ev.Type] = append(byType[ev.Type], ev.Resource)
 		}
 	}
