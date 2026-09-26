@@ -746,6 +746,81 @@
 		</event>
 
 		<!--
+			The answers below also move when a branch moves, and each is stored
+			as the upstream's own document or page. The push states the new
+			tip, never the document around it: a compare's ahead and behind
+			counts, a ref's node id, a page of commits. A stale compare is the
+			worst of them. A cached behind_by of 0 tells a merge bot that a PR
+			needs no update, so the PR waits until a human looks.
+
+			The key stops at the repository where a key column can hold any
+			spelling of a ref (a branch name, a sha, a base...head pair).
+		-->
+		<event type="push" resource="git_ref" clock="repository.pushed_at">
+			<subject>gitref:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref" expr='{{ trimPrefix "refs/" .payload.ref }}'/>
+			<invalidate reason="the answer is the upstream's ref document, and the push states its sha but not its node id or object type"/>
+		</event>
+
+		<event type="push" resource="matching_refs" clock="repository.pushed_at">
+			<subject>matchrefs:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the answer is a page of ref documents under a prefix, and the push restates one ref"/>
+		</event>
+
+		<event type="push" resource="compare" clock="repository.pushed_at">
+			<subject>compare:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="ahead_by, behind_by and the merge base are computed by the upstream, and a moved ref changes them for every pair that names it"/>
+		</event>
+
+		<event type="push" resource="commits_list" clock="repository.pushed_at">
+			<subject>commits:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a page of history under a ref spelling the payload cannot map to this ref, such as a sha or a path filter"/>
+		</event>
+
+		<event type="push" resource="branches_list" clock="repository.pushed_at">
+			<subject>branches:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the listing is a page of branch documents, and which page holds this branch is known only to the listing"/>
+		</event>
+
+		<event type="push" resource="commit_status_rollup" clock="repository.pushed_at">
+			<subject>rollup:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a rollup asked by branch name now names a different commit, whose statuses the push does not carry"/>
+		</event>
+
+		<!--
+			A merged pull request states its base branch's new tip:
+			merge_commit_sha is the merge, squash or last rebased commit that
+			the merge put on the base. A lost push leaves the tip stale for the
+			whole TTL, and this second delivery repairs it.
+
+			The subject is the push's own, so the watermark orders the two. A
+			later push already applied makes this view superseded, and it
+			cannot move the tip back.
+		-->
+		<event type="pull_request" resource="branch" clock="pull_request.merged_at"
+			when='{{ and (eq .payload.action "closed") .payload.pull_request.merged .payload.pull_request.merge_commit_sha }}'>
+			<subject>ref:<value name="payload.repository.full_name"/>:refs/heads/<value name="payload.pull_request.base.ref"/></subject>
+			<apply>
+				<set field="owner">repository.owner.login</set>
+				<set field="repo">repository.name</set>
+				<set field="ref">pull_request.base.ref</set>
+				<set field="tip_sha">pull_request.merge_commit_sha</set>
+			</apply>
+		</event>
+
+		<!--
 			The same push also makes every file-derived answer for the repo
 			wrong. Each of those resources gets its own handler: a type reaches
 			as many resources as it moves, and before that the rest of them sat

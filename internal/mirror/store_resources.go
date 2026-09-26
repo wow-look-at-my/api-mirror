@@ -193,8 +193,7 @@ func rowArgs(r *Resource, row Row, at time.Time) []any {
 
 // keyPredicate builds a WHERE clause over the columns present in key.
 //
-// A key column is the usual case. A FIELD is allowed too, because a list route
-// often selects by an attribute rather than by identity -- every post by an
+// A key column is the usual case. A FIELD is allowed too.
 func keyPredicate(r *Resource, key map[string]string) (string, []any) {
 	var terms []string
 	var args []any

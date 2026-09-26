@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// maxDeliveryBytes caps delivery. A body past the cap is refused rather
+// maxDeliveryBytes caps delivery.
 const maxDeliveryBytes = 8 << 20
 
 // deliverTimeout bounds the writes of delivery answered in the request.
@@ -37,7 +37,7 @@ type Ingest struct {
 	events  *Events
 	store   *Store
 	reorder *Reorderer
-	// secret is the resolved HMAC key. An empty refuses every delivery: an
+	// secret is the resolved HMAC key. An empty refuses every delivery.
 	secret []byte
 	byType map[string][]*Event
 	window time.Duration
@@ -62,7 +62,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 	}
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
-		// The endpoint refuses every delivery until the secret arrives. Say so
+		// The endpoint refuses every delivery until the secret arrives.
 		logf("<events>: the secret resolved to nothing -- every delivery is refused until it is set")
 	}
 	i := &Ingest{
@@ -88,10 +88,10 @@ func (i *Ingest) Path() string { return i.events.Path }
 // Handler serves that path.
 func (i *Ingest) Handler() http.Handler { return i }
 
-// Reorderer is the window behind the handler. A shutdown waits on it, so it is
+// Reorderer is the window behind the handler. A shutdown waits on it.
 func (i *Ingest) Reorderer() *Reorderer { return i.reorder }
 
-// Drain waits for held and in-flight deliveries at shutdown. A provider sends a
+// Drain waits for held and in-flight deliveries at shutdown.
 func (i *Ingest) Drain(timeout time.Duration) bool { return i.reorder.Drain(timeout) }
 
 // ServeHTTP receives delivery.
@@ -178,7 +178,7 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		i.reply(w, http.StatusAccepted, string(DeliveryHeld))
 		return
 	}
-	// With no window there is nothing to wait for, so the answer carries the
+	// With no window there is nothing to wait for.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), deliverTimeout)
 	defer cancel()
 	disp := DeliveryIgnored
@@ -323,7 +323,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 // order asks the watermark whether this view postdates what is already applied,
 // and reports whether the watermark refused it.
 //
-// A failure APPLIES the delivery, loudly. A provider sends a delivery, so
+// A failure APPLIES the delivery, loudly. A provider sends a delivery.
 func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 	if d.Event.Unordered {
 		return false
