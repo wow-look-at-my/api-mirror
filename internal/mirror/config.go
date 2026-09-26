@@ -362,4 +362,7 @@ type Invalidate struct {
 	Reason string
 	// Every drops every row of the resource.
 	Every bool
+	// Field and Differs make the drop conditional.
+	Field   string
+	Differs string
 }

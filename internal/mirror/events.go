@@ -216,6 +216,25 @@ func dispositionRank(d DeliveryDisposition) int {
 	}
 }
 
+// storedAgrees reports whether the stored row matches what the delivery
+// states for one field. No stored row agrees, because nothing is there
+// to contradict. A payload that states no value also agrees: silence is
+// not a contradiction.
+func (i *Ingest) storedAgrees(ctx context.Context, res *Resource, key map[string]string, inv *Invalidate, payload any) (bool, error) {
+	stated := scalarString(lookupPath(payload, inv.Differs))
+	if stated == "" {
+		return true, nil
+	}
+	row, err := i.store.Get(ctx, res, key)
+	if err != nil {
+		return false, err
+	}
+	if row == nil {
+		return true, nil
+	}
+	return fmt.Sprint(row[inv.Field]) == stated, nil
+}
+
 // eventApplies evaluates an event's when= against the delivery.
 func eventApplies(ev *Event, payload any) (bool, error) {
 	if ev.When == "" {
@@ -297,6 +316,15 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 	}
 
 	if ev.Invalidate != nil {
+		if ev.Invalidate.Field != "" {
+			agrees, err := i.storedAgrees(ctx, res, key, ev.Invalidate, d.Payload)
+			if err != nil {
+				return DeliveryFailed, err
+			}
+			if agrees {
+				return DeliveryIgnored, nil
+			}
+		}
 		del := i.store.Delete
 		if ev.Invalidate.Every {
 			del = func(ctx context.Context, res *Resource, _ map[string]string) (int64, error) {

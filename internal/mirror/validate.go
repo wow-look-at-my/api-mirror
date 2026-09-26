@@ -479,16 +479,17 @@ func (e *Events) validate(resources map[string]*Resource) error {
 	if e.TypeHeader == "" {
 		return fmt.Errorf("<events> needs a type header")
 	}
-	seen := set.New[string]()
+	// A type is declared per resource it moves.
+	ungated := map[string]bool{}
 	for _, ev := range e.List {
 		if ev.Type == "" {
 			return fmt.Errorf("<event> needs a type")
 		}
-		// A type is declared per resource it moves. Repeating a resource stays a mistake: the later declaration silently decides the row.
-		if seen.Contains(ev.Type + "\x00" + ev.Resource) {
-			return fmt.Errorf("event %q declared twice for resource %q", ev.Type, ev.Resource)
+		pair := ev.Type + "\x00" + ev.Resource
+		if prev, ok := ungated[pair]; ok && (prev || ev.When == "") {
+			return fmt.Errorf("event %q declared twice for resource %q; a repeat needs when= on every declaration", ev.Type, ev.Resource)
 		}
-		seen.Add(ev.Type + "\x00" + ev.Resource)
+		ungated[pair] = ev.When == ""
 		res, ok := resources[ev.Resource]
 		if !ok {
 			return fmt.Errorf("event %q names resource %q, which is not declared", ev.Type, ev.Resource)
@@ -559,6 +560,24 @@ func validateEventKeys(ev *Event, res *Resource) error {
 	if ev.Invalidate != nil {
 		// A partial key is legitimate here and deletes everything beneath it.
 		// Naming none of them deletes the resource, which must be said out loud.
+		if inv := ev.Invalidate; (inv.Field == "") != (inv.Differs == "") {
+			return fmt.Errorf("event %q: <invalidate> field= and differs= go together", ev.Type)
+		}
+		if inv := ev.Invalidate; inv.Field != "" {
+			if inv.Every {
+				return fmt.Errorf("event %q: <invalidate every=\"true\"> has no one row to compare field= against", ev.Type)
+			}
+			if !slices.ContainsFunc(res.Fields, func(f Field) bool { return f.Name == inv.Field }) {
+				return fmt.Errorf("event %q: <invalidate field=%q> is not a field of resource %q", ev.Type, inv.Field, res.Name)
+			}
+			// A comparison is against one row, so the whole key is needed.
+			for _, k := range res.Keys {
+				if !named(k.Name) {
+					return fmt.Errorf("event %q: a conditional <invalidate> compares one row, so it needs <key field=%q>", ev.Type, k.Name)
+				}
+			}
+			return nil
+		}
 		if ev.Invalidate.Every {
 			if len(ev.Keys) > 0 {
 				return fmt.Errorf("event %q: <invalidate every=\"true\"> drops every row, so its <key> elements would be ignored", ev.Type)

@@ -268,6 +268,9 @@
 					<xs:attribute name="reason" type="xs:string" use="required"/>
 					<!-- Drops every row, for a key the payload cannot state. -->
 					<xs:attribute name="every" type="xs:boolean"/>
+					<!-- Drop only when stored `field` differs from the payload at `differs`. -->
+					<xs:attribute name="field" type="xs:string"/>
+					<xs:attribute name="differs" type="xs:string"/>
 				</xs:complexType>
 			</xs:element>
 		</xs:choice>

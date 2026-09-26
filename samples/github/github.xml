@@ -809,6 +809,24 @@
 			later push already applied makes this view superseded, and it
 			cannot move the tip back.
 		-->
+		<!--
+			A pull request that opens or moves states its base branch's tip
+			as base.sha, on a delivery apart from the push. When that
+			disagrees with the stored tip, one of the two deliveries was lost.
+			The stored row goes, and the next reader fetches the truth.
+			base.sha can lag a push that has not reached the pull request yet.
+			That costs one refetch, which answers the same tip.
+		-->
+		<event type="pull_request" resource="branch" clock="pull_request.updated_at"
+			when='{{ has .payload.action (list "opened" "reopened" "synchronize") }}'>
+			<subject>tipcheck:<value name="payload.repository.full_name"/>:<value name="payload.pull_request.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="ref">pull_request.base.ref</key>
+			<invalidate field="tip_sha" differs="pull_request.base.sha"
+				reason="base.sha is the tip as this delivery saw it, and a lagging view must not write a tip back over a newer one"/>
+		</event>
+
 		<event type="pull_request" resource="branch" clock="pull_request.merged_at"
 			when='{{ and (eq .payload.action "closed") .payload.pull_request.merged .payload.pull_request.merge_commit_sha }}'>
 			<subject>ref:<value name="payload.repository.full_name"/>:refs/heads/<value name="payload.pull_request.base.ref"/></subject>
