@@ -375,6 +375,8 @@
 
 	<xs:complexType name="replay">
 		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<!-- Replaces an upstream header on the replayer's own calls. -->
+			<xs:element name="header" type="headerType"/>
 			<xs:element name="list" type="xs:string"/>
 			<!-- Template source over `.delivery`. -->
 			<xs:element name="redeliver" type="content"/>

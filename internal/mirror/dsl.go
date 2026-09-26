@@ -6,7 +6,7 @@ import (
 
 // The spec language lives in api-dsl, shared with api-cli. These wrappers keep
 var (
-	renderString = apidsl.RenderString
+	renderString = apidsl.NewRenderer(engineFuncs).Render
 	lookupPath   = apidsl.LookupPath
 	isTruthy     = apidsl.IsTruthy
 	envMap       = apidsl.EnvMap

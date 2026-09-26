@@ -1620,8 +1620,15 @@
 		and recovers nothing. Empty means the replayer does not start, and says
 		which value would start it.
 	-->
+	<!--
+		The App's delivery log answers only the App itself, so the replayer
+		signs a JWT with the App's private key. GITHUB_APP_PRIVATE_KEY holds
+		the PEM, newlines escaped or not, or GITHUB_APP_PRIVATE_KEY_PATH names
+		a file. Without GITHUB_APP_ID the replayer does not start and says so.
+	-->
 	<replay interval="5m" method="POST" lookback="24h" max="25"
-		requires="env.GITHUB_BACKGROUND_TOKEN">
+		requires="env.GITHUB_APP_ID">
+		<header name="Authorization">Bearer <value expr='{{ jwt .env.GITHUB_APP_ID (or .env.GITHUB_APP_PRIVATE_KEY (readFile .env.GITHUB_APP_PRIVATE_KEY_PATH)) }}'/></header>
 		<list>/app/hook/deliveries?status=failure</list>
 		<redeliver>/app/hook/deliveries/<value name="delivery.id"/>/attempts</redeliver>
 		<id>id</id>

@@ -211,6 +211,14 @@ func buildReplay(n *node) (*Replay, error) {
 		*dst = d
 	}
 	for _, child := range n.Children() {
+		if child.Name() == "header" {
+			h, err := buildHeader(child)
+			if err != nil {
+				return nil, fmt.Errorf("<replay>: %w", err)
+			}
+			rp.Headers = append(rp.Headers, h)
+			continue
+		}
 		if err := checkAttrs(child); err != nil {
 			return nil, err
 		}
