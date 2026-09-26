@@ -248,6 +248,8 @@ type EventsView struct {
 	Declared   []EventView   `json:"declared"`
 	Replay     ReplayStats   `json:"replay"`
 	Configured bool          `json:"configured"`
+	// Subscribed names declared types the provider does not send.
+	Subscribed SubscribedView `json:"subscribed"`
 }
 
 // EventView is declared event and how it is ordered.
@@ -261,12 +263,13 @@ type EventView struct {
 	Invalidate string `json:"invalidate,omitempty"`
 }
 
-func (a *Admin) events(w http.ResponseWriter, _ *http.Request) {
+func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
 	view := EventsView{Replay: a.engine.replay.Stats(), Declared: []EventView{}}
 	if a.engine.spec.Events == nil {
 		writeJSON(w, http.StatusOK, view)
 		return
 	}
+	view.Subscribed = a.engine.subscribedView(r.Context())
 	view.Configured = a.engine.ingest != nil
 	view.Path = a.engine.spec.Events.Path
 	view.Stats = a.engine.ingest.Stats()

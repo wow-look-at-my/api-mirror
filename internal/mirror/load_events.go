@@ -41,6 +41,12 @@ func buildEvents(n *node) (*Events, error) {
 				return nil, err
 			}
 			e.List = append(e.List, ev)
+		case "subscribed":
+			s, err := buildSubscribed(child)
+			if err != nil {
+				return nil, err
+			}
+			e.Subscribed = s
 		default:
 			return nil, fmt.Errorf("<events>: unexpected child element <%s>", child.Name())
 		}

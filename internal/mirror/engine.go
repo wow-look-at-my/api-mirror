@@ -21,8 +21,9 @@ type Engine struct {
 	up       *Upstreamer
 	fresh    *Fresh
 	reveal   *Revealer
-	identity *Identifier
-	hdr      answerHeaders
+	identity   *Identifier
+	hdr        answerHeaders
+	subscribed subscribedCache
 	ingest   *Ingest
 	proxy    *httputil.ReverseProxy
 	vars     map[string]any

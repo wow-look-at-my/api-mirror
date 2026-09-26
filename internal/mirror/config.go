@@ -382,6 +382,8 @@ type Events struct {
 	SignatureHeader string
 	// TypeHeader carries the event type.
 	TypeHeader string
+	// Subscribed asks the provider which types it sends, for the dashboard.
+	Subscribed *Subscribed
 	// IDHeader carries the provider's own delivery id, for a subscriber.
 	IDHeader string
 	// ReorderWindow holds a delivery so other deliveries for the same subject

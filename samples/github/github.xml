@@ -730,6 +730,15 @@
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>
 
+		<!--
+			GET /app answers with the event types the App is subscribed to. The
+			Webhooks tab names every declared type missing from it. The App's
+			delivery log is too short to infer this from what arrived.
+		-->
+		<subscribed path="/app" field="events">
+			<header name="Authorization">Bearer <value expr='{{ jwt .env.GITHUB_APP_ID (or .env.GITHUB_APP_PRIVATE_KEY (readFile .env.GITHUB_APP_PRIVATE_KEY_PATH)) }}'/></header>
+		</subscribed>
+
 		<event type="repository" resource="repo" clock="repository.updated_at">
 			<subject>repo:<value name="payload.repository.full_name"/></subject>
 			<apply>
