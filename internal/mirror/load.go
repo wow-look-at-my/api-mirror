@@ -41,10 +41,10 @@ func ParseSpec(raw []byte) (*Spec, error) {
 }
 
 func buildSpec(n *node) (*Spec, error) {
-	if err := checkAttrs(n, "name", "schema"); err != nil {
+	if err := checkAttrs(n, "name", "schema", "header-prefix"); err != nil {
 		return nil, err
 	}
-	spec := &Spec{Name: n.Attr("name")}
+	spec := &Spec{Name: n.Attr("name"), HeaderPrefix: n.Attr("header-prefix")}
 	for _, child := range n.Children() {
 		switch child.Name() {
 		case "description":

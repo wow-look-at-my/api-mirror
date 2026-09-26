@@ -76,6 +76,8 @@
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
+			<!-- Starts every header the engine sets on an answer. Default X-Mirror-. -->
+			<xs:attribute name="header-prefix" type="xs:string"/>
 		</xs:complexType>
 	</xs:element>
 

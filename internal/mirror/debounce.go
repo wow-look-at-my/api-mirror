@@ -13,6 +13,8 @@ const maxDebounceWindow = 30 * time.Second
 // Debouncer makes identical concurrent passthrough READS share call.
 type Debouncer struct {
 	window time.Duration
+	// header marks an answer that another caller's call produced.
+	header string
 
 	mu     sync.Mutex
 	flight map[string]*shared
@@ -32,7 +34,7 @@ func NewDebouncer(window time.Duration) *Debouncer {
 	if window <= 0 {
 		return nil
 	}
-	return &Debouncer{window: window, flight: map[string]*shared{}}
+	return &Debouncer{window: window, header: headersFor("").Debounce, flight: map[string]*shared{}}
 }
 
 // Share lets an identical concurrent request wait for answer instead of
@@ -56,7 +58,7 @@ func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.Respon
 		d.mu.Unlock()
 		select {
 		case <-inflight.done:
-			w.Header().Set("X-Mirror-Debounced", "true")
+			w.Header().Set(d.header, "true")
 			replay(w, inflight)
 		case <-r.Context().Done():
 			// The caller left; the shared call carries on for the rest.

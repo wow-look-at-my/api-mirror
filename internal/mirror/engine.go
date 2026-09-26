@@ -22,6 +22,7 @@ type Engine struct {
 	fresh    *Fresh
 	reveal   *Revealer
 	identity *Identifier
+	hdr      answerHeaders
 	ingest   *Ingest
 	proxy    *httputil.ReverseProxy
 	vars     map[string]any
@@ -78,8 +79,9 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		vars:     vars,
 		baseURL:  base,
 		tel:      tel,
+		hdr:      headersFor(spec.HeaderPrefix),
 	}
-	e.fresh = NewFresh(store, e.fetch, e.ttlFor)
+	e.fresh =NewFresh(store, e.fetch, e.ttlFor)
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(base)
@@ -91,6 +93,9 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	}
 	e.vocab = pathVocabulary(spec)
 	e.debounce = NewDebouncer(spec.Upstream.Debounce)
+	if e.debounce != nil {
+		e.debounce.header = e.hdr.Debounce
+	}
 	e.admin = NewAdmin(e)
 	if spec.Notify != nil {
 		e.notify, err = NewNotifier(spec, vars, tel, store.path)
@@ -271,7 +276,7 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 		keys = append(keys, key)
 	}
 
-	w.Header().Set("X-Mirror-Cache", "purge")
+	w.Header().Set(e.hdr.Cache, "purge")
 	e.proxy.ServeHTTP(w, r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, "purge")))
 
 	// The recorder already holds what the caller actually received, so the
@@ -352,6 +357,9 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	})
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	if err != nil {
+		if e.serveStale(ctx, w, m, res, kind, key, err) {
+			return
+		}
 		w.note(DispError, "", "", "upstream")
 		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
 		return
@@ -365,7 +373,7 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	if status := refusal; status != 0 {
 		// The upstream stated this refusal and the route declared it worth
 		w.note(DispRefusal, "", "", "absorbed")
-		w.Header().Set("X-Mirror-Cache", string(outcome))
+		w.Header().Set(e.hdr.Cache, string(outcome))
 		http.Error(w, http.StatusText(status), status)
 		return
 	}
@@ -461,7 +469,7 @@ func (e *Engine) write(w http.ResponseWriter, status int, doc any, outcome Outco
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Mirror-Cache", string(outcome))
+	w.Header().Set(e.hdr.Cache, string(outcome))
 	w.WriteHeader(status)
 	if _, err := w.Write(body); err != nil {
 		logf("write answer: %v", err)
@@ -474,8 +482,8 @@ func (e *Engine) write(w http.ResponseWriter, status int, doc any, outcome Outco
 // state, and an operator needs to know which routes are still leaving.
 func (e *Engine) passthrough(w *recorder, r *http.Request, reason PassReason) {
 	w.note(DispPassthrough, e.shapeOf(r), "", string(reason))
-	w.Header().Set("X-Mirror-Cache", "passthrough")
-	w.Header().Set("X-Mirror-Passthrough-Reason", string(reason))
+	w.Header().Set(e.hdr.Cache, "passthrough")
+	w.Header().Set(e.hdr.Reason, string(reason))
 
 	r = r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, string(reason)))
 	if e.debounce == nil {

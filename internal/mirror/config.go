@@ -4,7 +4,9 @@ import "time"
 
 // Spec is mirror declaration: the whole contents of a mirror XML file.
 type Spec struct {
-	Name      string
+	Name string
+	// HeaderPrefix starts the headers the engine sets on an answer.
+	HeaderPrefix string
 	Vars      []Var
 	Upstream  Upstream
 	Resources []*Resource

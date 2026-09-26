@@ -67,8 +67,6 @@ func buildCORS(n *node) (*CORS, error) {
 			return nil, fmt.Errorf("<cors>: unexpected child element <%s>", child.Name())
 		}
 	}
-	// Always exposed: no author should list the engine's own headers.
-	c.Expose = append(c.Expose, defaultExposed...)
 	return c, nil
 }
 

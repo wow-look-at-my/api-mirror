@@ -19,9 +19,6 @@ const maxDeliveryBytes = 8 << 20
 // deliverTimeout bounds the writes of delivery answered in the request.
 const deliverTimeout = 30 * time.Second
 
-// dispositionHeader reports what the mirror did with a delivery. The provider
-const dispositionHeader = "X-Mirror-Disposition"
-
 // watermarkRetention is how long a subject's applied moment is kept.
 const watermarkRetention = 30 * 24 * time.Hour
 
@@ -46,8 +43,9 @@ type Ingest struct {
 	lastPrune atomic.Int64
 	// tel puts every delivery on the chart. Nil-safe, so a test can skip it.
 	tel      *Telemetry
-	notifier *Notifier
-	stats    deliveryStats
+	notifier   *Notifier
+	stats      deliveryStats
+	dispHeader string
 }
 
 // NewIngest builds the ingest endpoint a spec declares. vars is the spec's
@@ -71,6 +69,8 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 		secret: []byte(secret),
 		byType: make(map[string][]*Event, len(spec.Events.List)),
 		window: spec.Events.ReorderWindow,
+		// A provider records this header, so an operator reads what each delivery did.
+		dispHeader: headersFor(spec.HeaderPrefix).Disposition,
 		now:    time.Now,
 	}
 	// A type fans out to every event declared for it, in spec order: a push
@@ -254,7 +254,7 @@ func (i *Ingest) answer(w http.ResponseWriter, d DeliveryDisposition) {
 
 func (i *Ingest) reply(w http.ResponseWriter, status int, body string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set(dispositionHeader, body)
+	w.Header().Set(i.dispHeader, body)
 	w.WriteHeader(status)
 	fmt.Fprintln(w, body)
 }

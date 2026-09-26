@@ -29,8 +29,8 @@ func (e *Engine) matchRelay(r *http.Request) (*Relay, bool) {
 // allow-origin makes a browser refuse the response outright.
 func (e *Engine) relay(w *recorder, r *http.Request, rl *Relay) {
 	w.note(DispPassthrough, rl.Path, "", string(PassRelay))
-	w.Header().Set("X-Mirror-Cache", "passthrough")
-	w.Header().Set("X-Mirror-Passthrough-Reason", string(PassRelay))
+	w.Header().Set(e.hdr.Cache, "passthrough")
+	w.Header().Set(e.hdr.Reason, string(PassRelay))
 
 	ctx := withLane(r.Context(), LanePassthrough, w.principal, string(PassRelay))
 	req, err := http.NewRequestWithContext(ctx, rl.Method, rl.To, r.Body)
