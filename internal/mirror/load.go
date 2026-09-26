@@ -41,10 +41,14 @@ func ParseSpec(raw []byte) (*Spec, error) {
 }
 
 func buildSpec(n *node) (*Spec, error) {
-	if err := checkAttrs(n, "name", "schema", "header-prefix"); err != nil {
+	if err := checkAttrs(n, "name", "schema", "header-prefix", "max-rows"); err != nil {
 		return nil, err
 	}
-	spec := &Spec{Name: n.Attr("name"), HeaderPrefix: n.Attr("header-prefix")}
+	maxRows, err := parseMaxRows(n.Attr("max-rows"))
+	if err != nil {
+		return nil, err
+	}
+	spec := &Spec{Name: n.Attr("name"), HeaderPrefix: n.Attr("header-prefix"), MaxRows: maxRows}
 	for _, child := range n.Children() {
 		switch child.Name() {
 		case "description":

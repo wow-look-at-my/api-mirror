@@ -7,6 +7,8 @@ type Spec struct {
 	Name string
 	// HeaderPrefix starts the headers the engine sets on an answer.
 	HeaderPrefix string
+	// MaxRows caps every resource table. Zero turns the cap off.
+	MaxRows int
 	Vars         []Var
 	Upstream     Upstream
 	Resources    []*Resource

@@ -79,6 +79,8 @@
 			<xs:attribute name="schema" type="xs:string"/>
 			<!-- Starts every header the engine sets on an answer. Default X-Mirror-. -->
 			<xs:attribute name="header-prefix" type="xs:string"/>
+			<!-- Caps every resource table; oldest writes go first. Default 1000000. -->
+			<xs:attribute name="max-rows" type="xs:string"/>
 		</xs:complexType>
 	</xs:element>
 

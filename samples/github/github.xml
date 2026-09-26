@@ -18,7 +18,8 @@
 	header-prefix keeps the header names that github-state-mirror's consumers
 	already read: X-GSM-Cache, X-GSM-Stale, X-GSM-Last-Fetched.
 -->
-<mirror name="github" schema="../../mirror.schema.xsd" header-prefix="X-GSM-">
+<mirror name="github" schema="../../mirror.schema.xsd" header-prefix="X-GSM-"
+	max-rows='{{ .env.CACHE_MAX_ROWS | default "1000000" }}'>
 
 	<description>Caching mirror of the GitHub REST API. Storage is global -- one row per fact, no actor column -- and a read is gated by proof that the caller could have read the same thing from GitHub directly. Set GITHUB_API_URL to target a GitHub Enterprise Server instance.</description>
 

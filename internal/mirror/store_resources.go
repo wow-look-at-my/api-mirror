@@ -18,6 +18,7 @@ func (s *Store) Put(ctx context.Context, r *Resource, row Row, at time.Time) err
 	if _, err := s.db.ExecContext(ctx, insertStmt(r), rowArgs(r, row, at)...); err != nil {
 		return fmt.Errorf("store %s: %w", r.Name, err)
 	}
+	s.enforceCap(ctx, r)
 	return nil
 }
 
@@ -41,7 +42,11 @@ func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Ti
 			return fmt.Errorf("store %s: %w", r.Name, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.enforceCap(ctx, r)
+	return nil
 }
 
 // ReplaceMany makes the rows under partial key exactly the rows given, in
@@ -77,7 +82,11 @@ func (s *Store) ReplaceMany(ctx context.Context, r *Resource, key map[string]str
 			return fmt.Errorf("store %s: %w", r.Name, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.enforceCap(ctx, r)
+	return nil
 }
 
 // Get reads row by its full key. A missing row is (nil, nil): absent is an
