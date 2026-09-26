@@ -266,12 +266,16 @@
 			<xs:element name="invalidate">
 				<xs:complexType>
 					<xs:attribute name="reason" type="xs:string" use="required"/>
+					<!-- Drops every row, for a key the payload cannot state. -->
+					<xs:attribute name="every" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
 		</xs:choice>
 		<xs:attribute name="type" type="xs:string" use="required"/>
 		<xs:attribute name="resource" type="xs:string" use="required"/>
 		<xs:attribute name="clock" type="xs:string"/>
+		<!-- A predicate over `.payload`; false skips this event. -->
+		<xs:attribute name="when" type="xs:string"/>
 		<xs:attribute name="unordered" type="xs:boolean"/>
 		<xs:attribute name="absorb-when-superseded" type="xs:boolean"/>
 	</xs:complexType>

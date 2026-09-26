@@ -139,6 +139,15 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 	id := deliveryID(raw)
 	deliveries := make([]*Delivery, 0, len(evs))
 	for _, ev := range evs {
+		applies, err := eventApplies(ev, payload)
+		if err != nil {
+			logf("delivery %s (%s -> %s): when: %v", id, typ, ev.Resource, err)
+			i.answer(w, DeliveryFailed)
+			return
+		}
+		if !applies {
+			continue
+		}
 		subject, at, err := orderOf(ev, payload)
 		if err != nil {
 			logf("delivery %s (%s -> %s): %v", id, typ, ev.Resource, err)
@@ -156,6 +165,11 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	if len(deliveries) == 0 {
+		// Every event for this type declined it through when=.
+		i.answer(w, DeliveryIgnored)
+		return
+	}
 	if i.window > 0 {
 		// The provider waits for this answer and gives up in single-digit
 		for _, d := range deliveries {
@@ -200,6 +214,18 @@ func dispositionRank(d DeliveryDisposition) int {
 	default:
 		return 0
 	}
+}
+
+// eventApplies evaluates an event's when= against the delivery.
+func eventApplies(ev *Event, payload any) (bool, error) {
+	if ev.When == "" {
+		return true, nil
+	}
+	s, err := renderString(ev.When, map[string]any{"payload": payload})
+	if err != nil {
+		return false, err
+	}
+	return isTruthy(s), nil
 }
 
 // answer reports a disposition to the provider.
@@ -271,7 +297,13 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 	}
 
 	if ev.Invalidate != nil {
-		if _, err := i.store.Delete(ctx, res, key); err != nil {
+		del := i.store.Delete
+		if ev.Invalidate.Every {
+			del = func(ctx context.Context, res *Resource, _ map[string]string) (int64, error) {
+				return i.store.DeleteAll(ctx, res)
+			}
+		}
+		if _, err := del(ctx, res, key); err != nil {
 			return DeliveryFailed, err
 		}
 		i.prune(ctx)

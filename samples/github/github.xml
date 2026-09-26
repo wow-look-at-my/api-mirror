@@ -980,6 +980,89 @@
 			<invalidate reason="an edit renames a label, so the payload names two rows and the old name is not addressable from the new one"/>
 		</event>
 
+		<!--
+			An installation created, deleted, suspended or given new
+			permissions. Every answer below is per credential, and the payload
+			names the installation, never the token an App holds for it. A
+			minted token, a coverage verdict and a coverage listing can each
+			be wrong after this, and none of them is in the payload.
+
+			Each handler has its own subject, so the watermark orders them
+			apart rather than refusing all but the first.
+		-->
+		<event type="installation" resource="install_token" clock="installation.updated_at">
+			<subject>inst-token:<value name="payload.installation.id"/></subject>
+			<key field="id">installation.id</key>
+			<invalidate reason="the payload states the installation, and a minted token is a secret it never carries"/>
+		</event>
+
+		<event type="installation" resource="repo_installation" clock="installation.updated_at">
+			<subject>inst-repo:<value name="payload.installation.id"/></subject>
+			<key field="owner">installation.account.login</key>
+			<invalidate reason="a coverage verdict is keyed by the asking credential, which the payload cannot name"/>
+		</event>
+
+		<event type="installation" resource="owner_installation" clock="installation.updated_at">
+			<subject>inst-owner:<value name="payload.installation.id"/></subject>
+			<key field="owner">installation.account.login</key>
+			<invalidate reason="a coverage verdict is keyed by the asking credential, which the payload cannot name"/>
+		</event>
+
+		<event type="installation" resource="app_installations" clock="installation.updated_at">
+			<subject>inst-list:<value name="payload.installation.id"/></subject>
+			<invalidate every="true" reason="the listing is keyed only by the App's credential fingerprint and a page, and the payload names neither"/>
+		</event>
+
+		<event type="installation" resource="installation_repos" clock="installation.updated_at">
+			<subject>inst-repos:<value name="payload.installation.id"/></subject>
+			<invalidate every="true" reason="the listing is keyed only by an installation token's fingerprint and a page, and the payload names neither"/>
+		</event>
+
+		<!--
+			Repositories added to or removed from an installation. The payload
+			lists them, but each stored answer is a whole page per credential,
+			and a token minted before the change may name the old set.
+		-->
+		<event type="installation_repositories" resource="installation_repos" clock="installation.updated_at">
+			<subject>inst-repos-change:<value name="payload.installation.id"/></subject>
+			<invalidate every="true" reason="the listing is keyed only by an installation token's fingerprint and a page, and the payload names neither"/>
+		</event>
+
+		<event type="installation_repositories" resource="repo_installation" clock="installation.updated_at">
+			<subject>inst-repo-change:<value name="payload.installation.id"/></subject>
+			<key field="owner">installation.account.login</key>
+			<invalidate reason="a coverage verdict is keyed by the asking credential, which the payload cannot name"/>
+		</event>
+
+		<event type="installation_repositories" resource="install_token" clock="installation.updated_at">
+			<subject>inst-token-change:<value name="payload.installation.id"/></subject>
+			<key field="id">installation.id</key>
+			<invalidate reason="a token minted before the change may name the old repository set, and the payload carries no token"/>
+		</event>
+
+		<!--
+			Organization membership changed, or the organization was renamed or
+			deleted. The org's repo listing is what a member's credential can
+			see, so it moves. The organization object in these payloads states
+			no update time, so they apply unordered.
+		-->
+		<event type="organization" resource="org_repos" unordered="true">
+			<subject>org:<value name="payload.organization.login"/></subject>
+			<key field="owner">organization.login</key>
+			<invalidate reason="the listing is what each credential can see, and a membership change moves that without naming a repository"/>
+		</event>
+
+		<event type="organization" resource="user_orgs" unordered="true">
+			<subject>org-members:<value name="payload.organization.login"/></subject>
+			<invalidate every="true" reason="the listing is keyed by a member's credential fingerprint, and the payload names the member, not the token"/>
+		</event>
+
+		<event type="membership" resource="org_repos" unordered="true">
+			<subject>team:<value name="payload.organization.login"/>:<value name="payload.team.id"/></subject>
+			<key field="owner">organization.login</key>
+			<invalidate reason="team membership decides which repositories a credential can see, and the payload names no repository"/>
+		</event>
+
 	</events>
 
 	<!--

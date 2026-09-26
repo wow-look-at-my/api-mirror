@@ -557,10 +557,16 @@ func validateEventKeys(ev *Event, res *Resource) error {
 		return slices.ContainsFunc(ev.Keys, match) || slices.ContainsFunc(ev.Sets, match)
 	}
 	if ev.Invalidate != nil {
-		// A partial key is legitimate here and deletes everything beneath it,
-		// but naming none of them would delete the resource.
+		// A partial key is legitimate here and deletes everything beneath it.
+		// Naming none of them deletes the resource, which must be said out loud.
+		if ev.Invalidate.Every {
+			if len(ev.Keys) > 0 {
+				return fmt.Errorf("event %q: <invalidate every=\"true\"> drops every row, so its <key> elements would be ignored", ev.Type)
+			}
+			return nil
+		}
 		if len(ev.Keys) == 0 {
-			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about",
+			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about, or declare every=\"true\"",
 				ev.Type, res.Name)
 		}
 		return nil

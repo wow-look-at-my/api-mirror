@@ -70,14 +70,14 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		return nil, fmt.Errorf("upstream base %q: %w", up.base, err)
 	}
 	e := &Engine{
-		spec:    spec,
-		store:   store,
-		up:      up,
+		spec:     spec,
+		store:    store,
+		up:       up,
 		reveal:   NewRevealer(store, up, vars),
 		identity: NewIdentifier(spec.Identity, up, vars),
-		vars:    vars,
-		baseURL: base,
-		tel:     tel,
+		vars:     vars,
+		baseURL:  base,
+		tel:      tel,
 	}
 	e.fresh = NewFresh(store, e.fetch, e.ttlFor)
 	e.proxy = &httputil.ReverseProxy{

@@ -248,7 +248,7 @@ type Route struct {
 	TTL      time.Duration // means the resource's own TTL
 	// Params maps a path parameter to the resource key it supplies. Empty means
 	Params map[string]string
-	List bool
+	List   bool
 	// Complete says this answer is the WHOLE set under its parent key.
 	Complete bool
 	// Query is the modelled query shape. A parameter outside it, a repeated
@@ -338,6 +338,8 @@ type Event struct {
 	Unordered bool
 	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
 	AbsorbWhenSuperseded bool
+	// When is a predicate over `.payload`. A false result skips this event for the delivery. Empty always applies.
+	When string
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set
 	Sets []Set
@@ -358,4 +360,6 @@ type Set struct {
 // Invalidate drops the stored row for this event's subject.
 type Invalidate struct {
 	Reason string
+	// Every drops every row of the resource.
+	Every bool
 }

@@ -58,23 +58,15 @@ type Answer struct {
 	Overflow bool
 }
 
-// Call sends request to the upstream, carrying the caller's own forwarded
-// headers so the answer is the THAT caller is entitled to.
-//
-// A non-2xx is a real answer, not an error: a is what the upstream knows,
-// and the route decides whether that is worth storing. Only a transport failure
-// returns an error.
-//
-// A nil forward is background work, which rides the static headers. A
-// non-nil forward is a caller: each forwarded header the caller did not
-// send is removed, so a static background credential never answers on a
-// caller's behalf.
+// Call sends a request with the caller's forwarded headers. A nil forward
+// is background work on the static headers.
 func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header, reqBody []byte) (*Answer, error) {
 	return u.CallWith(ctx, method, path, vars, forward, nil, reqBody)
 }
 
-// CallWith is Call with headers the engine itself sets last. Nothing the
-// spec declares overrides them.
+// CallWith is Call plus headers the engine sets last. A non-2xx is an
+// answer, not an error. For a caller, a forwarded header it did not send
+// is removed, so the static background credential never answers for it.
 func (u *Upstreamer) CallWith(ctx context.Context, method, path string, vars map[string]any, forward, set http.Header, reqBody []byte) (*Answer, error) {
 	url := u.base + path
 	var send io.Reader

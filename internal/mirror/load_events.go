@@ -66,13 +66,14 @@ func parseWindow(v string) (time.Duration, error) {
 }
 
 func buildEvent(n *node) (*Event, error) {
-	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded"); err != nil {
+	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded", "when"); err != nil {
 		return nil, err
 	}
 	ev := &Event{
 		Type:                 n.Attr("type"),
 		Resource:             n.Attr("resource"),
 		Clock:                n.Attr("clock"),
+		When:                 n.Attr("when"),
 		Unordered:            n.Attr("unordered") == "true",
 		AbsorbWhenSuperseded: n.Attr("absorb-when-superseded") == "true",
 	}
@@ -104,10 +105,10 @@ func buildEvent(n *node) (*Event, error) {
 			}
 			ev.Keys = append(ev.Keys, k)
 		case "invalidate":
-			if err := checkAttrs(child, "reason"); err != nil {
+			if err := checkAttrs(child, "reason", "every"); err != nil {
 				return nil, err
 			}
-			ev.Invalidate = &Invalidate{Reason: child.Attr("reason")}
+			ev.Invalidate = &Invalidate{Reason: child.Attr("reason"), Every: child.Attr("every") == "true"}
 		default:
 			return nil, fmt.Errorf("<event type=%q>: unexpected child element <%s>", ev.Type, child.Name())
 		}

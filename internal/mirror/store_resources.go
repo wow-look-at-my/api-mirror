@@ -143,6 +143,16 @@ func (s *Store) Delete(ctx context.Context, r *Resource, key map[string]string) 
 	return res.RowsAffected()
 }
 
+// DeleteAll drops every row of a resource. Only an event that declares
+// <invalidate every="true"> reaches it.
+func (s *Store) DeleteAll(ctx context.Context, r *Resource) (int64, error) {
+	res, err := s.db.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, resourceTable(r.Name)))
+	if err != nil {
+		return 0, fmt.Errorf("delete all %s: %w", r.Name, err)
+	}
+	return res.RowsAffected()
+}
+
 // insertStmt builds the write statement every resource write uses.
 func insertStmt(r *Resource) string {
 	cols := columnsOf(r)
