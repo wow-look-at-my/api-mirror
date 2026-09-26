@@ -109,7 +109,7 @@ func (e *Engine) Telemetry() *Telemetry { return e.tel }
 // resolveVars renders the spec's vars, in declaration order, each seeing
 // the ones before it.
 //
-// It returns the whole template context, not just the vars, because that
+// It returns the whole template context, not just the vars.
 func resolveVars(spec *Spec) (map[string]any, error) {
 	vars := map[string]any{}
 	ctx := map[string]any{"env": envMap(), "var": vars}
@@ -123,7 +123,7 @@ func resolveVars(spec *Spec) (map[string]any, error) {
 	return ctx, nil
 }
 
-// SetIngest installs the webhook handler. The Engine keeps it whole rather than
+// SetIngest installs the webhook handler.
 func (e *Engine) SetIngest(i *Ingest) {
 	e.ingest = i
 }
@@ -499,7 +499,7 @@ func (e *Engine) shapeOf(r *http.Request) string {
 }
 
 // stripUpstreamCORS removes the upstream's CORS headers from a forwarded
-// answer. The mirror is the origin a browser talks to, and
+// answer. The mirror is the origin a browser talks to.
 func stripUpstreamCORS(resp *http.Response) error {
 	for h := range resp.Header {
 		if strings.HasPrefix(strings.ToLower(h), "access-control-allow-") {

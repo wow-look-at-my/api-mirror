@@ -33,7 +33,6 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 		return nil, fmt.Errorf("upstream base: %w", err)
 	}
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	// A template over a value the spec never set renders to something that is
 	if u, err := url.Parse(base); base == "" || err != nil || u.Scheme == "" || u.Host == "" {
 		return nil, fmt.Errorf("upstream base resolved to nothing usable: %q is not an absolute URL", base)
 	}
@@ -55,7 +54,7 @@ type Answer struct {
 	Status int
 	Header http.Header
 	Body   []byte
-	// Overflow reports that the body exceeded maxBodyBytes. The body is then
+	// Overflow reports that the body exceeded maxBodyBytes.
 	Overflow bool
 }
 
@@ -168,7 +167,7 @@ func (u *Upstreamer) RateLimited(a *Answer) bool {
 	return false
 }
 
-// Transient reports whether an answer is that must never be stored: a
+// Transient reports whether an answer is that must never be stored.
 func (u *Upstreamer) Transient(a *Answer) bool {
 	if a == nil {
 		return true

@@ -178,7 +178,7 @@ type Resource struct {
 	TTL    time.Duration
 	Keys   []Key
 	Fields []Field
-	// Drop lists key patterns removed from an absorbed document. A URL is the
+	// Drop lists key patterns removed from an absorbed document.
 	Drop []string
 	// Keep rescues exact key names from Drop. Every entry is a claim that some
 	Keep []Keep
@@ -231,7 +231,7 @@ type QueryParam struct {
 	Name    string
 	Type    FieldType
 	Default string
-	// Min and Max bound an int parameter. A value outside the range is a
+	// Min and Max bound an int parameter.
 	Min, Max int
 	// Key includes this parameter in the cache key. A parameter that changes
 	Key bool
@@ -248,15 +248,14 @@ type Route struct {
 	TTL      time.Duration // means the resource's own TTL
 	// Params maps a path parameter to the resource key it supplies. Empty means
 	Params map[string]string
-	// List marks a route whose answer is an ARRAY of the resource's rows rather
 	List bool
-	// Complete says this answer is the WHOLE set under its parent key, so an
+	// Complete says this answer is the WHOLE set under its parent key.
 	Complete bool
 	// Query is the modelled query shape. A parameter outside it, a repeated
 	Query []QueryParam
-	// Accept lists the media types this route may answer. A caller asking for
+	// Accept lists the media types this route may answer.
 	Accept []string
-	// Absorb lists the upstream statuses whose answer is stored. A 2xx is
+	// Absorb lists the upstream statuses whose answer is stored.
 	Absorb []int
 	// BodyKey names the resource key the REQUEST body fills, as a digest,
 	// for a route whose question travels in its body. Naming it also makes
@@ -270,7 +269,7 @@ type Route struct {
 type Reveal struct {
 	// Public is a predicate over the stored row (`.row.<field>`). True means
 	Public string
-	// Probe re-asks the upstream with the CALLER's own forwarded credential. A
+	// Probe re-asks the upstream with the CALLER's own forwarded credential.
 	Probe *Probe
 	// GrantTTL is how long a proven access stays proven.
 	GrantTTL time.Duration
@@ -333,7 +332,7 @@ type Event struct {
 	Resource string
 	// Subject is what this delivery is a view OF: the grain both the reorder
 	Subject string
-	// Clock is the payload path stating the moment this view is from. An
+	// Clock is the payload path stating the moment this view is from.
 	Clock string
 	// Unordered is the explicit opt-out for a payload that states no moment.
 	Unordered bool
