@@ -71,13 +71,17 @@ func buildCORS(n *node) (*CORS, error) {
 }
 
 func buildNotify(n *node) (*Notify, error) {
-	if err := checkAttrs(n, "path", "db", "signature-header", "timeout", "retries", "disable-after"); err != nil {
+	if err := checkAttrs(n, "path", "db", "signature-header", "timeout", "retries", "disable-after",
+		"scope-field", "event-header", "delivery-header"); err != nil {
 		return nil, err
 	}
 	no := &Notify{
 		Path:            n.Attr("path"),
 		DB:              n.Attr("db"),
 		SignatureHeader: n.Attr("signature-header"),
+		ScopeField:      n.Attr("scope-field"),
+		EventHeader:     n.Attr("event-header"),
+		DeliveryHeader:  n.Attr("delivery-header"),
 	}
 	if v := n.Attr("timeout"); v != "" {
 		d, err := parseDuration("<notify> timeout", v)
@@ -99,9 +103,60 @@ func buildNotify(n *node) (*Notify, error) {
 		}
 	}
 	for _, child := range n.Children() {
-		return nil, fmt.Errorf("<notify>: unexpected child element <%s>", child.Name())
+		switch child.Name() {
+		case "scope":
+			if err := checkAttrs(child); err != nil {
+				return nil, err
+			}
+			s, err := compileContent(child)
+			if err != nil {
+				return nil, fmt.Errorf("<notify><scope>: %w", err)
+			}
+			no.Scope = strings.TrimSpace(s)
+		case "reveal":
+			if err := checkAttrs(child, "resource"); err != nil {
+				return nil, err
+			}
+			rv := &NotifyReveal{Resource: child.Attr("resource")}
+			for _, k := range child.Children() {
+				if k.Name() != "key" {
+					return nil, fmt.Errorf("<notify><reveal>: unexpected child element <%s>", k.Name())
+				}
+				s, err := buildPathOrExpr(k, "field")
+				if err != nil {
+					return nil, err
+				}
+				rv.Keys = append(rv.Keys, s)
+			}
+			no.Reveal = rv
+		case "field":
+			s, err := buildPathOrExpr(child, "name")
+			if err != nil {
+				return nil, err
+			}
+			no.Fields = append(no.Fields, s)
+		default:
+			return nil, fmt.Errorf("<notify>: unexpected child element <%s>", child.Name())
+		}
 	}
 	return no, nil
+}
+
+// buildPathOrExpr reads an element that names a value either as a payload
+// path in its text or as template source in expr=.
+func buildPathOrExpr(n *node, nameAttr string) (Set, error) {
+	if err := checkAttrs(n, nameAttr, "expr"); err != nil {
+		return Set{}, err
+	}
+	s := Set{Field: n.Attr(nameAttr), Expr: n.Attr("expr")}
+	if s.Expr == "" {
+		from, err := textOf(n)
+		if err != nil {
+			return Set{}, err
+		}
+		s.From = strings.TrimSpace(from)
+	}
+	return s, nil
 }
 
 func buildRefresh(n *node) (*Refresh, error) {

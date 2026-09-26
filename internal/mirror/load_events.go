@@ -11,13 +11,14 @@ import (
 // It lives beside the other builders rather than inside load.go so the whole
 // ingest feature reads in place.
 func buildEvents(n *node) (*Events, error) {
-	if err := checkAttrs(n, "path", "signature-header", "type-header", "reorder-window"); err != nil {
+	if err := checkAttrs(n, "path", "signature-header", "type-header", "reorder-window", "id-header"); err != nil {
 		return nil, err
 	}
 	e := &Events{
 		Path:            n.Attr("path"),
 		SignatureHeader: n.Attr("signature-header"),
 		TypeHeader:      n.Attr("type-header"),
+		IDHeader:        n.Attr("id-header"),
 	}
 	if w := n.Attr("reorder-window"); w != "" {
 		d, err := parseWindow(w)

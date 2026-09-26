@@ -102,6 +102,23 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 	return rv.probe(ctx, principal, res, key, k, forward)
 }
 
+// AllowStored proves access from stored state alone: the row is public,
+// or the principal holds a live grant. It never probes, so it serves a
+// background decision that has no caller credential to probe with.
+func (rv *Revealer) AllowStored(ctx context.Context, principal string, res *Resource, key map[string]string) (bool, error) {
+	if res.Reveal == nil || res.Reveal.Credential {
+		return false, nil
+	}
+	public, err := rv.public(ctx, res, key)
+	if err != nil || public {
+		return public, err
+	}
+	if principal == "" {
+		return false, nil
+	}
+	return rv.store.HasGrant(ctx, principal, res.Name, keyString(res, key), rv.now())
+}
+
 // public evaluates the resource's public predicate against the stored row.
 //
 // Every way of not knowing reads as private. A row that is absent proves

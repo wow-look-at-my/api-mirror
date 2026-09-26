@@ -65,7 +65,7 @@ func (a *Admin) createSubscription(w http.ResponseWriter, r *http.Request) {
 	if principal == "" {
 		principal = "operator"
 	}
-	sub, err := subs.Create(r.Context(), principal, req.URL, req.Events)
+	sub, err := subs.Create(r.Context(), principal, req.URL, "", req.Events, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

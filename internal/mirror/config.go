@@ -91,6 +91,23 @@ type Notify struct {
 	Retries int
 	// DisableAfter is the consecutive-failure count that parks a subscription.
 	DisableAfter int
+	// Scope renders a delivery to the value a subscription filter matches. It is template source over `.payload`.
+	Scope string
+	// ScopeField names the JSON field of a subscription that holds its filter.
+	ScopeField string
+	// EventHeader and DeliveryHeader name the headers of a notification.
+	EventHeader    string
+	DeliveryHeader string
+	// Reveal names the row a subscriber must be able to see.
+	Reveal *NotifyReveal
+	// Fields add delivery values to the notification body.
+	Fields []Set
+}
+
+// NotifyReveal gates a notification on the subscriber's access to one row.
+type NotifyReveal struct {
+	Resource string
+	Keys     []Set
 }
 
 // Refresh is the periodic sweep that keeps declared kinds warm without a
@@ -323,6 +340,8 @@ type Events struct {
 	SignatureHeader string
 	// TypeHeader carries the event type.
 	TypeHeader string
+	// IDHeader carries the provider's own delivery id, for a subscriber.
+	IDHeader string
 	// ReorderWindow holds a delivery so other deliveries for the same subject
 	ReorderWindow time.Duration
 	List          []*Event

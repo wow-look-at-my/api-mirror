@@ -120,6 +120,9 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		if s.Events == nil {
 			return fmt.Errorf("<notify> has nothing to announce: this spec declares no <events>")
 		}
+		if err := s.Notify.validate(byName, s.Dashboard.Path); err != nil {
+			return err
+		}
 	}
 	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
 		return fmt.Errorf("<health> names no path, so it registers nothing and every check falls through to the upstream")

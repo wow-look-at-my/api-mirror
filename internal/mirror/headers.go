@@ -13,6 +13,9 @@ type answerHeaders struct {
 	Stale       string
 	LastFetched string
 	Disposition string
+	// Event and Delivery are on a subscriber notification, not an answer.
+	Event    string
+	Delivery string
 }
 
 func headersFor(prefix string) answerHeaders {
@@ -24,6 +27,8 @@ func headersFor(prefix string) answerHeaders {
 		Stale:       p + "Stale",
 		LastFetched: p + "Last-Fetched",
 		Disposition: p + "Disposition",
+		Event:       p + "Event",
+		Delivery:    p + "Delivery",
 	}
 }
 

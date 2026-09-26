@@ -241,6 +241,8 @@
 		<xs:attribute name="signature-header" type="xs:string" use="required"/>
 		<xs:attribute name="type-header" type="xs:string" use="required"/>
 		<xs:attribute name="reorder-window" type="xs:string"/>
+		<!-- The provider's own delivery id, passed on to subscribers. -->
+		<xs:attribute name="id-header" type="xs:string"/>
 	</xs:complexType>
 
 	<xs:complexType name="event">
@@ -310,7 +312,35 @@
 
 	<!-- db= is optional: it otherwise sits beside whatever -db names. -->
 	<xs:complexType name="notify">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<!-- Template source over `.payload`; a subscription filter matches it. -->
+			<xs:element name="scope" type="content"/>
+			<!-- The row a subscriber must be able to see, by stored proof only. -->
+			<xs:element name="reveal">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="key" minOccurs="0" maxOccurs="unbounded">
+							<xs:complexType mixed="true">
+								<xs:attribute name="field" type="xs:string" use="required"/>
+								<xs:attribute name="expr" type="xs:string"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="resource" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+			<!-- A body field: a payload path, or expr= over `.payload` and `.delivery`. -->
+			<xs:element name="field">
+				<xs:complexType mixed="true">
+					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="expr" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:choice>
 		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="scope-field" type="xs:string"/>
+		<xs:attribute name="event-header" type="xs:string"/>
+		<xs:attribute name="delivery-header" type="xs:string"/>
 		<xs:attribute name="db" type="xs:string"/>
 		<xs:attribute name="signature-header" type="xs:string"/>
 		<xs:attribute name="timeout" type="xs:string"/>

@@ -155,13 +155,14 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		deliveries = append(deliveries, &Delivery{
-			ID:      id,
-			Type:    typ,
-			Event:   ev,
-			Payload: payload,
-			Raw:     raw,
-			Subject: subject,
-			At:      at,
+			ID:         id,
+			Type:       typ,
+			Event:      ev,
+			Payload:    payload,
+			Raw:        raw,
+			Subject:    subject,
+			At:         at,
+			UpstreamID: upstreamID(r, i.events.IDHeader),
 		})
 	}
 
@@ -169,6 +170,10 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		// Every event for this type declined it through when=.
 		i.answer(w, DeliveryIgnored)
 		return
+	}
+	group := &deliveryGroup{pending: len(deliveries)}
+	for _, d := range deliveries {
+		d.group = group
 	}
 	if i.window > 0 {
 		// The provider waits for this answer and gives up in single-digit
@@ -233,6 +238,13 @@ func (i *Ingest) storedAgrees(ctx context.Context, res *Resource, key map[string
 		return true, nil
 	}
 	return fmt.Sprint(row[inv.Field]) == stated, nil
+}
+
+func upstreamID(r *http.Request, header string) string {
+	if header == "" {
+		return ""
+	}
+	return r.Header.Get(header)
 }
 
 // eventApplies evaluates an event's when= against the delivery.

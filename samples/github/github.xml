@@ -712,7 +712,8 @@
 	<relay method="POST" path="/login/oauth/access_token" to="https://github.com/login/oauth/access_token"/>
 	<relay method="POST" path="/login/device/code" to="https://github.com/login/device/code"/>
 
-	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event" reorder-window="2s">
+	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event"
+		id-header="X-GitHub-Delivery" reorder-window="2s">
 
 		<secret><value name="env.WEBHOOK_SECRET"/></secret>
 
@@ -1625,7 +1626,28 @@
 		belong together and travel together.
 	-->
 	<notify path="/_mirror/subscriptions"
-		signature-header="X-Hub-Signature-256" timeout="10s" retries="3" disable-after="20"/>
+		signature-header="X-Hub-Signature-256" timeout="10s" retries="3" disable-after="20"
+		scope-field="repos" event-header="X-Mirror-Event" delivery-header="X-Mirror-Delivery">
+		<!--
+			A subscriber may limit itself to some repos by full name. Every
+			subscriber hears only about repos it can read: public, or one it
+			holds a live grant for. A delivery that names no repo reaches nobody.
+		-->
+		<scope>{{ .payload.repository.full_name }}</scope>
+		<reveal resource="repo">
+			<key field="owner">repository.owner.login</key>
+			<key field="name">repository.name</key>
+		</reveal>
+		<!-- The correlation fields a github-state-mirror consumer reads. -->
+		<field name="github_delivery" expr="{{ .delivery.upstream_id }}"/>
+		<field name="action">action</field>
+		<field name="owner">repository.owner.login</field>
+		<field name="repo">repository.name</field>
+		<field name="repo_full_name">repository.full_name</field>
+		<field name="pr_number">pull_request.number</field>
+		<field name="ref">ref</field>
+		<field name="sha" expr='{{ coalesce .payload.after (dig "pull_request" "head" "sha" "" .payload) .payload.sha (dig "check_run" "head_sha" "" .payload) (dig "check_suite" "head_sha" "" .payload) (dig "workflow_run" "head_sha" "" .payload) (dig "workflow_job" "head_sha" "" .payload) }}'/>
+	</notify>
 
 	<!--
 		Registering these paths is load-bearing, and not for the reason it

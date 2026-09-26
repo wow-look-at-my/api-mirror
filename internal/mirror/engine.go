@@ -102,6 +102,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		if err != nil {
 			return nil, err
 		}
+		e.notify.store, e.notify.reveal = store, e.reveal
 	}
 	e.refresh = NewRefresher(e)
 	e.replay = NewReplayer(e)
@@ -187,6 +188,10 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 	if e.admin != nil && e.admin.Handles(r.URL.Path) {
 		rec.note(DispAdmin, e.spec.Dashboard.Path, "", "")
 		e.admin.ServeHTTP(rec, r)
+		return
+	}
+	if e.handlesSubscriptions(r.URL.Path) {
+		e.serveSubscriptions(rec, r)
 		return
 	}
 	if e.ingest != nil && e.spec.Events != nil && r.URL.Path == e.spec.Events.Path {

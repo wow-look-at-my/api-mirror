@@ -2,12 +2,14 @@ package mirror
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,17 +22,6 @@ const (
 	notifyRetryPause     = 2 * time.Second
 )
 
-// Notification is the body a subscriber receives.
-type Notification struct {
-	Mirror      string              `json:"mirror"`
-	Delivery    string              `json:"delivery"`
-	Type        string              `json:"type"`
-	Resource    string              `json:"resource"`
-	Subject     string              `json:"subject"`
-	Disposition DeliveryDisposition `json:"disposition"`
-	At          time.Time           `json:"at"`
-}
-
 // Notifier fans applied delivery out to every matching subscription, so a
 // consumer stops racing this mirror's ingestion with its own webhooks.
 type Notifier struct {
@@ -39,6 +30,10 @@ type Notifier struct {
 	subs   *Subscriptions
 	client *http.Client
 	tel    *Telemetry
+	// store and reveal gate each notification on the subscriber's access.
+	store  *Store
+	reveal *Revealer
+	hdr    answerHeaders
 
 	wg sync.WaitGroup
 
@@ -67,6 +62,7 @@ func NewNotifier(spec *Spec, vars map[string]any, tel *Telemetry, cacheDB string
 		subs:   subs,
 		client: observedClient(&http.Client{Timeout: notifyTimeout(rule)}, LaneNotify, tel),
 		tel:    tel,
+		hdr:    headersFor(spec.HeaderPrefix),
 	}, nil
 }
 
@@ -115,30 +111,131 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 	if len(subs) == 0 {
 		return
 	}
-	note := Notification{
-		Mirror:      n.spec.Name,
-		Delivery:    d.ID,
-		Type:        d.Type,
-		Resource:    d.Event.Resource,
-		Subject:     d.Subject,
-		Disposition: disp,
-		At:          time.Now().UTC(),
-	}
-	// Marshalled, never assembled: quote in a subject reshapes a splice.
-	body, err := marshalJSON(note)
+	note, err := n.body(d, disp)
 	if err != nil {
-		logf("notify: render notification: %v", err)
+		logf("notify: render notification for %s: %v", d.ID, err)
+		return
+	}
+	scope, err := n.scopeOf(d)
+	if err != nil {
+		logf("notify: render scope for %s: %v", d.ID, err)
 		return
 	}
 
 	detached := context.WithoutCancel(ctx)
 	for _, s := range subs {
+		if len(s.Scopes) > 0 && !containsFold(s.Scopes, scope) {
+			continue
+		}
+		if !n.visible(ctx, s.Principal, d) {
+			continue
+		}
 		n.wg.Add(1)
 		go func(s Subscription) {
 			defer n.wg.Done()
-			n.deliver(detached, s, body)
+			n.deliver(detached, s, d, note)
 		}(s)
 	}
+}
+
+// body builds the notification fields every subscriber shares. The spec's
+// <field> declarations add values from the delivery.
+func (n *Notifier) body(d *Delivery, disp DeliveryDisposition) (map[string]any, error) {
+	now := time.Now().UTC()
+	note := map[string]any{
+		"mirror":          n.spec.Name,
+		"delivery":        d.ID,
+		"mirror_delivery": d.ID,
+		"type":            d.Type,
+		"event":           d.Type,
+		"disposition":     disp,
+		"at":              now,
+		"ingested_at":     now.Format(time.RFC3339Nano),
+	}
+	if d.UpstreamID != "" {
+		note["upstream_delivery"] = d.UpstreamID
+	}
+	ctx := map[string]any{
+		"payload":  d.Payload,
+		"delivery": map[string]any{"id": d.ID, "upstream_id": d.UpstreamID, "type": d.Type},
+	}
+	for _, f := range n.rule.Fields {
+		var v any
+		if f.Expr != "" {
+			s, err := renderString(f.Expr, ctx)
+			if err != nil {
+				return nil, fmt.Errorf("field %s: %w", f.Field, err)
+			}
+			if s != "" {
+				v = s
+			}
+		} else {
+			v = lookupPath(d.Payload, f.From)
+		}
+		// An absent value is left out, never written as an empty one.
+		if v != nil {
+			note[f.Field] = v
+		}
+	}
+	return note, nil
+}
+
+func (n *Notifier) scopeOf(d *Delivery) (string, error) {
+	if n.rule.Scope == "" {
+		return "", nil
+	}
+	return renderString(n.rule.Scope, map[string]any{"payload": d.Payload})
+}
+
+// visible reports whether a subscriber may hear about this delivery. With
+// a <reveal> declared, the answer is the subscriber's stored proof for the
+// named row, and anything that cannot be established reads as no.
+func (n *Notifier) visible(ctx context.Context, principal string, d *Delivery) bool {
+	rule := n.rule.Reveal
+	if rule == nil {
+		return true
+	}
+	if n.store == nil || n.reveal == nil {
+		logf("notify: <reveal> is declared but the notifier has no store, so nothing is sent")
+		return false
+	}
+	res, ok := n.store.Resource(rule.Resource)
+	if !ok {
+		return false
+	}
+	key := make(map[string]string, len(rule.Keys))
+	for _, k := range rule.Keys {
+		var v string
+		if k.Expr != "" {
+			s, err := renderString(k.Expr, map[string]any{"payload": d.Payload})
+			if err != nil {
+				return false
+			}
+			v = s
+		} else {
+			v = scalarString(lookupPath(d.Payload, k.From))
+		}
+		if v == "" {
+			// The delivery does not name the row, so no one can be shown it.
+			return false
+		}
+		key[k.Field] = foldFor(res, k.Field, v)
+	}
+	ok, err := n.reveal.AllowStored(ctx, principal, res, key)
+	if err != nil {
+		logf("notify: reveal for %s: %v -- not sent", principal, err)
+		return false
+	}
+	return ok
+}
+
+func containsFold(list []string, s string) bool {
+	for _, v := range list {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // Drain waits for notifications already in flight, so a shutdown does not drop
@@ -165,7 +262,12 @@ func (n *Notifier) Drain(timeout time.Duration) bool {
 // The cadence is fixed rather than backing off. A subscriber that is down comes
 // back at a moment nothing here can predict, and a growing delay means the
 // notification after they return is the that waited longest.
-func (n *Notifier) deliver(ctx context.Context, s Subscription, body []byte) {
+func (n *Notifier) deliver(ctx context.Context, s Subscription, d *Delivery, shared map[string]any) {
+	note := make(map[string]any, len(shared)+2)
+	for k, v := range shared {
+		note[k] = v
+	}
+	note["subscription_id"] = s.ID
 	retries := n.rule.Retries
 	if retries <= 0 {
 		retries = notifyDefaultRetries
@@ -179,7 +281,14 @@ func (n *Notifier) deliver(ctx context.Context, s Subscription, body []byte) {
 			case <-time.After(notifyRetryPause):
 			}
 		}
-		status, err := n.post(ctx, s, body)
+		note["sent_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+		// Marshalled, never assembled: a quote in a payload value reshapes a splice.
+		body, err := marshalJSON(note)
+		if err != nil {
+			logf("notify: render notification: %v", err)
+			return
+		}
+		status, err := n.post(ctx, s, d, body)
 		if err == nil && status >= 200 && status < 300 {
 			n.recordSent(ctx, s)
 			return
@@ -192,12 +301,14 @@ func (n *Notifier) deliver(ctx context.Context, s Subscription, body []byte) {
 	n.recordFailure(ctx, s, lastErr)
 }
 
-func (n *Notifier) post(ctx context.Context, s Subscription, body []byte) (int, error) {
+func (n *Notifier) post(ctx context.Context, s Subscription, d *Delivery, body []byte) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(cmp.Or(n.rule.EventHeader, n.hdr.Event), d.Type)
+	req.Header.Set(cmp.Or(n.rule.DeliveryHeader, n.hdr.Delivery), d.ID)
 	header := n.rule.SignatureHeader
 	if header == "" {
 		header = "X-Hub-Signature-256"
