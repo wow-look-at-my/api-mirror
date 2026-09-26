@@ -42,7 +42,7 @@ type Ingest struct {
 	// lastPrune stamps the last watermark sweep, as a Unix.
 	lastPrune atomic.Int64
 	// tel puts every delivery on the chart. Nil-safe, so a test can skip it.
-	tel      *Telemetry
+	tel        *Telemetry
 	notifier   *Notifier
 	stats      deliveryStats
 	dispHeader string
@@ -71,7 +71,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 		window: spec.Events.ReorderWindow,
 		// A provider records this header, so an operator reads what each delivery did.
 		dispHeader: headersFor(spec.HeaderPrefix).Disposition,
-		now:    time.Now,
+		now:        time.Now,
 	}
 	// A type fans out to every event declared for it, in spec order: a push
 	// states a branch tip AND makes the repo's file-derived answers wrong.

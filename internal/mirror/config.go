@@ -7,11 +7,11 @@ type Spec struct {
 	Name string
 	// HeaderPrefix starts the headers the engine sets on an answer.
 	HeaderPrefix string
-	Vars      []Var
-	Upstream  Upstream
-	Resources []*Resource
-	Routes    []*Route
-	Purges    []*Purge
+	Vars         []Var
+	Upstream     Upstream
+	Resources    []*Resource
+	Routes       []*Route
+	Purges       []*Purge
 	// Rewrites canonicalise an inbound path before anything matches it.
 	Rewrites []*Rewrite
 	// Relays forward a path to a fixed URL that is not the upstream base.
