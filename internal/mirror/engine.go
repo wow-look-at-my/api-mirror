@@ -16,25 +16,25 @@ import (
 // Engine serves a spec: it answers declared routes from the store, forwards
 // everything else, and keeps the store current.
 type Engine struct {
-	spec     *Spec
-	store    *Store
-	up       *Upstreamer
-	fresh    *Fresh
-	reveal   *Revealer
+	spec       *Spec
+	store      *Store
+	up         *Upstreamer
+	fresh      *Fresh
+	reveal     *Revealer
 	identity   *Identifier
 	hdr        answerHeaders
 	subscribed subscribedCache
-	ingest   *Ingest
-	proxy    *httputil.ReverseProxy
-	vars     map[string]any
-	baseURL  *url.URL
-	tel      *Telemetry
-	admin    *Admin
-	refresh  *Refresher
-	notify   *Notifier
-	replay   *Replayer
-	debounce *Debouncer
-	vocab    set.Set[string]
+	ingest     *Ingest
+	proxy      *httputil.ReverseProxy
+	vars       map[string]any
+	baseURL    *url.URL
+	tel        *Telemetry
+	admin      *Admin
+	refresh    *Refresher
+	notify     *Notifier
+	replay     *Replayer
+	debounce   *Debouncer
+	vocab      set.Set[string]
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.

@@ -83,8 +83,6 @@ function panel(...children) {
 
 function table(headers, rows) {
 	if (!rows.length) return panel(el('div', { class: 'empty' }, 'Nothing yet.'));
-	// A number is right-aligned, and its heading follows it: a left heading
-	// over a right column reads as two columns that failed to line up.
 	const numeric = headers.map((_, i) => rows.some((cells) => typeof cells[i] === 'number'));
 	return panel(el('table', {},
 		el('thead', {}, el('tr', {}, headers.map((h, i) => el('th', { class: numeric[i] ? 'num' : null }, h)))),
