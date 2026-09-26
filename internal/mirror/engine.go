@@ -81,6 +81,7 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		tel:      tel,
 		hdr:      headersFor(spec.HeaderPrefix),
 	}
+	e.identity.whoami = spec.Whoami
 	e.fresh = NewFresh(store, e.fetch, e.ttlFor)
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {

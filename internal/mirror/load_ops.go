@@ -284,6 +284,29 @@ func buildIdentity(n *node) (*Identity, error) {
 	return id, nil
 }
 
+func buildWhoami(n *node) (*Whoami, error) {
+	if err := checkAttrs(n, "method", "path", "id", "prefix", "ttl"); err != nil {
+		return nil, err
+	}
+	for _, child := range n.Children() {
+		return nil, fmt.Errorf("<whoami>: unexpected child element <%s>", child.Name())
+	}
+	w := &Whoami{
+		Method: strings.ToUpper(n.Attr("method")),
+		Path:   n.Attr("path"),
+		ID:     n.Attr("id"),
+		Prefix: n.Attr("prefix"),
+	}
+	if v := n.Attr("ttl"); v != "" {
+		d, err := parseDuration("<whoami> ttl", v)
+		if err != nil {
+			return nil, err
+		}
+		w.TTL = d
+	}
+	return w, nil
+}
+
 func buildRateHeaders(n *node) (RateHeaders, error) {
 	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource"); err != nil {
 		return RateHeaders{}, err

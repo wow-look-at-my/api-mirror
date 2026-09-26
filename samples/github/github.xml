@@ -66,6 +66,13 @@
 		id="id" name="slug" prefix="app" ttl="10m"/>
 
 	<!--
+		A user's token resolves to user:<id>, so a user keeps their grants when
+		they rotate a token. An installation token cannot call /user, and keeps
+		its fingerprint principal.
+	-->
+	<whoami method="GET" path="/user" id="id" prefix="user" ttl="1h"/>
+
+	<!--
 		A repository. Its visibility is load-bearing twice over: it is the fast
 		path of the reveal ladder, and an UNKNOWN visibility must read as
 		private. The predicate below says "public" explicitly rather than "not

@@ -31,6 +31,21 @@ type Spec struct {
 	Health *Health
 	// Identity lets a caller name a stable principal the upstream vouches for.
 	Identity *Identity
+	// Whoami resolves a caller's own credential to a stable principal.
+	Whoami *Whoami
+}
+
+// Whoami is the upstream call that names the owner of a credential. A
+// credential that cannot call it keeps the fingerprint principal.
+type Whoami struct {
+	Method string
+	Path   string
+	// ID is the path into the answer that names the owner.
+	ID string
+	// Prefix starts the principal, which is "<prefix>:<id>".
+	Prefix string
+	// TTL bounds how long an answer is reused.
+	TTL time.Duration
 }
 
 // Identity is a verified assertion that names the caller. The principal

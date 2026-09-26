@@ -147,6 +147,40 @@ func TestTokenlessCallerDoesNotRideTheBackgroundCredential(t *testing.T) {
 		"the probe must go out with no credential, not with the static background one")
 }
 
+func TestWhoamiKeepsAUsersGrantsAcrossTokens(t *testing.T) {
+	var whoCalls atomic.Int32
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			whoCalls.Add(1)
+			switch r.Header.Get("Authorization") {
+			case "token t1", "token t2":
+				w.Write([]byte(`{"id":7}`))
+			default:
+				w.WriteHeader(http.StatusForbidden)
+			}
+		case "/secrets/1":
+			if r.Header.Get("Authorization") != "token t1" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Write([]byte(`{"id":"1","title":"classified"}`))
+		}
+	}), withIdentity, func(s *Spec) {
+		s.Whoami = &Whoami{Path: "/user", ID: "id", Prefix: "user"}
+	})
+
+	require.Equal(t, http.StatusOK, getSecret(e, "token t1", "").Code)
+	assert.Equal(t, http.StatusOK, getSecret(e, "token t2", "").Code,
+		"t2 belongs to the same user, whose grant t1 earned")
+	assert.Equal(t, http.StatusNotFound, getSecret(e, "token other", "").Code,
+		"a credential the upstream will not name keeps its own fingerprint and proves nothing")
+
+	before := whoCalls.Load()
+	getSecret(e, "token t2", "")
+	assert.Equal(t, before, whoCalls.Load(), "the owner of a credential is cached")
+}
+
 func TestValidate_Identity(t *testing.T) {
 	base := func() *Spec {
 		s := testSpec("https://api.example.com")

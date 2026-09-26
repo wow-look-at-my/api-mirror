@@ -19,9 +19,10 @@ const maxIdentityVerdicts = 4096
 
 // Identifier resolves the principal of a request.
 type Identifier struct {
-	spec *Identity
-	up   *Upstreamer
-	vars map[string]any
+	spec   *Identity
+	whoami *Whoami
+	up     *Upstreamer
+	vars   map[string]any
 
 	mu       sync.Mutex
 	verdicts map[string]identityVerdict
@@ -54,12 +55,12 @@ func (e *IdentityError) Error() string { return e.Reason }
 // to the credential fingerprint: a caller that asked to be someone must
 // not quietly become someone else.
 func (id *Identifier) Resolve(ctx context.Context, r *http.Request) (string, error) {
-	if id.spec == nil {
-		return tokenPrincipal(r), nil
+	assertion := ""
+	if id.spec != nil {
+		assertion = r.Header.Get(id.spec.Header)
 	}
-	assertion := r.Header.Get(id.spec.Header)
 	if assertion == "" {
-		return tokenPrincipal(r), nil
+		return id.owner(ctx, r), nil
 	}
 	sum := sha256.Sum256([]byte(assertion))
 	cacheKey := hex.EncodeToString(sum[:])
@@ -72,6 +73,45 @@ func (id *Identifier) Resolve(ctx context.Context, r *http.Request) (string, err
 	}
 	id.store(cacheKey, v)
 	return v.principal, nil
+}
+
+// owner names the caller by the owner of its credential when <whoami> is
+// declared, and by the credential's fingerprint otherwise.
+//
+// A credential the upstream will not name, such as an installation token
+// that cannot call the endpoint, keeps its fingerprint, and that answer is
+// cached like any other. A transient failure keeps the fingerprint for
+// this request only.
+func (id *Identifier) owner(ctx context.Context, r *http.Request) string {
+	fallback := tokenPrincipal(r)
+	if id.whoami == nil || fallback == "" {
+		return fallback
+	}
+	cacheKey := "whoami:" + fallback
+	if v, ok := id.cached(cacheKey); ok {
+		return v.principal
+	}
+	set := http.Header{}
+	set.Set("Authorization", r.Header.Get("Authorization"))
+	ans, err := id.up.CallWith(withLane(ctx, LaneIdentity, fallback, id.whoami.Prefix),
+		id.whoami.Method, id.whoami.Path, id.vars, nil, set, nil)
+	if err != nil || id.up.Transient(ans) {
+		return fallback
+	}
+	principal := fallback
+	if ans.Status >= 200 && ans.Status < 300 {
+		if doc, err := decodeJSON(ans.Body); err == nil {
+			if who := scalarString(lookupPath(doc, id.whoami.ID)); who != "" {
+				principal = id.whoami.Prefix + ":" + who
+			}
+		}
+	}
+	ttl := id.whoami.TTL
+	if ttl <= 0 {
+		ttl = defaultIdentityTTL
+	}
+	id.store(cacheKey, identityVerdict{principal: principal, expires: time.Now().Add(ttl)})
+	return principal
 }
 
 func (id *Identifier) cached(key string) (identityVerdict, bool) {

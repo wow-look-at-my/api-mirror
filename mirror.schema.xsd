@@ -73,6 +73,7 @@
 				<xs:element name="replay" type="replay"/>
 				<xs:element name="health" type="health"/>
 				<xs:element name="identity" type="identity"/>
+				<xs:element name="whoami" type="whoami"/>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
@@ -395,6 +396,15 @@
 	<xs:complexType name="health">
 		<xs:attribute name="live" type="xs:string"/>
 		<xs:attribute name="pre-update" type="xs:string"/>
+	</xs:complexType>
+
+	<!-- The call that names a credential's owner, as `prefix:id`. -->
+	<xs:complexType name="whoami">
+		<xs:attribute name="method" type="xs:string"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="id" type="xs:string" use="required"/>
+		<xs:attribute name="prefix" type="xs:string" use="required"/>
+		<xs:attribute name="ttl" type="xs:string"/>
 	</xs:complexType>
 
 	<!-- A verified assertion in `header` names the caller as `prefix:id`. -->

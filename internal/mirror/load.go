@@ -139,6 +139,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Identity = id
+		case "whoami":
+			w, err := buildWhoami(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Whoami = w
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}

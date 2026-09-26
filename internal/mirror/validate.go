@@ -134,6 +134,15 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 			return err
 		}
 	}
+	if w := s.Whoami; w != nil {
+		w.Method = cmp.Or(w.Method, http.MethodGet)
+		if !strings.HasPrefix(w.Path, "/") || w.ID == "" || w.Prefix == "" || strings.Contains(w.Prefix, ":") {
+			return fmt.Errorf("<whoami> needs path= starting with /, id=, and a prefix= with no ':'")
+		}
+		if s.Identity != nil && s.Identity.Prefix == w.Prefix {
+			return fmt.Errorf("<whoami> and <identity> share prefix %q, so two callers could name one principal", w.Prefix)
+		}
+	}
 	if s.CORS != nil && len(s.CORS.Origins) == 0 {
 		return fmt.Errorf("<cors> names no <origin>, so it would allow nothing while looking like a policy")
 	}
