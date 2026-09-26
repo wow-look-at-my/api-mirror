@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // Subscribed names the upstream call that lists which event types the
@@ -107,18 +109,18 @@ func (e *Engine) askSubscribed(ctx context.Context, ev *Events) SubscribedView {
 	if !ok {
 		return SubscribedView{Error: fmt.Sprintf("%s carries no list at %s", rule.Path, rule.Field)}
 	}
-	sent := make(map[string]struct{}, len(list))
+	sent := set.New[string]()
 	for _, v := range list {
-		sent[scalarString(v)] = struct{}{}
+		sent.Add(scalarString(v))
 	}
 	view := SubscribedView{Checked: true, Missing: []string{}}
-	seen := map[string]struct{}{}
+	seen := set.New[string]()
 	for _, d := range ev.List {
-		if _, dup := seen[d.Type]; dup {
+		if seen.Contains(d.Type) {
 			continue
 		}
-		seen[d.Type] = struct{}{}
-		if _, ok := sent[d.Type]; !ok {
+		seen.Add(d.Type)
+		if !sent.Contains(d.Type) {
 			view.Missing = append(view.Missing, d.Type)
 		}
 	}

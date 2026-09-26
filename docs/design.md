@@ -201,7 +201,7 @@ A write needs the whole key. An invalidate may name part of it and deletes every
 
 Narrower forms:
 
-- `when="{{ ... }}"` on `<event>` is a predicate over `.payload`. False skips that event for the delivery. A type may declare one resource twice only when every declaration has one, so the two cannot both decide the row.
+- `when="{{ ... }}"` on `<event>` is a predicate over `.payload`. False skips that event for the delivery. A type may declare one resource twice only when every declaration has one. The two then cannot both decide the row.
 - `<invalidate every="true">` drops the whole resource. It is for a per-credential answer whose key the payload cannot state.
 - `<invalidate field="tip_sha" differs="pull_request.base.sha">` drops the one stored row only when its field disagrees with what the delivery states. A disagreement means a delivery was lost, so the next reader refetches.
 
@@ -221,7 +221,7 @@ route that reads that fact is gated the same way.
 </reveal>
 ```
 
-Public is a predicate over the stored row. A probe re-asks upstream with the CALLER's own credential. A 2xx earns a grant, an authoritative denial is cached briefly, and a transient failure is never cached. Unknown fails closed.
+Public is a predicate over the stored row. A probe re-asks upstream with the CALLER's own credential. A 2xx earns a grant. An authoritative denial is cached briefly. A transient failure is never cached. Unknown fails closed.
 
 A route's `<spread resource="repo" items="...">` earns grants in bulk. Each item of a listing the caller fetched is a grant for that caller, and, unless `absorb="false"`, a stored row of truth.
 
@@ -301,14 +301,11 @@ A caller manages its own registrations at `<notify path=>`, under its resolved p
 
 ### `<cors>`, `<health>`, and debouncing
 
-`<cors>` names the origins and the response headers a cross-origin script may
-read; the engine always adds its own answer headers to that list, under the
-prefix `<mirror header-prefix=>` names (default `X-Mirror-`), since no
-author should have to know them. `<health>` registers the paths an orchestrator
-polls — load-bearing, because an unrouted path falls through to the proxy rather
-than 404ing, and a checker reading any non-404 as "implemented" calls a healthy
-container unhealthy forever. `<upstream debounce=>` shares one upstream call
-between identical concurrent passthrough reads, and never across credentials.
+`<cors>` names the origins and the response headers a cross-origin script may read. The engine always adds its own answer headers to that list, under the prefix `<mirror header-prefix=>` names (default `X-Mirror-`). No author should have to know them.
+
+`<health>` registers the paths an orchestrator polls. An unrouted path falls through to the proxy rather than answering 404. A checker that reads any non-404 as "implemented" then calls a healthy container unhealthy forever.
+
+`<upstream debounce=>` shares one upstream call between identical concurrent passthrough reads. It never shares one across credentials.
 
 ## What the engine owns
 

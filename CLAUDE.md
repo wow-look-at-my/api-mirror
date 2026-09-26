@@ -28,7 +28,9 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `spread.go` — `<spread>` on a route: each item of a fetched listing is a grant for its caller, and optionally truth.
 - `notify_api.go` — the public subscription API at `<notify path=>`, under the caller's own principal, and `<notify>` validation.
 - `jwt.go` — the `jwt` and `readFile` template functions, for a credential that background work signs itself.
-- `headers.go` / `stale.go` / `compress.go` / `rowcap.go` / `subscribed.go` / `admin_login.go` — the answer-header prefix, serve-stale on a failed refresh, admin gzip, the per-table row cap, the unsubscribed-types report, and the dashboard's OAuth sign-in.
+- `headers.go` — the answer-header prefix. `stale.go` — an answer served after a failed refresh.
+- `compress.go` — admin gzip. `rowcap.go` — the per-table row cap.
+- `subscribed.go` — the report of declared types the provider does not send. `admin_login.go` — the dashboard's OAuth sign-in.
 - `ordering.go` / `events.go` — webhook ingest: subject and clock, the reorder window, the watermark, the apply.
 - `upstream.go` — the one outbound client, reporting every request.
 - `load_ops.go` / the ops half of `validate.go` — `<dashboard>`, `<cors>`, `<notify>`, `<refresh>`, `<replay>`, `<health>`, `<ratelimit>`.

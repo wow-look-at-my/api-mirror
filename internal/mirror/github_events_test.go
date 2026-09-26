@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // githubStateMirrorTypes are the webhook types github-state-mirror acted on.
@@ -21,12 +22,11 @@ var githubStateMirrorTypes = []string{
 func TestGitHubSpecDeclaresEveryTypeGithubStateMirrorHandled(t *testing.T) {
 	spec, err := Load(filepath.Join(repoRoot, "samples", "github", "github.xml"))
 	require.NoError(t, err)
-	declared := map[string]struct{}{}
+	declared := set.New[string]()
 	for _, ev := range spec.Events.List {
-		declared[ev.Type] = struct{}{}
+		declared.Add(ev.Type)
 	}
 	for _, typ := range githubStateMirrorTypes {
-		_, ok := declared[typ]
-		assert.Truef(t, ok, "the GitHub spec declares no event for %q", typ)
+		assert.Truef(t, declared.Contains(typ), "the GitHub spec declares no event for %q", typ)
 	}
 }
