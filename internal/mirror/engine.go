@@ -21,6 +21,7 @@ type Engine struct {
 	up       *Upstreamer
 	fresh    *Fresh
 	reveal   *Revealer
+	identity *Identifier
 	ingest   *Ingest
 	proxy    *httputil.ReverseProxy
 	vars     map[string]any
@@ -41,11 +42,9 @@ func withForward(ctx context.Context, h http.Header) context.Context {
 	return context.WithValue(ctx, forwardKey{}, h)
 }
 
+// forwardFrom returns nil for background work, which has no caller.
 func forwardFrom(ctx context.Context) http.Header {
 	h, _ := ctx.Value(forwardKey{}).(http.Header)
-	if h == nil {
-		return http.Header{}
-	}
 	return h
 }
 
@@ -74,7 +73,8 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		spec:    spec,
 		store:   store,
 		up:      up,
-		reveal:  NewRevealer(store, up, vars),
+		reveal:   NewRevealer(store, up, vars),
+		identity: NewIdentifier(spec.Identity, up, vars),
 		vars:    vars,
 		baseURL: base,
 		tel:     tel,
@@ -315,7 +315,16 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		return
 	}
 
-	principal := principalOf(r)
+	principal, err := e.identity.Resolve(ctx, r)
+	if err != nil {
+		status := http.StatusBadGateway
+		if ie, ok := err.(*IdentityError); ok {
+			status = ie.Status
+		}
+		w.note(DispDenied, m.route.Path, m.route.Resource, "identity")
+		http.Error(w, err.Error(), status)
+		return
+	}
 	w.principal = principal
 	ctx = withLane(ctx, LaneFetch, principal, m.route.Resource)
 	verdict, err := e.reveal.Allow(ctx, principal, res, m.key, r.Header)
@@ -498,13 +507,4 @@ func stripUpstreamCORS(resp *http.Response) error {
 		}
 	}
 	return nil
-}
-
-// principalOf identifies who is asking.
-func principalOf(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if auth == "" {
-		return ""
-	}
-	return "token:" + fingerprint(auth)
 }

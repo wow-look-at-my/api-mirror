@@ -72,6 +72,7 @@
 				<xs:element name="refresh" type="refresh"/>
 				<xs:element name="replay" type="replay"/>
 				<xs:element name="health" type="health"/>
+				<xs:element name="identity" type="identity"/>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
@@ -336,6 +337,19 @@
 	<xs:complexType name="health">
 		<xs:attribute name="live" type="xs:string"/>
 		<xs:attribute name="pre-update" type="xs:string"/>
+	</xs:complexType>
+
+	<!-- A verified assertion in `header` names the caller as `prefix:id`. -->
+	<xs:complexType name="identity">
+		<xs:attribute name="header" type="xs:string" use="required"/>
+		<xs:attribute name="method" type="xs:string"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="send" type="xs:string"/>
+		<xs:attribute name="scheme" type="xs:string"/>
+		<xs:attribute name="id" type="xs:string" use="required"/>
+		<xs:attribute name="name" type="xs:string"/>
+		<xs:attribute name="prefix" type="xs:string" use="required"/>
+		<xs:attribute name="ttl" type="xs:string"/>
 	</xs:complexType>
 
 </xs:schema>

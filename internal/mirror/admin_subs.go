@@ -61,7 +61,7 @@ func (a *Admin) createSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	principal := principalOf(r)
+	principal := tokenPrincipal(r)
 	if principal == "" {
 		principal = "operator"
 	}
@@ -79,7 +79,7 @@ func (a *Admin) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this spec declares no <notify>", http.StatusNotImplemented)
 		return
 	}
-	principal := principalOf(r)
+	principal := tokenPrincipal(r)
 	if principal == "" {
 		principal = "operator"
 	}

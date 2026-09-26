@@ -27,6 +27,29 @@ type Spec struct {
 	Replay *Replay
 	// Health declares the liveness and pre-update paths an orchestrator polls.
 	Health *Health
+	// Identity lets a caller name a stable principal the upstream vouches for.
+	Identity *Identity
+}
+
+// Identity is a verified assertion that names the caller. The principal
+// is then stable across every credential the caller rotates through.
+type Identity struct {
+	// Header is the request header that carries the assertion.
+	Header string
+	// Method and Path are the upstream call that verifies the assertion.
+	Method string
+	Path   string
+	// Send is the header that carries the assertion to that call.
+	Send string
+	// Scheme prefixes the assertion in Send, as in "Bearer <assertion>".
+	Scheme string
+	// ID and Name are paths into the verification answer.
+	ID   string
+	Name string
+	// Prefix starts the principal, which is "<prefix>:<id>".
+	Prefix string
+	// TTL bounds how long a verdict is reused.
+	TTL time.Duration
 }
 
 // Dashboard is the operator surface: the tabs, the admin JSON, and the token

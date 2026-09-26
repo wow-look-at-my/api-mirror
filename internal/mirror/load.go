@@ -133,6 +133,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Health = h
+		case "identity":
+			id, err := buildIdentity(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Identity = id
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}

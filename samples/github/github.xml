@@ -29,10 +29,11 @@
 		credential of its own to serve a read.
 
 		The static Authorization below is for the requests that have NO caller:
-		the periodic sweep and the delivery-gap replayer. A forwarded header
-		wins over a static one, so a consumer's own token still answers every
-		read they make. Unset, the header is skipped and the background jobs
-		get whatever an anonymous caller gets.
+		the periodic sweep and the delivery-gap replayer. It never answers for
+		a caller: a caller who sends no Authorization reaches GitHub with none,
+		so the mirror's own token cannot reveal what an anonymous caller could
+		not read. Unset, the header is skipped and the background jobs get
+		whatever an anonymous caller gets.
 
 		<ratelimit> names the headers that carry a budget. Naming them is what
 		lets the Rate limit tab exist at all, and it is also what tells a
@@ -49,6 +50,16 @@
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
 			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"/>
 	</upstream>
+
+	<!--
+		A GitHub App sends its own JWT here. GitHub answers GET /app only for a
+		JWT that the App's private key signed, so the assertion cannot be
+		forged. The caller then keeps one set of grants as app:<id>, although
+		its installation tokens rotate every hour. Its Authorization still
+		rides every upstream call, so GitHub still decides each read.
+	-->
+	<identity header="X-Mirror-Identity" method="GET" path="/app" scheme="Bearer"
+		id="id" name="slug" prefix="app" ttl="10m"/>
 
 	<!--
 		A repository. Its visibility is load-bearing twice over: it is the fast

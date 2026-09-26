@@ -1,8 +1,10 @@
 package mirror
 
 import (
+	"cmp"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -121,6 +123,13 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 	}
 	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
 		return fmt.Errorf("<health> names no path, so it registers nothing and every check falls through to the upstream")
+	}
+	if s.Identity != nil {
+		s.Identity.Method = cmp.Or(s.Identity.Method, http.MethodGet)
+		s.Identity.Send = cmp.Or(s.Identity.Send, "Authorization")
+		if err := s.Identity.validate(s.Upstream.Forward); err != nil {
+			return err
+		}
 	}
 	if s.CORS != nil && len(s.CORS.Origins) == 0 {
 		return fmt.Errorf("<cors> names no <origin>, so it would allow nothing while looking like a policy")
