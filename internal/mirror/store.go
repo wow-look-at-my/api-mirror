@@ -73,7 +73,7 @@ func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
 }
 
 func openDB(path string) (*sql.DB, error) {
-	// WAL keeps a reader from blocking the writer, which matters because a
+	// WAL keeps a reader from blocking the writer.
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
