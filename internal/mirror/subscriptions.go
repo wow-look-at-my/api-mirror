@@ -337,11 +337,11 @@ func (s *Subscriptions) query(ctx context.Context, stmt string, args ...any) ([]
 	var out []Subscription
 	for rows.Next() {
 		var (
-			sub               Subscription
-			events, scopes    string
-			created, updated  int64
-			lastOK, lastFail  sql.NullInt64
-			disabled          int
+			sub              Subscription
+			events, scopes   string
+			created, updated int64
+			lastOK, lastFail sql.NullInt64
+			disabled         int
 		)
 		if err := rows.Scan(&sub.ID, &sub.Principal, &sub.URL, &events, &scopes, &created, &updated,
 			&lastOK, &lastFail, &sub.Failures, &disabled, &sub.LastError); err != nil {

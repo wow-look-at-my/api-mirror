@@ -15,7 +15,7 @@ type Delivery struct {
 	Event   *Event
 	Payload any
 	Raw     []byte
-	// Subject is what this delivery is a view of, and At is the moment that
+	// Subject is what this delivery is a view of.
 	Subject string
 	At      time.Time
 	// UpstreamID is the provider's own id for the delivery, when it sends one.
@@ -65,7 +65,7 @@ func orderOf(ev *Event, payload any) (string, time.Time, error) {
 	}
 	raw := lookupPath(payload, ev.Clock)
 	if raw == nil {
-		// The spec named a clock field and this payload does not carry it. That
+		// The spec named a clock field and this payload does not carry it.
 		return subject, time.Time{}, fmt.Errorf("event %q: payload carries no %s", ev.Type, ev.Clock)
 	}
 	secs, err := toUnix(raw)
@@ -127,7 +127,7 @@ func NewReorderer(window time.Duration, apply applyFunc) *Reorderer {
 // Submit hands delivery to the reorderer.
 //
 // With a window it returns immediately and the delivery applies later, so the
-// caller answers the provider before the write lands. That is deliberate: a
+// caller answers the provider before the write lands. That is deliberate.
 func (r *Reorderer) Submit(d *Delivery) {
 	if r.window <= 0 {
 		r.wg.Add(1)

@@ -185,13 +185,14 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 	if e.health(rec, r) {
 		return
 	}
+	// Ahead of the dashboard, whose prefix it may share: this path is public.
+	if e.handlesSubscriptions(r.URL.Path) {
+		e.serveSubscriptions(rec, r)
+		return
+	}
 	if e.admin != nil && e.admin.Handles(r.URL.Path) {
 		rec.note(DispAdmin, e.spec.Dashboard.Path, "", "")
 		e.admin.ServeHTTP(rec, r)
-		return
-	}
-	if e.handlesSubscriptions(r.URL.Path) {
-		e.serveSubscriptions(rec, r)
 		return
 	}
 	if e.ingest != nil && e.spec.Events != nil && r.URL.Path == e.spec.Events.Path {

@@ -22,8 +22,10 @@ func (no *Notify) validate(resources map[string]*Resource, dashboard string) err
 		if !strings.HasPrefix(no.Path, "/") {
 			return fmt.Errorf("<notify> path %q must start with /", no.Path)
 		}
-		if no.Path == dashboard || strings.HasPrefix(no.Path, dashboard+"/") {
-			return fmt.Errorf("<notify> path %q is inside the dashboard, which the admin token gates", no.Path)
+		// The subscription path is matched ahead of the dashboard, so it may sit
+		// under the dashboard prefix. It may not be the dashboard itself.
+		if no.Path == dashboard || no.Path == dashboard+"/api" || strings.HasPrefix(no.Path, dashboard+"/api/") {
+			return fmt.Errorf("<notify> path %q would hide the dashboard's own routes", no.Path)
 		}
 	}
 	seen := set.New[string]()

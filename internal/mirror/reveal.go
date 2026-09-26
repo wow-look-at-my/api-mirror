@@ -13,7 +13,7 @@ import (
 
 // The reveal layer: who may be TOLD a stored fact.
 
-// grantSourceProbe labels a grant a probe earned. The source is what keeps a
+// grantSourceProbe labels a grant a probe earned.
 const grantSourceProbe = "probe"
 
 // DenyReason says which rung refused: "denied" alone cannot be acted on.
@@ -31,7 +31,6 @@ type Verdict struct {
 	Allowed bool
 	// Status is the answer when the read is refused. It is the upstream's own
 	Status int
-	// Cached reports a refusal replayed from the deny cache rather than a
 	Cached bool
 	// Reason names the rung that refused, for the dashboard's refusal tally.
 	Reason DenyReason
@@ -59,7 +58,7 @@ func NewRevealer(store *Store, up *Upstreamer, vars map[string]any) *Revealer {
 // refusal.
 func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, key map[string]string, forward http.Header) (Verdict, error) {
 	if res.Reveal == nil {
-		// Load-time validation rejects this. The runtime still refuses rather
+		// Load-time validation rejects this.
 		return refuse(http.StatusNotFound), fmt.Errorf("resource %q has no reveal rule", res.Name)
 	}
 	if res.Reveal.Credential {
@@ -130,7 +129,7 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 	}
 	var row Row
 	if completeKey(res, key) {
-		// A partial key names many rows, and row's visibility is not the
+		// A partial key names many rows.
 		var err error
 		if row, err = rv.store.Get(ctx, res, key); err != nil {
 			return false, fmt.Errorf("reveal: read %s: %w", res.Name, err)
@@ -139,7 +138,7 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 	// A missing row is not a refusal here, it is an empty row. The distinction
 	out, err := renderString(res.Reveal.Public, rv.context(key, row))
 	if err != nil {
-		// A predicate that cannot render decides nothing. It is a spec bug, so
+		// A predicate that cannot render decides nothing. It is a spec bug.
 		logf("reveal: %s <public> did not render: %v", res.Name, err)
 		return false, nil
 	}
@@ -299,7 +298,7 @@ func (rv *Revealer) context(key map[string]string, row Row) map[string]any {
 	return out
 }
 
-// refuse builds a not-allowed verdict. Every failure path goes through it, so
+// refuse builds a not-allowed verdict. Every failure path goes through it.
 func refuse(status int) Verdict {
 	return Verdict{Status: status, Reason: DenyUpstream}
 }
@@ -318,7 +317,6 @@ func keyString(res *Resource, key map[string]string) string {
 		parts = append(parts, url.PathEscape(key[k.Name]))
 		named.Add(k.Name)
 	}
-	// A list route may also select by a stored FIELD -- every post by an
 	extra := make([]string, 0, len(key))
 	for name := range key {
 		if !named.Contains(name) {
