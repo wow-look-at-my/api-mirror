@@ -14,7 +14,13 @@ import (
 )
 
 // Duration parses a Go duration string, rejecting the empty and the negative.
+// A value may be template source over `.env`, so an operator can set it
+// without editing the spec.
 func parseDuration(what, s string) (time.Duration, error) {
+	s, err := loadTimeValue(what, s)
+	if err != nil {
+		return 0, err
+	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %q is not a duration: %w", what, s, err)
@@ -23,6 +29,33 @@ func parseDuration(what, s string) (time.Duration, error) {
 		return 0, fmt.Errorf("%s: %q must be positive", what, s)
 	}
 	return d, nil
+}
+
+// parseDurationOrOff is parseDuration where "0" means the feature is off,
+// the convention an environment variable uses to turn a job off.
+func parseDurationOrOff(what, s string) (time.Duration, bool, error) {
+	v, err := loadTimeValue(what, s)
+	if err != nil {
+		return 0, false, err
+	}
+	if v == "0" || v == "0s" {
+		return 0, true, nil
+	}
+	d, err := parseDuration(what, v)
+	return d, false, err
+}
+
+// loadTimeValue renders a load-time attribute that is template source over
+// `.env`. A value with no template is returned as it is.
+func loadTimeValue(what, s string) (string, error) {
+	if !strings.Contains(s, "{{") {
+		return s, nil
+	}
+	out, err := renderString(s, map[string]any{"env": envMap()})
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", what, err)
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // validate rejects a spec the engine cannot serve honestly. Every check here
@@ -112,7 +145,7 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		if s.Replay.ID == "" {
 			return fmt.Errorf("<replay> needs <id>: without it a delivery cannot be named, so every cycle would ask for all of them again")
 		}
-		if s.Replay.Interval <= 0 {
+		if s.Replay.Interval <= 0 && !s.Replay.Off {
 			return fmt.Errorf("<replay> needs a positive interval")
 		}
 	}

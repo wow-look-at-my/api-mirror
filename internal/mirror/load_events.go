@@ -52,6 +52,10 @@ func buildEvents(n *node) (*Events, error) {
 const maxReorderWindow = 5 * time.Second
 
 func parseWindow(v string) (time.Duration, error) {
+	v, err := loadTimeValue("<events reorder-window>", v)
+	if err != nil {
+		return 0, err
+	}
 	if v == "0" || v == "0s" {
 		// is a real choice: dispatch on arrival and leave ordering
 		return 0, nil

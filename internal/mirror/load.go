@@ -183,7 +183,7 @@ func buildUpstream(n *node) (Upstream, error) {
 	}
 	up := Upstream{Base: n.Attr("base"), RetryAfter: n.Attr("retry-after")}
 	if v := n.Attr("debounce"); v != "" {
-		d, err := parseDuration("<upstream> debounce", v)
+		d, _, err := parseDurationOrOff("<upstream> debounce", v)
 		if err != nil {
 			return Upstream{}, err
 		}

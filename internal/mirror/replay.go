@@ -58,6 +58,10 @@ func (r *Replayer) missing() string {
 // Start runs the replayer until Stop. The cycle runs immediately: a
 // restart is itself a window deliveries were missed in.
 func (r *Replayer) Start() {
+	if r != nil && r.rule != nil && r.rule.Off {
+		logf("replay: OFF because its interval is 0. A delivery this mirror never received stays lost.")
+		return
+	}
 	if !r.declared() {
 		return
 	}
@@ -329,6 +333,9 @@ func (r *Replayer) Stats() ReplayStats {
 	}
 	if r.declared() {
 		s.Off = r.missing()
+	}
+	if r.rule != nil && r.rule.Off {
+		s.Off = "interval=0"
 	}
 	return s
 }

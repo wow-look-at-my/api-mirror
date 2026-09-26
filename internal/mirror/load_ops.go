@@ -57,7 +57,16 @@ func buildCORS(n *node) (*CORS, error) {
 			if err := checkAttrs(child); err != nil {
 				return nil, err
 			}
-			c.Origins = append(c.Origins, text)
+			// A rendered origin may be a comma-separated list, as an environment variable usually carries one.
+			rendered, err := loadTimeValue("<cors><origin>", text)
+			if err != nil {
+				return nil, err
+			}
+			for _, o := range strings.Split(rendered, ",") {
+				if o = strings.TrimSpace(o); o != "" {
+					c.Origins = append(c.Origins, o)
+				}
+			}
 		case "expose":
 			if err := checkAttrs(child); err != nil {
 				return nil, err
@@ -199,7 +208,14 @@ func buildReplay(n *node) (*Replay, error) {
 		}
 		rp.Max = num
 	}
-	for attr, dst := range map[string]*time.Duration{"interval": &rp.Interval, "lookback": &rp.Lookback} {
+	if v := n.Attr("interval"); v != "" {
+		d, off, err := parseDurationOrOff("<replay> interval", v)
+		if err != nil {
+			return nil, err
+		}
+		rp.Interval, rp.Off = d, off
+	}
+	for attr, dst := range map[string]*time.Duration{"lookback": &rp.Lookback} {
 		v := n.Attr(attr)
 		if v == "" {
 			continue
