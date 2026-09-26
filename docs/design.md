@@ -301,7 +301,7 @@ A caller manages its own registrations at `<notify path=>`, under its resolved p
 
 ### `<cors>`, `<health>`, and debouncing
 
-`<cors>` names the origins and the response headers a cross-origin script may read. The engine always adds its own answer headers to that list, under the prefix `<mirror header-prefix=>` names (default `X-Mirror-`). No author should have to know them.
+`<cors>` names the origins and the response headers a cross-origin script may read. The engine always adds its own answer headers to that list, under the prefix `<mirror header-prefix=>` names (default `X-Mirror-`). An author does not have to know them.
 
 `<health>` registers the paths an orchestrator polls. An unrouted path falls through to the proxy rather than answering 404. A checker that reads any non-404 as "implemented" then calls a healthy container unhealthy forever.
 
