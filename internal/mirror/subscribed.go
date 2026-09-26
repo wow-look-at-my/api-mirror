@@ -84,17 +84,17 @@ func (e *Engine) subscribedView(ctx context.Context) SubscribedView {
 
 func (e *Engine) askSubscribed(ctx context.Context, ev *Events) SubscribedView {
 	rule := ev.Subscribed
-	set := http.Header{}
+	auth := http.Header{}
 	for _, h := range rule.Headers {
 		v, err := renderString(h.Value, e.vars)
 		if err != nil {
 			return SubscribedView{Error: "render " + h.Name + ": " + err.Error()}
 		}
 		if v != "" {
-			set.Set(h.Name, v)
+			auth.Set(h.Name, v)
 		}
 	}
-	ans, err := e.up.CallWith(withLane(ctx, LaneRefresh, "", "subscribed"), rule.Method, rule.Path, e.vars, nil, set, nil)
+	ans, err := e.up.CallWith(withLane(ctx, LaneRefresh, "", "subscribed"), rule.Method, rule.Path, e.vars, nil, auth, nil)
 	if err != nil {
 		return SubscribedView{Error: err.Error()}
 	}
