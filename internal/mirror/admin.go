@@ -118,7 +118,7 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.engine.setCORS(w, r)
-		a.mux.ServeHTTP(w, r)
+		a.serveMux(w, r)
 		return
 	}
 	if !a.authorized(r) {
@@ -136,6 +136,16 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.engine.setCORS(w, r)
+	a.serveMux(w, r)
+}
+
+// serveMux gzips the admin JSON, which the dashboard polls. The check
+// streams its progress, so it is left alone to keep flushing.
+func (a *Admin) serveMux(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, a.prefix+"/api/") && r.URL.Path != a.prefix+"/api/check" {
+		compressed(w, r, a.mux.ServeHTTP)
+		return
+	}
 	a.mux.ServeHTTP(w, r)
 }
 
