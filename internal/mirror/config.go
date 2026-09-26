@@ -280,6 +280,8 @@ type Route struct {
 	// for a route whose question travels in its body. Naming it also makes
 	// that body travel: the fetch replays it upstream.
 	BodyKey string
+	// Spreads carry the items of a fetched answer into another resource.
+	Spreads []*Spread
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to

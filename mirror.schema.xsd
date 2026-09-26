@@ -201,6 +201,23 @@
 					<xs:attribute name="key" type="xs:string" use="required"/>
 				</xs:complexType>
 			</xs:element>
+			<!-- Each item of the answer is a grant for the caller, and optionally truth. -->
+			<xs:element name="spread">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="key" minOccurs="0" maxOccurs="unbounded">
+							<xs:complexType mixed="true">
+								<xs:attribute name="field" type="xs:string" use="required"/>
+								<xs:attribute name="expr" type="xs:string"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="resource" type="xs:string" use="required"/>
+					<xs:attribute name="items" type="xs:string"/>
+					<xs:attribute name="absorb" type="xs:boolean"/>
+					<xs:attribute name="grant" type="xs:boolean"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="method" type="xs:string"/>
 		<xs:attribute name="path" type="xs:string" use="required"/>

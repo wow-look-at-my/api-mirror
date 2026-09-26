@@ -439,6 +439,12 @@ func addRouteChild(rt *Route, child *node) error {
 			rt.Params = make(map[string]string)
 		}
 		rt.Params[child.Attr("param")] = child.Attr("key")
+	case "spread":
+		sp, err := buildSpread(child)
+		if err != nil {
+			return fmt.Errorf("route %s: %w", rt.Path, err)
+		}
+		rt.Spreads = append(rt.Spreads, sp)
 	default:
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}

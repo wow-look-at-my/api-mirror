@@ -71,6 +71,9 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if err := e.absorbAnswer(ctx, plan, doc); err != nil {
 		return FetchResult{}, err
 	}
+	if err := e.spread(ctx, plan, doc); err != nil {
+		return FetchResult{}, err
+	}
 	return result, nil
 }
 

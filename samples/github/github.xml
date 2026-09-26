@@ -1267,11 +1267,17 @@
 		<reveal><credential/></reveal>
 	</resource>
 
+	<!--
+		Every repo listing below is GitHub's own answer to what THIS caller can
+		see, so each listed repo is a grant for the caller, and its document is
+		repo truth. The reveal layer then serves those repos without a probe.
+	-->
 	<route method="GET" path="/user/repos" resource="user_repos">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<spread resource="repo"/>
 	</route>
 
 	<resource name="rate_limit" store="document" ttl="1m">
@@ -1420,8 +1426,17 @@
 		<reveal><credential/></reveal>
 	</resource>
 
+	<!--
+		An org's repositories in a GraphQL answer are, like a REST listing,
+		GitHub's statement of what the caller can see. A node is not the REST
+		repo document, so it earns a grant and is not stored as truth.
+	-->
 	<route method="POST" path="/graphql" resource="graphql" body-key="query">
 		<accept>application/json</accept>
+		<spread resource="repo" items="data.organization.repositories.nodes" absorb="false">
+			<key field="owner">owner.login</key>
+			<key field="name">name</key>
+		</spread>
 	</route>
 
 	<!--
@@ -1464,6 +1479,7 @@
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<absorb status="404"/>
+		<spread resource="repo"/>
 	</route>
 
 	<route method="GET" path="/users/{owner}/repos" resource="owner_user_repos">
@@ -1474,6 +1490,7 @@
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<absorb status="404"/>
+		<spread resource="repo"/>
 	</route>
 
 	<resource name="search_issues" store="document" ttl="1m">
@@ -1533,6 +1550,7 @@
 		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<spread resource="repo" items="repositories"/>
 	</route>
 
 	<!--

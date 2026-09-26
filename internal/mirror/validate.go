@@ -248,6 +248,11 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if !ok {
 		return fmt.Errorf("route %s names resource %q, which is not declared", rt.Path, rt.Resource)
 	}
+	for _, sp := range rt.Spreads {
+		if err := sp.validate(rt.Path, resources); err != nil {
+			return err
+		}
+	}
 	if rt.Method != "GET" && rt.Method != "HEAD" {
 		// A credential-gated mint replays a still-valid answer, so it is
 		// the write worth caching. Everything else is passthrough or <purge>.
