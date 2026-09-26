@@ -157,7 +157,7 @@ type Replay struct {
 	Max int
 	// Requires names a value without which every cycle can only fail.
 	Requires string
-	Off bool
+	Off      bool
 	// Headers replace the upstream's static headers on the replayer's calls.
 	Headers []Header
 }
