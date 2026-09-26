@@ -27,6 +27,12 @@ func buildDashboard(n *node) (Dashboard, error) {
 				return Dashboard{}, fmt.Errorf("<dashboard><token>: %w", err)
 			}
 			d.Token = t
+		case "login":
+			l, err := buildLogin(child)
+			if err != nil {
+				return Dashboard{}, err
+			}
+			d.Login = l
 		default:
 			return Dashboard{}, fmt.Errorf("<dashboard>: unexpected child element <%s>", child.Name())
 		}

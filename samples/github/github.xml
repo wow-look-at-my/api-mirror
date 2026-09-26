@@ -1580,8 +1580,22 @@
 		is reachable on a fresh deployment without being open to anyone who
 		guesses the prefix.
 	-->
+	<!--
+		An operator signs in with GitHub, the way github-state-mirror's dashboard
+		did, and must be on ADMIN_LOGINS. Register the OAuth App's callback as
+		<BASE_URL>/_mirror/auth/callback. Without the client id and secret,
+		sign-in is off and the token alone gates the dashboard.
+	-->
 	<dashboard path="/_mirror" title="GitHub mirror">
 		<token><value name="env.MIRROR_ADMIN_TOKEN"/></token>
+		<login authorize="https://github.com/login/oauth/authorize"
+			exchange="https://github.com/login/oauth/access_token" user="/user" name="login">
+			<client-id><value name="env.GITHUB_OAUTH_CLIENT_ID"/></client-id>
+			<client-secret><value name="env.GITHUB_OAUTH_CLIENT_SECRET"/></client-secret>
+			<session-secret><value name="env.SESSION_SECRET"/></session-secret>
+			<admins><value name="env.ADMIN_LOGINS" default="PazerOP"/></admins>
+			<base-url><value name="env.BASE_URL"/></base-url>
+		</login>
 	</dashboard>
 
 	<!--

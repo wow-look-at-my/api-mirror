@@ -316,6 +316,22 @@
 	<xs:complexType name="dashboard">
 		<xs:sequence>
 			<xs:element name="token" type="content" minOccurs="0"/>
+			<!-- An OAuth code flow in front of the dashboard; the upstream names the operator. -->
+			<xs:element name="login" minOccurs="0">
+				<xs:complexType>
+					<xs:choice minOccurs="0" maxOccurs="unbounded">
+						<xs:element name="client-id" type="content"/>
+						<xs:element name="client-secret" type="content"/>
+						<xs:element name="session-secret" type="content"/>
+						<xs:element name="admins" type="content"/>
+						<xs:element name="base-url" type="content"/>
+					</xs:choice>
+					<xs:attribute name="authorize" type="xs:string" use="required"/>
+					<xs:attribute name="exchange" type="xs:string" use="required"/>
+					<xs:attribute name="user" type="xs:string" use="required"/>
+					<xs:attribute name="name" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:sequence>
 		<xs:attribute name="path" type="xs:string"/>
 		<xs:attribute name="title" type="xs:string"/>

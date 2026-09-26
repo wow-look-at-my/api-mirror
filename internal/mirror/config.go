@@ -80,6 +80,26 @@ type Dashboard struct {
 	Token string
 	// Title is what the page calls this mirror.
 	Title string
+	// Login lets an operator sign in through the upstream's OAuth flow.
+	Login *Login
+}
+
+// Login is an OAuth code flow in front of the dashboard. The upstream names
+// the operator, and the operator's login must be on Admins.
+type Login struct {
+	Authorize string
+	Exchange  string
+	// User is the upstream path that names the signed-in operator.
+	User string
+	// Name is the path into that answer that holds the login.
+	Name          string
+	ClientID      string
+	ClientSecret  string
+	SessionSecret string
+	// Admins is a comma-separated list of logins, compared without case.
+	Admins string
+	// BaseURL is the public address the callback is built from. Empty derives it from the request.
+	BaseURL string
 }
 
 // CORS is the browser-facing policy.

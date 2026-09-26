@@ -18,6 +18,8 @@ type Admin struct {
 	// minted means generated for this process, so the startup log carries the URL.
 	minted bool
 	mux    *http.ServeMux
+	// login is the operator sign-in, or nil when the spec declares none.
+	login *adminLogin
 }
 
 // NewAdmin builds the operator surface, always. A spec chooses where it lives
@@ -40,6 +42,9 @@ func NewAdmin(e *Engine) *Admin {
 		// On by default, never OPEN by default: the prefix is guessable.
 		a.token = randomHex(16)
 		a.minted = true
+	}
+	if d.Login != nil {
+		a.login = newAdminLogin(a, d.Login)
 	}
 	a.routes()
 	return a
@@ -96,7 +101,31 @@ func (a *Admin) routes() {
 
 // ServeHTTP gates the surface and dispatches.
 func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if a.login != nil && r.Method == http.MethodGet {
+		// The sign-in pair is the way in, so neither can require being in.
+		switch r.URL.Path {
+		case a.prefix + "/login":
+			a.login.start(a, w, r)
+			return
+		case a.prefix + "/auth/callback":
+			a.login.callback(a, w, r)
+			return
+		}
+	}
+	if a.login != nil && a.login.session(r) != "" {
+		if r.URL.Path == a.prefix {
+			http.Redirect(w, r, a.prefix+"/", http.StatusMovedPermanently)
+			return
+		}
+		a.engine.setCORS(w, r)
+		a.mux.ServeHTTP(w, r)
+		return
+	}
 	if !a.authorized(r) {
+		if a.login != nil && r.Method == http.MethodGet && (r.URL.Path == a.prefix || r.URL.Path == a.prefix+"/") {
+			http.Redirect(w, r, a.prefix+"/login", http.StatusFound)
+			return
+		}
 		// A mistyped token gets the same answer as a probe for the prefix.
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
