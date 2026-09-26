@@ -3,6 +3,7 @@ package mirror
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -118,6 +119,14 @@ func (e *Engine) spread(ctx context.Context, plan *fetchPlan, doc any) error {
 					row[k] = v
 				}
 				if err := e.store.Put(ctx, res, row, now); err != nil {
+					return err
+				}
+				// The row is as fresh as a fetch of it would be, so a read of the item is
+				// a hit rather than a second call for the same fact.
+				if err := e.store.RecordFetched(ctx, Freshness{
+					Kind: res.Name, Key: keyString(res, key), FetchedAt: now, ChangedAt: now,
+					ExpiresAt: now.Add(e.ttlFor(res.Name)), State: string(StateFresh), Status: http.StatusOK,
+				}); err != nil {
 					return err
 				}
 			}
