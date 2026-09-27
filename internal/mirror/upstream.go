@@ -33,7 +33,6 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 		return nil, fmt.Errorf("upstream base: %w", err)
 	}
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	// A template over a value the spec never set renders to something that is
 	if u, err := url.Parse(base); base == "" || err != nil || u.Scheme == "" || u.Host == "" {
 		return nil, fmt.Errorf("upstream base resolved to nothing usable: %q is not an absolute URL", base)
 	}
@@ -55,17 +54,20 @@ type Answer struct {
 	Status int
 	Header http.Header
 	Body   []byte
-	// Overflow reports that the body exceeded maxBodyBytes. The body is then
+	// Overflow reports that the body exceeded maxBodyBytes.
 	Overflow bool
 }
 
-// Call sends request to the upstream, carrying the caller's own forwarded
-// headers so the answer is the THAT caller is entitled to.
-//
-// A non-2xx is a real answer, not an error: a is what the upstream knows,
-// and the route decides whether that is worth storing. Only a transport failure
-// returns an error.
+// Call sends a request with the caller's forwarded headers. A nil forward
+// is background work on the static headers.
 func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header, reqBody []byte) (*Answer, error) {
+	return u.CallWith(ctx, method, path, vars, forward, nil, reqBody)
+}
+
+// CallWith is Call plus headers the engine sets last. A non-2xx is an
+// answer, not an error. For a caller, a forwarded header it did not send
+// is removed, so the static background credential never answers for it.
+func (u *Upstreamer) CallWith(ctx context.Context, method, path string, vars map[string]any, forward, set http.Header, reqBody []byte) (*Answer, error) {
 	url := u.base + path
 	var send io.Reader
 	if len(reqBody) > 0 {
@@ -90,10 +92,17 @@ func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[str
 		}
 		req.Header.Set(name, value)
 	}
-	for _, name := range u.spec.Upstream.Forward {
-		if v := forward.Get(name); v != "" {
-			req.Header.Set(name, v)
+	if forward != nil {
+		for _, name := range u.spec.Upstream.Forward {
+			if v := forward.Get(name); v != "" {
+				req.Header.Set(name, v)
+			} else {
+				req.Header.Del(name)
+			}
 		}
+	}
+	for name, values := range set {
+		req.Header[name] = values
 	}
 	// A buffered body must be plain bytes: the mirror parses and rebuilds it,
 	req.Header.Set("Accept-Encoding", "identity")
@@ -150,7 +159,7 @@ func (u *Upstreamer) RateLimited(a *Answer) bool {
 	return false
 }
 
-// Transient reports whether an answer is that must never be stored: a
+// Transient reports whether an answer is that must never be stored.
 func (u *Upstreamer) Transient(a *Answer) bool {
 	if a == nil {
 		return true

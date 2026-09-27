@@ -41,10 +41,14 @@ func ParseSpec(raw []byte) (*Spec, error) {
 }
 
 func buildSpec(n *node) (*Spec, error) {
-	if err := checkAttrs(n, "name", "schema"); err != nil {
+	if err := checkAttrs(n, "name", "schema", "header-prefix", "max-rows"); err != nil {
 		return nil, err
 	}
-	spec := &Spec{Name: n.Attr("name")}
+	maxRows, err := parseMaxRows(n.Attr("max-rows"))
+	if err != nil {
+		return nil, err
+	}
+	spec := &Spec{Name: n.Attr("name"), HeaderPrefix: n.Attr("header-prefix"), MaxRows: maxRows}
 	for _, child := range n.Children() {
 		switch child.Name() {
 		case "description":
@@ -133,6 +137,18 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Health = h
+		case "identity":
+			id, err := buildIdentity(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Identity = id
+		case "whoami":
+			w, err := buildWhoami(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Whoami = w
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}
@@ -171,7 +187,7 @@ func buildUpstream(n *node) (Upstream, error) {
 	}
 	up := Upstream{Base: n.Attr("base"), RetryAfter: n.Attr("retry-after")}
 	if v := n.Attr("debounce"); v != "" {
-		d, err := parseDuration("<upstream> debounce", v)
+		d, _, err := parseDurationOrOff("<upstream> debounce", v)
 		if err != nil {
 			return Upstream{}, err
 		}
@@ -433,6 +449,12 @@ func addRouteChild(rt *Route, child *node) error {
 			rt.Params = make(map[string]string)
 		}
 		rt.Params[child.Attr("param")] = child.Attr("key")
+	case "spread":
+		sp, err := buildSpread(child)
+		if err != nil {
+			return fmt.Errorf("route %s: %w", rt.Path, err)
+		}
+		rt.Spreads = append(rt.Spreads, sp)
 	default:
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}

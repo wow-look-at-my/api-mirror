@@ -18,6 +18,7 @@ func (s *Store) Put(ctx context.Context, r *Resource, row Row, at time.Time) err
 	if _, err := s.db.ExecContext(ctx, insertStmt(r), rowArgs(r, row, at)...); err != nil {
 		return fmt.Errorf("store %s: %w", r.Name, err)
 	}
+	s.enforceCap(ctx, r)
 	return nil
 }
 
@@ -41,7 +42,11 @@ func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Ti
 			return fmt.Errorf("store %s: %w", r.Name, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.enforceCap(ctx, r)
+	return nil
 }
 
 // ReplaceMany makes the rows under partial key exactly the rows given, in
@@ -77,7 +82,11 @@ func (s *Store) ReplaceMany(ctx context.Context, r *Resource, key map[string]str
 			return fmt.Errorf("store %s: %w", r.Name, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.enforceCap(ctx, r)
+	return nil
 }
 
 // Get reads row by its full key. A missing row is (nil, nil): absent is an
@@ -143,6 +152,16 @@ func (s *Store) Delete(ctx context.Context, r *Resource, key map[string]string) 
 	return res.RowsAffected()
 }
 
+// DeleteAll drops every row of a resource. Only an event that declares
+// <invalidate every="true"> reaches it.
+func (s *Store) DeleteAll(ctx context.Context, r *Resource) (int64, error) {
+	res, err := s.db.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, resourceTable(r.Name)))
+	if err != nil {
+		return 0, fmt.Errorf("delete all %s: %w", r.Name, err)
+	}
+	return res.RowsAffected()
+}
+
 // insertStmt builds the write statement every resource write uses.
 func insertStmt(r *Resource) string {
 	cols := columnsOf(r)
@@ -183,8 +202,7 @@ func rowArgs(r *Resource, row Row, at time.Time) []any {
 
 // keyPredicate builds a WHERE clause over the columns present in key.
 //
-// A key column is the usual case. A FIELD is allowed too, because a list route
-// often selects by an attribute rather than by identity -- every post by an
+// A key column is the usual case. A FIELD is allowed too.
 func keyPredicate(r *Resource, key map[string]string) (string, []any) {
 	var terms []string
 	var args []any

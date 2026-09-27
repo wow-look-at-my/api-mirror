@@ -83,8 +83,6 @@ function panel(...children) {
 
 function table(headers, rows) {
 	if (!rows.length) return panel(el('div', { class: 'empty' }, 'Nothing yet.'));
-	// A number is right-aligned, and its heading follows it: a left heading
-	// over a right column reads as two columns that failed to line up.
 	const numeric = headers.map((_, i) => rows.some((cells) => typeof cells[i] === 'number'));
 	return panel(el('table', {},
 		el('thead', {}, el('tr', {}, headers.map((h, i) => el('th', { class: numeric[i] ? 'num' : null }, h)))),
@@ -340,6 +338,16 @@ views.webhooks = async () => {
 			d.sets,
 			seen.get(d.type) || 0,
 		]))));
+
+	// Only the provider's own list can say a type is unsubscribed.
+	const sub = v.subscribed || {};
+	if (sub.checked && sub.missing.length) {
+		out.append(section('Not subscribed', panel(el('div', { class: 'empty' },
+			`The provider does not send ${sub.missing.join(', ')}. Every resource those events move waits out its TTL instead.`))));
+	} else if (sub.error) {
+		out.append(section('Not subscribed', panel(el('div', { class: 'empty' },
+			`Unknown: ${sub.error}`))));
+	}
 
 	// Declared-but-off and never-declared are different answers, and only one of
 	// them is somebody's mistake. Reporting both as "no replay" hides which.

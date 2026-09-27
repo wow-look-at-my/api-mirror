@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // The subscription store, in a SEPARATE database file from the cache. That
@@ -35,19 +37,48 @@ CREATE TABLE IF NOT EXISTS subscription (
 CREATE INDEX IF NOT EXISTS subscription_principal ON subscription (principal);
 `
 
+// subscriptionColumns are added to a file an older build created. Each
+// is additive with a default, so every existing registration survives.
+var subscriptionColumns = []struct{ name, ddl string }{
+	{"scopes", `ALTER TABLE subscription ADD COLUMN scopes TEXT NOT NULL DEFAULT ''`},
+	{"updated_at", `ALTER TABLE subscription ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`},
+	{"last_failure", `ALTER TABLE subscription ADD COLUMN last_failure INTEGER`},
+}
+
+// subscriptionSelect is the column list every read uses.
+const subscriptionSelect = `SELECT id, principal, url, events, scopes, created_at, updated_at,
+	last_ok, last_failure, failures, disabled, last_error FROM subscription`
+
+// minCallerSecret is the shortest secret a subscriber may choose.
+const minCallerSecret = 16
+
 // Subscription is consumer asking to be told.
 type Subscription struct {
 	ID        string `json:"id"`
 	Principal string `json:"principal"`
 	URL       string `json:"url"`
 	// Secret is never rendered. Create returns it, the only chance to.
-	Secret    string    `json:"-"`
-	Events    []string  `json:"events"`
-	CreatedAt time.Time `json:"created_at"`
-	LastOK    time.Time `json:"last_ok,omitempty"`
-	Failures  int       `json:"failures"`
-	Disabled  bool      `json:"disabled"`
-	LastError string    `json:"last_error,omitempty"`
+	Secret string   `json:"-"`
+	Events []string `json:"events"`
+	// Scopes limits the subscription to deliveries whose scope is listed. Empty means every scope the subscriber can see.
+	Scopes      []string  `json:"scopes"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at,omitempty"`
+	LastOK      time.Time `json:"last_ok,omitempty"`
+	LastFailure time.Time `json:"last_failure,omitempty"`
+	Failures    int       `json:"failures"`
+	Disabled    bool      `json:"disabled"`
+	LastError   string    `json:"last_error,omitempty"`
+}
+
+// SubscriptionPatch changes the fields it sets and leaves the rest alone.
+type SubscriptionPatch struct {
+	URL    *string
+	Secret *string
+	Events *[]string
+	Scopes *[]string
+	// Active true re-enables a parked subscription and clears its failure run.
+	Active *bool
 }
 
 // Subscriptions is the config database.
@@ -78,7 +109,49 @@ func OpenSubscriptions(path string) (*Subscriptions, error) {
 		db.Close()
 		return nil, fmt.Errorf("create subscription schema in %q: %w", path, err)
 	}
+	if err := addSubscriptionColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("upgrade subscription schema in %q: %w", path, err)
+	}
 	return &Subscriptions{db: db, path: path}, nil
+}
+
+func addSubscriptionColumns(db *sql.DB) error {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('subscription')`)
+	if err != nil {
+		return err
+	}
+	have := set.New[string]()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		have.Add(name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, col := range subscriptionColumns {
+		if have.Contains(col.name) {
+			continue
+		}
+		if _, err := db.Exec(col.ddl); err != nil {
+			return fmt.Errorf("add column %s: %w", col.name, err)
+		}
+	}
+	return nil
+}
+
+// CheckSecret refuses a subscriber's own secret that is too short to trust.
+// An empty secret is fine: Create mints one.
+func CheckSecret(secret string) error {
+	if secret != "" && len(secret) < minCallerSecret {
+		return errBadCallback(fmt.Sprintf("a secret must be at least %d characters, or omitted so the mirror mints one", minCallerSecret))
+	}
+	return nil
 }
 
 // Path is the file this store lives in, for the dashboard to name.
@@ -94,25 +167,75 @@ func (s *Subscriptions) Close() error {
 
 // Create registers subscription and returns it with its secret.
 //
-// The secret is minted here rather than accepted from the caller. A subscriber
-// choosing their own would be free to choose a weak, and the signature is
-// the only thing that tells their endpoint a notification came from this mirror.
-func (s *Subscriptions) Create(ctx context.Context, principal, url string, events []string) (Subscription, error) {
+// An empty secret is minted here. A subscriber's own secret is accepted
+// when CheckSecret passes it, since a subscriber that moves from another
+// mirror keeps the secret its endpoint already verifies.
+func (s *Subscriptions) Create(ctx context.Context, principal, url, secret string, events, scopes []string) (Subscription, error) {
+	if secret == "" {
+		secret = newSecret()
+	}
+	now := time.Now().UTC()
 	sub := Subscription{
 		ID:        newID(),
 		Principal: principal,
 		URL:       url,
-		Secret:    newSecret(),
+		Secret:    secret,
 		Events:    events,
-		CreatedAt: time.Now().UTC(),
+		Scopes:    scopes,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO subscription (id, principal, url, secret, events, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		sub.ID, sub.Principal, sub.URL, sub.Secret, strings.Join(events, ","), sub.CreatedAt.Unix())
+		`INSERT INTO subscription (id, principal, url, secret, events, scopes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sub.ID, sub.Principal, sub.URL, sub.Secret, strings.Join(events, ","), strings.Join(scopes, ","), now.Unix(), now.Unix())
 	if err != nil {
 		return Subscription{}, fmt.Errorf("create subscription: %w", err)
 	}
 	return sub, nil
+}
+
+// Get reads one subscription that belongs to a principal. A subscription
+// of another principal reads as absent.
+func (s *Subscriptions) Get(ctx context.Context, principal, id string) (*Subscription, error) {
+	subs, err := s.query(ctx, subscriptionSelect+` WHERE id = ? AND principal = ?`, id, principal)
+	if err != nil || len(subs) == 0 {
+		return nil, err
+	}
+	return &subs[0], nil
+}
+
+// Update applies a patch to one subscription of a principal, and reports
+// whether the subscription exists.
+func (s *Subscriptions) Update(ctx context.Context, principal, id string, p SubscriptionPatch) (bool, error) {
+	sets := []string{"updated_at = ?"}
+	args := []any{time.Now().Unix()}
+	if p.URL != nil {
+		sets, args = append(sets, "url = ?"), append(args, *p.URL)
+	}
+	if p.Secret != nil {
+		sets, args = append(sets, "secret = ?"), append(args, *p.Secret)
+	}
+	if p.Events != nil {
+		sets, args = append(sets, "events = ?"), append(args, strings.Join(*p.Events, ","))
+	}
+	if p.Scopes != nil {
+		sets, args = append(sets, "scopes = ?"), append(args, strings.Join(*p.Scopes, ","))
+	}
+	if p.Active != nil {
+		if *p.Active {
+			sets = append(sets, "disabled = 0", "failures = 0", "last_error = ''")
+		} else {
+			sets = append(sets, "disabled = 1")
+		}
+	}
+	args = append(args, id, principal)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE subscription SET `+strings.Join(sets, ", ")+` WHERE id = ? AND principal = ?`, args...)
+	if err != nil {
+		return false, fmt.Errorf("update subscription: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // Delete removes subscription belonging to a principal.
@@ -130,14 +253,12 @@ func (s *Subscriptions) Delete(ctx context.Context, principal, id string) (bool,
 
 // ByPrincipal lists caller's own subscriptions.
 func (s *Subscriptions) ByPrincipal(ctx context.Context, principal string) ([]Subscription, error) {
-	return s.query(ctx, `SELECT id, principal, url, events, created_at, last_ok, failures, disabled, last_error
-		FROM subscription WHERE principal = ? ORDER BY created_at`, principal)
+	return s.query(ctx, subscriptionSelect+` WHERE principal = ? ORDER BY created_at`, principal)
 }
 
 // All lists every subscription, for the operator surface.
 func (s *Subscriptions) All(ctx context.Context) ([]Subscription, error) {
-	return s.query(ctx, `SELECT id, principal, url, events, created_at, last_ok, failures, disabled, last_error
-		FROM subscription ORDER BY created_at`)
+	return s.query(ctx, subscriptionSelect+` ORDER BY created_at`)
 }
 
 // Matching lists the live subscriptions that asked for this event type.
@@ -146,8 +267,7 @@ func (s *Subscriptions) All(ctx context.Context) ([]Subscription, error) {
 // for everything, which is the reading that cannot silently drop a delivery
 // somebody wanted.
 func (s *Subscriptions) Matching(ctx context.Context, eventType string) ([]Subscription, error) {
-	rows, err := s.query(ctx, `SELECT id, principal, url, events, created_at, last_ok, failures, disabled, last_error
-		FROM subscription WHERE disabled = 0`)
+	rows, err := s.query(ctx, subscriptionSelect+` WHERE disabled = 0`)
 	if err != nil {
 		return nil, err
 	}
@@ -184,9 +304,9 @@ func (s *Subscriptions) MarkDelivered(ctx context.Context, id string) error {
 // MarkFailed counts failure and parks the subscription at the limit.
 func (s *Subscriptions) MarkFailed(ctx context.Context, id, cause string, limit int) (int, error) {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE subscription SET failures = failures + 1, last_error = ?,
+		`UPDATE subscription SET failures = failures + 1, last_error = ?, last_failure = ?,
 		 disabled = CASE WHEN failures + 1 >= ? THEN 1 ELSE disabled END WHERE id = ?`,
-		cause, limit, id)
+		cause, time.Now().Unix(), limit, id)
 	if err != nil {
 		return 0, err
 	}
@@ -217,22 +337,31 @@ func (s *Subscriptions) query(ctx context.Context, stmt string, args ...any) ([]
 	var out []Subscription
 	for rows.Next() {
 		var (
-			sub      Subscription
-			events   string
-			created  int64
-			lastOK   sql.NullInt64
-			disabled int
+			sub              Subscription
+			events, scopes   string
+			created, updated int64
+			lastOK, lastFail sql.NullInt64
+			disabled         int
 		)
-		if err := rows.Scan(&sub.ID, &sub.Principal, &sub.URL, &events, &created,
-			&lastOK, &sub.Failures, &disabled, &sub.LastError); err != nil {
+		if err := rows.Scan(&sub.ID, &sub.Principal, &sub.URL, &events, &scopes, &created, &updated,
+			&lastOK, &lastFail, &sub.Failures, &disabled, &sub.LastError); err != nil {
 			return nil, fmt.Errorf("read subscriptions: %w", err)
 		}
 		if events != "" {
 			sub.Events = strings.Split(events, ",")
 		}
+		if scopes != "" {
+			sub.Scopes = strings.Split(scopes, ",")
+		}
 		sub.CreatedAt = time.Unix(created, 0).UTC()
+		if updated > 0 {
+			sub.UpdatedAt = time.Unix(updated, 0).UTC()
+		}
 		if lastOK.Valid {
 			sub.LastOK = time.Unix(lastOK.Int64, 0).UTC()
+		}
+		if lastFail.Valid {
+			sub.LastFailure = time.Unix(lastFail.Int64, 0).UTC()
 		}
 		sub.Disabled = disabled != 0
 		out = append(out, sub)

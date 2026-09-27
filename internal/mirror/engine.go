@@ -16,22 +16,25 @@ import (
 // Engine serves a spec: it answers declared routes from the store, forwards
 // everything else, and keeps the store current.
 type Engine struct {
-	spec     *Spec
-	store    *Store
-	up       *Upstreamer
-	fresh    *Fresh
-	reveal   *Revealer
-	ingest   *Ingest
-	proxy    *httputil.ReverseProxy
-	vars     map[string]any
-	baseURL  *url.URL
-	tel      *Telemetry
-	admin    *Admin
-	refresh  *Refresher
-	notify   *Notifier
-	replay   *Replayer
-	debounce *Debouncer
-	vocab    set.Set[string]
+	spec       *Spec
+	store      *Store
+	up         *Upstreamer
+	fresh      *Fresh
+	reveal     *Revealer
+	identity   *Identifier
+	hdr        answerHeaders
+	subscribed subscribedCache
+	ingest     *Ingest
+	proxy      *httputil.ReverseProxy
+	vars       map[string]any
+	baseURL    *url.URL
+	tel        *Telemetry
+	admin      *Admin
+	refresh    *Refresher
+	notify     *Notifier
+	replay     *Replayer
+	debounce   *Debouncer
+	vocab      set.Set[string]
 }
 
 // forwardKey carries the caller's own headers into a detached fetch.
@@ -41,11 +44,9 @@ func withForward(ctx context.Context, h http.Header) context.Context {
 	return context.WithValue(ctx, forwardKey{}, h)
 }
 
+// forwardFrom returns nil for background work, which has no caller.
 func forwardFrom(ctx context.Context) http.Header {
 	h, _ := ctx.Value(forwardKey{}).(http.Header)
-	if h == nil {
-		return http.Header{}
-	}
 	return h
 }
 
@@ -71,14 +72,17 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		return nil, fmt.Errorf("upstream base %q: %w", up.base, err)
 	}
 	e := &Engine{
-		spec:    spec,
-		store:   store,
-		up:      up,
-		reveal:  NewRevealer(store, up, vars),
-		vars:    vars,
-		baseURL: base,
-		tel:     tel,
+		spec:     spec,
+		store:    store,
+		up:       up,
+		reveal:   NewRevealer(store, up, vars),
+		identity: NewIdentifier(spec.Identity, up, vars),
+		vars:     vars,
+		baseURL:  base,
+		tel:      tel,
+		hdr:      headersFor(spec.HeaderPrefix),
 	}
+	e.identity.whoami = spec.Whoami
 	e.fresh = NewFresh(store, e.fetch, e.ttlFor)
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -91,12 +95,16 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	}
 	e.vocab = pathVocabulary(spec)
 	e.debounce = NewDebouncer(spec.Upstream.Debounce)
+	if e.debounce != nil {
+		e.debounce.header = e.hdr.Debounce
+	}
 	e.admin = NewAdmin(e)
 	if spec.Notify != nil {
 		e.notify, err = NewNotifier(spec, vars, tel, store.path)
 		if err != nil {
 			return nil, err
 		}
+		e.notify.store, e.notify.reveal = store, e.reveal
 	}
 	e.refresh = NewRefresher(e)
 	e.replay = NewReplayer(e)
@@ -109,7 +117,7 @@ func (e *Engine) Telemetry() *Telemetry { return e.tel }
 // resolveVars renders the spec's vars, in declaration order, each seeing
 // the ones before it.
 //
-// It returns the whole template context, not just the vars, because that
+// It returns the whole template context, not just the vars.
 func resolveVars(spec *Spec) (map[string]any, error) {
 	vars := map[string]any{}
 	ctx := map[string]any{"env": envMap(), "var": vars}
@@ -123,7 +131,7 @@ func resolveVars(spec *Spec) (map[string]any, error) {
 	return ctx, nil
 }
 
-// SetIngest installs the webhook handler. The Engine keeps it whole rather than
+// SetIngest installs the webhook handler.
 func (e *Engine) SetIngest(i *Ingest) {
 	e.ingest = i
 }
@@ -177,6 +185,11 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		return
 	}
 	if e.health(rec, r) {
+		return
+	}
+	// Ahead of the dashboard, whose prefix it may share: this path is public.
+	if e.handlesSubscriptions(r.URL.Path) {
+		e.serveSubscriptions(rec, r)
 		return
 	}
 	if e.admin != nil && e.admin.Handles(r.URL.Path) {
@@ -271,7 +284,7 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 		keys = append(keys, key)
 	}
 
-	w.Header().Set("X-Mirror-Cache", "purge")
+	w.Header().Set(e.hdr.Cache, "purge")
 	e.proxy.ServeHTTP(w, r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, "purge")))
 
 	// The recorder already holds what the caller actually received, so the
@@ -315,7 +328,16 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		return
 	}
 
-	principal := principalOf(r)
+	principal, err := e.identity.Resolve(ctx, r)
+	if err != nil {
+		status := http.StatusBadGateway
+		if ie, ok := err.(*IdentityError); ok {
+			status = ie.Status
+		}
+		w.note(DispDenied, m.route.Path, m.route.Resource, "identity")
+		http.Error(w, err.Error(), status)
+		return
+	}
 	w.principal = principal
 	ctx = withLane(ctx, LaneFetch, principal, m.route.Resource)
 	verdict, err := e.reveal.Allow(ctx, principal, res, m.key, r.Header)
@@ -343,6 +365,9 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	})
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	if err != nil {
+		if e.serveStale(ctx, w, m, res, kind, key, err) {
+			return
+		}
 		w.note(DispError, "", "", "upstream")
 		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
 		return
@@ -356,7 +381,7 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	if status := refusal; status != 0 {
 		// The upstream stated this refusal and the route declared it worth
 		w.note(DispRefusal, "", "", "absorbed")
-		w.Header().Set("X-Mirror-Cache", string(outcome))
+		w.Header().Set(e.hdr.Cache, string(outcome))
 		http.Error(w, http.StatusText(status), status)
 		return
 	}
@@ -452,7 +477,7 @@ func (e *Engine) write(w http.ResponseWriter, status int, doc any, outcome Outco
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Mirror-Cache", string(outcome))
+	w.Header().Set(e.hdr.Cache, string(outcome))
 	w.WriteHeader(status)
 	if _, err := w.Write(body); err != nil {
 		logf("write answer: %v", err)
@@ -465,8 +490,8 @@ func (e *Engine) write(w http.ResponseWriter, status int, doc any, outcome Outco
 // state, and an operator needs to know which routes are still leaving.
 func (e *Engine) passthrough(w *recorder, r *http.Request, reason PassReason) {
 	w.note(DispPassthrough, e.shapeOf(r), "", string(reason))
-	w.Header().Set("X-Mirror-Cache", "passthrough")
-	w.Header().Set("X-Mirror-Passthrough-Reason", string(reason))
+	w.Header().Set(e.hdr.Cache, "passthrough")
+	w.Header().Set(e.hdr.Reason, string(reason))
 
 	r = r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, string(reason)))
 	if e.debounce == nil {
@@ -490,7 +515,7 @@ func (e *Engine) shapeOf(r *http.Request) string {
 }
 
 // stripUpstreamCORS removes the upstream's CORS headers from a forwarded
-// answer. The mirror is the origin a browser talks to, and
+// answer. The mirror is the origin a browser talks to.
 func stripUpstreamCORS(resp *http.Response) error {
 	for h := range resp.Header {
 		if strings.HasPrefix(strings.ToLower(h), "access-control-allow-") {
@@ -498,13 +523,4 @@ func stripUpstreamCORS(resp *http.Response) error {
 		}
 	}
 	return nil
-}
-
-// principalOf identifies who is asking.
-func principalOf(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if auth == "" {
-		return ""
-	}
-	return "token:" + fingerprint(auth)
 }

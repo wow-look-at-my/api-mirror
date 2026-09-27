@@ -3,6 +3,7 @@ package mirror
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +58,10 @@ func (r *Replayer) missing() string {
 // Start runs the replayer until Stop. The cycle runs immediately: a
 // restart is itself a window deliveries were missed in.
 func (r *Replayer) Start() {
+	if r != nil && r.rule != nil && r.rule.Off {
+		logf("replay: OFF because its interval is 0. A delivery this mirror never received stays lost.")
+		return
+	}
 	if !r.declared() {
 		return
 	}
@@ -108,16 +113,22 @@ func (r *Replayer) Stop() {
 
 // cycle reads the failure log and asks for what is still missing.
 //
-// A lost delivery is the quietest failure a mirror has. The provider sends
-// , nothing retries, and every cache that delivery would have moved serves
-// its last answer for the whole TTL -- well-formed, recent-looking and wrong.
-// A shorter TTL shrinks that window and hides it; it does not close it.
+// A lost delivery is the quietest failure a mirror has. The provider sends,
+// nothing retries, and every cache that delivery would have moved serves its
+// last answer for the whole TTL -- well-formed, recent-looking and wrong. A
+// shorter TTL shrinks that window and hides it; it does not close it.
 func (r *Replayer) cycle() {
 	ctx, cancel := context.WithTimeout(context.Background(), replayCycleTimeout)
 	defer cancel()
 	ctx = withLane(ctx, LaneReplay, "", "list")
 
-	answer, err := r.engine.up.Call(ctx, "GET", r.rule.List, r.engine.vars, nil, nil)
+	set, err := r.headers()
+	if err != nil {
+		r.tally(0, 0, 1)
+		logf("replay: render the replay headers: %v", err)
+		return
+	}
+	answer, err := r.engine.up.CallWith(ctx, "GET", r.rule.List, r.engine.vars, nil, set, nil)
 	if err != nil {
 		r.tally(0, 0, 1)
 		logf("replay: read the failure log: %v", err)
@@ -174,6 +185,29 @@ func (r *Replayer) cycle() {
 	}
 }
 
+// headers renders the replayer's own headers. They render per call, so a
+// minted credential such as a JWT stays current.
+func (r *Replayer) headers() (http.Header, error) {
+	if len(r.rule.Headers) == 0 {
+		return nil, nil
+	}
+	out := http.Header{}
+	for _, h := range r.rule.Headers {
+		name, err := renderString(h.Name, r.engine.vars)
+		if err != nil {
+			return nil, err
+		}
+		value, err := renderString(h.Value, r.engine.vars)
+		if err != nil {
+			return nil, fmt.Errorf("header %s: %w", name, err)
+		}
+		if name != "" && value != "" {
+			out.Set(name, value)
+		}
+	}
+	return out, nil
+}
+
 // replayCycleTimeout bounds cycle.
 const replayCycleTimeout = 5 * time.Minute
 
@@ -200,7 +234,11 @@ func (r *Replayer) ask(ctx context.Context, item any, id string) error {
 	if method == "" {
 		method = "POST"
 	}
-	answer, err := r.engine.up.Call(withLane(ctx, LaneReplay, "", "redeliver"), method, path, r.engine.vars, nil, nil)
+	set, err := r.headers()
+	if err != nil {
+		return err
+	}
+	answer, err := r.engine.up.CallWith(withLane(ctx, LaneReplay, "", "redeliver"), method, path, r.engine.vars, nil, set, nil)
 	if err != nil {
 		return err
 	}
@@ -295,6 +333,9 @@ func (r *Replayer) Stats() ReplayStats {
 	}
 	if r.declared() {
 		s.Off = r.missing()
+	}
+	if r.rule != nil && r.rule.Off {
+		s.Off = "interval=0"
 	}
 	return s
 }

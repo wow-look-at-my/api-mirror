@@ -11,13 +11,14 @@ import (
 // It lives beside the other builders rather than inside load.go so the whole
 // ingest feature reads in place.
 func buildEvents(n *node) (*Events, error) {
-	if err := checkAttrs(n, "path", "signature-header", "type-header", "reorder-window"); err != nil {
+	if err := checkAttrs(n, "path", "signature-header", "type-header", "reorder-window", "id-header"); err != nil {
 		return nil, err
 	}
 	e := &Events{
 		Path:            n.Attr("path"),
 		SignatureHeader: n.Attr("signature-header"),
 		TypeHeader:      n.Attr("type-header"),
+		IDHeader:        n.Attr("id-header"),
 	}
 	if w := n.Attr("reorder-window"); w != "" {
 		d, err := parseWindow(w)
@@ -40,6 +41,12 @@ func buildEvents(n *node) (*Events, error) {
 				return nil, err
 			}
 			e.List = append(e.List, ev)
+		case "subscribed":
+			s, err := buildSubscribed(child)
+			if err != nil {
+				return nil, err
+			}
+			e.Subscribed = s
 		default:
 			return nil, fmt.Errorf("<events>: unexpected child element <%s>", child.Name())
 		}
@@ -51,6 +58,10 @@ func buildEvents(n *node) (*Events, error) {
 const maxReorderWindow = 5 * time.Second
 
 func parseWindow(v string) (time.Duration, error) {
+	v, err := loadTimeValue("<events reorder-window>", v)
+	if err != nil {
+		return 0, err
+	}
 	if v == "0" || v == "0s" {
 		// is a real choice: dispatch on arrival and leave ordering
 		return 0, nil
@@ -66,13 +77,14 @@ func parseWindow(v string) (time.Duration, error) {
 }
 
 func buildEvent(n *node) (*Event, error) {
-	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded"); err != nil {
+	if err := checkAttrs(n, "type", "resource", "clock", "unordered", "absorb-when-superseded", "when"); err != nil {
 		return nil, err
 	}
 	ev := &Event{
 		Type:                 n.Attr("type"),
 		Resource:             n.Attr("resource"),
 		Clock:                n.Attr("clock"),
+		When:                 n.Attr("when"),
 		Unordered:            n.Attr("unordered") == "true",
 		AbsorbWhenSuperseded: n.Attr("absorb-when-superseded") == "true",
 	}
@@ -104,10 +116,15 @@ func buildEvent(n *node) (*Event, error) {
 			}
 			ev.Keys = append(ev.Keys, k)
 		case "invalidate":
-			if err := checkAttrs(child, "reason"); err != nil {
+			if err := checkAttrs(child, "reason", "every", "field", "differs"); err != nil {
 				return nil, err
 			}
-			ev.Invalidate = &Invalidate{Reason: child.Attr("reason")}
+			ev.Invalidate = &Invalidate{
+				Reason:  child.Attr("reason"),
+				Every:   child.Attr("every") == "true",
+				Field:   child.Attr("field"),
+				Differs: child.Attr("differs"),
+			}
 		default:
 			return nil, fmt.Errorf("<event type=%q>: unexpected child element <%s>", ev.Type, child.Name())
 		}

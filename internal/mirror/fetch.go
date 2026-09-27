@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// fetchPlan is what a detached fetch needs to know about the request that
 type fetchPlan struct {
 	route *Route
 	res   *Resource
@@ -60,7 +59,7 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 
 	result := FetchResult{ETag: answer.Header.Get("ETag"), Changed: true, Status: answer.Status}
 	if answer.Status >= 400 {
-		// The route declared this refusal worth keeping. It is recorded on the
+		// The route declared this refusal worth keeping.
 		return result, nil
 	}
 
@@ -69,6 +68,9 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return FetchResult{}, fmt.Errorf("upstream %s: %w", plan.path, err)
 	}
 	if err := e.absorbAnswer(ctx, plan, doc); err != nil {
+		return FetchResult{}, err
+	}
+	if err := e.spread(ctx, plan, doc); err != nil {
 		return FetchResult{}, err
 	}
 	return result, nil
@@ -91,7 +93,7 @@ func (p *fetchPlan) upstreamPath() string {
 
 // storable reports whether an answer is the route said to keep.
 //
-// A 2xx is always kept. A 4xx is kept only when the route names it, which is
+// A 2xx is always kept. A 4xx is kept only when the route names it.
 func storable(up *Upstreamer, rt *Route, a *Answer) bool {
 	if up.Transient(a) {
 		return false
@@ -148,7 +150,7 @@ func (e *Engine) absorbAnswer(ctx context.Context, plan *fetchPlan, doc any) err
 		rows = append(rows, row)
 	}
 	if plan.route.Complete {
-		// The route says this answer is the whole set, so an item missing from
+		// The route says this answer is the whole set.
 		return e.store.ReplaceMany(ctx, plan.res, plan.key, rows, now)
 	}
 	return e.store.PutMany(ctx, plan.res, rows, now)
@@ -185,7 +187,7 @@ func requireKeys(res *Resource, row Row) error {
 
 // A resource key becomes text in exactly place, keyString in reveal.go.
 
-// fingerprint reduces a credential to a stable, non-reversible identifier. The
+// fingerprint reduces a credential to a stable, non-reversible identifier.
 func fingerprint(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:8])

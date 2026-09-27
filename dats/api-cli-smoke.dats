@@ -53,10 +53,12 @@ tests:
 			- '"private": false'
 		!stdout:
 			- "error:"
+		# The miss includes one GET /user, which names the token's owner once.
+		# The hit must add nothing at all.
 		files:
 			after-miss.txt:
 				match:
-					- "^3$"
+					- "^4$"
 			after-hit.txt:
 				match:
-					- "^3$"
+					- "^4$"
