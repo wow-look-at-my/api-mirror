@@ -163,16 +163,18 @@ func (i *Ingest) Stats() DeliveryStats {
 // applyAndNotify applies delivery and then tells the subscribers.
 //
 // The order is the point. A subscriber told before the write lands would come
-// back and read the state the delivery was about to replace, which is the exact
-// race the notification exists to remove.
+// back and read the state the delivery was about to replace. So subscribers
+// hear once, after the last handler of the delivery applies, and a failed
+// handler anywhere means they do not hear at all.
 func (i *Ingest) applyAndNotify(ctx context.Context, d *Delivery) (DeliveryDisposition, error) {
 	disp, err := i.apply(ctx, d)
 	i.recordApply(d, disp, err)
-	if err != nil || i.notifier == nil {
+	final, last := d.group.finish(disp)
+	if err != nil || i.notifier == nil || !last {
 		return disp, err
 	}
-	if disp == DeliveryApplied || disp == DeliveryInvalidated {
-		i.notifier.Fan(ctx, d, disp)
+	if final == DeliveryApplied || final == DeliveryInvalidated {
+		i.notifier.Fan(ctx, d, final)
 	}
 	return disp, nil
 }

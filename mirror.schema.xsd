@@ -78,18 +78,15 @@
 						<xs:attribute name="to" type="xs:string" use="required"/>
 					</xs:complexType>
 				</xs:element>
-				<xs:element name="identity">
-					<xs:complexType>
-						<xs:choice minOccurs="1" maxOccurs="2">
-							<xs:element name="user" type="identityRule"/>
-							<xs:element name="assertion" type="identityRule"/>
-						</xs:choice>
-						<xs:attribute name="ttl" type="xs:string" use="required"/>
-					</xs:complexType>
-				</xs:element>
+				<xs:element name="identity" type="identity"/>
+				<xs:element name="whoami" type="whoami"/>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
+			<!-- Starts every header the engine sets on an answer. Default X-Mirror-. -->
+			<xs:attribute name="header-prefix" type="xs:string"/>
+			<!-- Caps every resource table; oldest writes go first. Default 1000000. -->
+			<xs:attribute name="max-rows" type="xs:string"/>
 		</xs:complexType>
 	</xs:element>
 
@@ -271,6 +268,23 @@
 					<xs:attribute name="key" type="xs:string" use="required"/>
 				</xs:complexType>
 			</xs:element>
+			<!-- Each item of the answer is a grant for the caller, and optionally truth. -->
+			<xs:element name="spread">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="key" minOccurs="0" maxOccurs="unbounded">
+							<xs:complexType mixed="true">
+								<xs:attribute name="field" type="xs:string" use="required"/>
+								<xs:attribute name="expr" type="xs:string"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="resource" type="xs:string" use="required"/>
+					<xs:attribute name="items" type="xs:string"/>
+					<xs:attribute name="absorb" type="xs:boolean"/>
+					<xs:attribute name="grant" type="xs:boolean"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="method" type="xs:string"/>
 		<xs:attribute name="path" type="xs:string" use="required"/>
@@ -315,11 +329,24 @@
 					<xs:attribute name="always" type="xs:string"/>
 				</xs:complexType>
 			</xs:element>
+			<!-- Asks the provider which types it sends, for the dashboard. -->
+			<xs:element name="subscribed">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="header" type="headerType" minOccurs="0" maxOccurs="unbounded"/>
+					</xs:sequence>
+					<xs:attribute name="method" type="xs:string"/>
+					<xs:attribute name="path" type="xs:string" use="required"/>
+					<xs:attribute name="field" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="path" type="xs:string" use="required"/>
 		<xs:attribute name="signature-header" type="xs:string" use="required"/>
 		<xs:attribute name="type-header" type="xs:string" use="required"/>
 		<xs:attribute name="reorder-window" type="xs:string"/>
+		<!-- The provider's own delivery id, passed on to subscribers. -->
+		<xs:attribute name="id-header" type="xs:string"/>
 	</xs:complexType>
 
 	<xs:complexType name="event">
@@ -347,6 +374,12 @@
 			<xs:element name="invalidate">
 				<xs:complexType>
 					<xs:attribute name="reason" type="xs:string" use="required"/>
+					<xs:attribute name="reason" type="xs:string" use="required"/>
+					<!-- Drops every row, for a key the payload cannot state. -->
+					<xs:attribute name="every" type="xs:boolean"/>
+					<!-- Drop only when stored `field` differs from the payload at `differs`. -->
+					<xs:attribute name="field" type="xs:string"/>
+					<xs:attribute name="differs" type="xs:string"/>
 					<xs:attribute name="all" type="xs:boolean"/>
 				</xs:complexType>
 			</xs:element>
@@ -354,6 +387,8 @@
 		<xs:attribute name="type" type="xs:string" use="required"/>
 		<xs:attribute name="resource" type="xs:string" use="required"/>
 		<xs:attribute name="clock" type="xs:string"/>
+		<!-- A predicate over `.payload`; false skips this event. -->
+		<xs:attribute name="when" type="xs:string"/>
 		<xs:attribute name="unordered" type="xs:boolean"/>
 		<xs:attribute name="absorb-when-superseded" type="xs:boolean"/>
 		<xs:attribute name="action" type="xs:string"/>
@@ -382,6 +417,22 @@
 					<xs:attribute name="base-url" type="xs:string"/>
 				</xs:complexType>
 			</xs:element>
+			<!-- An OAuth code flow in front of the dashboard; the upstream names the operator. -->
+			<xs:element name="login" minOccurs="0">
+				<xs:complexType>
+					<xs:choice minOccurs="0" maxOccurs="unbounded">
+						<xs:element name="client-id" type="content"/>
+						<xs:element name="client-secret" type="content"/>
+						<xs:element name="session-secret" type="content"/>
+						<xs:element name="admins" type="content"/>
+						<xs:element name="base-url" type="content"/>
+					</xs:choice>
+					<xs:attribute name="authorize" type="xs:string" use="required"/>
+					<xs:attribute name="exchange" type="xs:string" use="required"/>
+					<xs:attribute name="user" type="xs:string" use="required"/>
+					<xs:attribute name="name" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:sequence>
 		<xs:attribute name="path" type="xs:string"/>
 		<xs:attribute name="title" type="xs:string"/>
@@ -398,7 +449,35 @@
 
 	<!-- db= is optional: it otherwise sits beside whatever -db names. -->
 	<xs:complexType name="notify">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<!-- Template source over `.payload`; a subscription filter matches it. -->
+			<xs:element name="scope" type="content"/>
+			<!-- The row a subscriber must be able to see, by stored proof only. -->
+			<xs:element name="reveal">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="key" minOccurs="0" maxOccurs="unbounded">
+							<xs:complexType mixed="true">
+								<xs:attribute name="field" type="xs:string" use="required"/>
+								<xs:attribute name="expr" type="xs:string"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="resource" type="xs:string" use="required"/>
+				</xs:complexType>
+			</xs:element>
+			<!-- A body field: a payload path, or expr= over `.payload` and `.delivery`. -->
+			<xs:element name="field">
+				<xs:complexType mixed="true">
+					<xs:attribute name="name" type="xs:string" use="required"/>
+					<xs:attribute name="expr" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:choice>
 		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="scope-field" type="xs:string"/>
+		<xs:attribute name="event-header" type="xs:string"/>
+		<xs:attribute name="delivery-header" type="xs:string"/>
 		<xs:attribute name="db" type="xs:string"/>
 		<xs:attribute name="signature-header" type="xs:string"/>
 		<xs:attribute name="timeout" type="xs:string"/>
@@ -416,6 +495,8 @@
 
 	<xs:complexType name="replay">
 		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<!-- Replaces an upstream header on the replayer's own calls. -->
+			<xs:element name="header" type="headerType"/>
 			<xs:element name="list" type="xs:string"/>
 			<!-- Template source over `.delivery`. -->
 			<xs:element name="redeliver" type="content"/>
@@ -434,6 +515,28 @@
 	<xs:complexType name="health">
 		<xs:attribute name="live" type="xs:string"/>
 		<xs:attribute name="pre-update" type="xs:string"/>
+	</xs:complexType>
+
+	<!-- The call that names a credential's owner, as `prefix:id`. -->
+	<xs:complexType name="whoami">
+		<xs:attribute name="method" type="xs:string"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="id" type="xs:string" use="required"/>
+		<xs:attribute name="prefix" type="xs:string" use="required"/>
+		<xs:attribute name="ttl" type="xs:string"/>
+	</xs:complexType>
+
+	<!-- A verified assertion in `header` names the caller as `prefix:id`. -->
+	<xs:complexType name="identity">
+		<xs:attribute name="header" type="xs:string" use="required"/>
+		<xs:attribute name="method" type="xs:string"/>
+		<xs:attribute name="path" type="xs:string" use="required"/>
+		<xs:attribute name="send" type="xs:string"/>
+		<xs:attribute name="scheme" type="xs:string"/>
+		<xs:attribute name="id" type="xs:string" use="required"/>
+		<xs:attribute name="name" type="xs:string"/>
+		<xs:attribute name="prefix" type="xs:string" use="required"/>
+		<xs:attribute name="ttl" type="xs:string"/>
 	</xs:complexType>
 
 </xs:schema>

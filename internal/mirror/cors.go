@@ -69,17 +69,6 @@ func (e *Engine) setCORS(w http.ResponseWriter, r *http.Request) {
 	if allowed != "*" {
 		w.Header().Add("Vary", "Origin")
 	}
-	if len(rule.Expose) > 0 {
-		w.Header().Set("Access-Control-Expose-Headers", strings.Join(rule.Expose, ", "))
-	}
-}
-
-// defaultExposed are the headers a client needs to read its own answer. This
-// is the mirror's own vocabulary; the spec names whatever the upstream adds.
-var defaultExposed = []string{
-	"X-Mirror-Cache",
-	"X-Mirror-Passthrough-Reason",
-	"X-Mirror-Debounced",
-	"X-Mirror-Stale",
-	"X-Mirror-Fetched-At",
+	// The engine's own headers are always exposed: no author should list them.
+	w.Header().Set("Access-Control-Expose-Headers", strings.Join(append(e.hdr.exposed(), rule.Expose...), ", "))
 }

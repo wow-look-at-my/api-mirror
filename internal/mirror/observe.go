@@ -15,6 +15,7 @@ type Lane string
 const (
 	LaneFetch       Lane = "fetch"       // a cached route bringing its own key up to date
 	LaneProbe       Lane = "probe"       // the reveal layer proving caller's access
+	LaneIdentity    Lane = "identity"    // verifying a caller's identity assertion
 	LaneRefresh     Lane = "refresh"     // the periodic background sweep
 	LanePassthrough Lane = "passthrough" // a request the spec does not model, forwarded
 	LaneReplay      Lane = "replay"      // asking the upstream to re-send a lost delivery

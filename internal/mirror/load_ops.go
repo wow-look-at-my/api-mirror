@@ -48,6 +48,12 @@ func buildDashboard(n *node) (Dashboard, error) {
 				Secret:       child.Attr("secret"),
 				BaseURL:      child.Attr("base-url"),
 			}
+		case "login":
+			l, err := buildLogin(child)
+			if err != nil {
+				return Dashboard{}, err
+			}
+			d.Login = l
 		default:
 			return Dashboard{}, fmt.Errorf("<dashboard>: unexpected child element <%s>", child.Name())
 		}
@@ -78,7 +84,16 @@ func buildCORS(n *node) (*CORS, error) {
 			if err := checkAttrs(child); err != nil {
 				return nil, err
 			}
-			c.Origins = append(c.Origins, text)
+			// A rendered origin may be a comma-separated list, as an environment variable usually carries one.
+			rendered, err := loadTimeValue("<cors><origin>", text)
+			if err != nil {
+				return nil, err
+			}
+			for _, o := range strings.Split(rendered, ",") {
+				if o = strings.TrimSpace(o); o != "" {
+					c.Origins = append(c.Origins, o)
+				}
+			}
 		case "expose":
 			if err := checkAttrs(child); err != nil {
 				return nil, err
@@ -88,19 +103,21 @@ func buildCORS(n *node) (*CORS, error) {
 			return nil, fmt.Errorf("<cors>: unexpected child element <%s>", child.Name())
 		}
 	}
-	// Always exposed: no author should list the engine's own headers.
-	c.Expose = append(c.Expose, defaultExposed...)
 	return c, nil
 }
 
 func buildNotify(n *node) (*Notify, error) {
-	if err := checkAttrs(n, "path", "db", "signature-header", "timeout", "retries", "disable-after"); err != nil {
+	if err := checkAttrs(n, "path", "db", "signature-header", "timeout", "retries", "disable-after",
+		"scope-field", "event-header", "delivery-header"); err != nil {
 		return nil, err
 	}
 	no := &Notify{
 		Path:            n.Attr("path"),
 		DB:              n.Attr("db"),
 		SignatureHeader: n.Attr("signature-header"),
+		ScopeField:      n.Attr("scope-field"),
+		EventHeader:     n.Attr("event-header"),
+		DeliveryHeader:  n.Attr("delivery-header"),
 	}
 	if v := n.Attr("timeout"); v != "" {
 		d, err := parseDuration("<notify> timeout", v)
@@ -122,9 +139,60 @@ func buildNotify(n *node) (*Notify, error) {
 		}
 	}
 	for _, child := range n.Children() {
-		return nil, fmt.Errorf("<notify>: unexpected child element <%s>", child.Name())
+		switch child.Name() {
+		case "scope":
+			if err := checkAttrs(child); err != nil {
+				return nil, err
+			}
+			s, err := compileContent(child)
+			if err != nil {
+				return nil, fmt.Errorf("<notify><scope>: %w", err)
+			}
+			no.Scope = strings.TrimSpace(s)
+		case "reveal":
+			if err := checkAttrs(child, "resource"); err != nil {
+				return nil, err
+			}
+			rv := &NotifyReveal{Resource: child.Attr("resource")}
+			for _, k := range child.Children() {
+				if k.Name() != "key" {
+					return nil, fmt.Errorf("<notify><reveal>: unexpected child element <%s>", k.Name())
+				}
+				s, err := buildPathOrExpr(k, "field")
+				if err != nil {
+					return nil, err
+				}
+				rv.Keys = append(rv.Keys, s)
+			}
+			no.Reveal = rv
+		case "field":
+			s, err := buildPathOrExpr(child, "name")
+			if err != nil {
+				return nil, err
+			}
+			no.Fields = append(no.Fields, s)
+		default:
+			return nil, fmt.Errorf("<notify>: unexpected child element <%s>", child.Name())
+		}
 	}
 	return no, nil
+}
+
+// buildPathOrExpr reads an element that names a value either as a payload
+// path in its text or as template source in expr=.
+func buildPathOrExpr(n *node, nameAttr string) (Set, error) {
+	if err := checkAttrs(n, nameAttr, "expr"); err != nil {
+		return Set{}, err
+	}
+	s := Set{Field: n.Attr(nameAttr), Expr: n.Attr("expr")}
+	if s.Expr == "" {
+		from, err := textOf(n)
+		if err != nil {
+			return Set{}, err
+		}
+		s.From = strings.TrimSpace(from)
+	}
+	return s, nil
 }
 
 func buildRefresh(n *node) (*Refresh, error) {
@@ -167,7 +235,14 @@ func buildReplay(n *node) (*Replay, error) {
 		}
 		rp.Max = num
 	}
-	for attr, dst := range map[string]*time.Duration{"interval": &rp.Interval, "lookback": &rp.Lookback} {
+	if v := n.Attr("interval"); v != "" {
+		d, off, err := parseDurationOrOff("<replay> interval", v)
+		if err != nil {
+			return nil, err
+		}
+		rp.Interval, rp.Off = d, off
+	}
+	for attr, dst := range map[string]*time.Duration{"lookback": &rp.Lookback} {
 		v := n.Attr(attr)
 		if v == "" {
 			continue
@@ -179,6 +254,14 @@ func buildReplay(n *node) (*Replay, error) {
 		*dst = d
 	}
 	for _, child := range n.Children() {
+		if child.Name() == "header" {
+			h, err := buildHeader(child)
+			if err != nil {
+				return nil, fmt.Errorf("<replay>: %w", err)
+			}
+			rp.Headers = append(rp.Headers, h)
+			continue
+		}
 		if err := checkAttrs(child); err != nil {
 			return nil, err
 		}
@@ -218,15 +301,26 @@ func buildHealth(n *node) (*Health, error) {
 }
 
 func buildIdentity(n *node) (*Identity, error) {
-	if err := checkAttrs(n, "ttl"); err != nil {
+	if err := checkAttrs(n, "header", "method", "path", "send", "scheme", "id", "name", "prefix", "ttl"); err != nil {
 		return nil, err
 	}
-	id := &Identity{}
-	ttl, err := parseDuration("<identity> ttl", n.Attr("ttl"))
-	if err != nil {
-		return nil, err
+	id := &Identity{
+		Header: n.Attr("header"),
+		Method: strings.ToUpper(n.Attr("method")),
+		Path:   n.Attr("path"),
+		Send:   n.Attr("send"),
+		Scheme: n.Attr("scheme"),
+		ID:     n.Attr("id"),
+		Name:   n.Attr("name"),
+		Prefix: n.Attr("prefix"),
 	}
-	id.TTL = ttl
+	if v := n.Attr("ttl"); v != "" {
+		d, err := parseDuration("<identity> ttl", v)
+		if err != nil {
+			return nil, err
+		}
+		id.TTL = d
+	}
 	for _, child := range n.Children() {
 		if err := checkAttrs(child, "header", "as", "scheme", "path", "principal", "name"); err != nil {
 			return nil, err
@@ -248,7 +342,33 @@ func buildIdentity(n *node) (*Identity, error) {
 			return nil, fmt.Errorf("<identity>: unexpected child element <%s>", child.Name())
 		}
 	}
+	if (id.User != nil || id.Assertion != nil) && id.TTL <= 0 {
+		return nil, fmt.Errorf("<identity> needs a positive ttl: an unremembered verdict costs an upstream call on every request")
+	}
 	return id, nil
+}
+
+func buildWhoami(n *node) (*Whoami, error) {
+	if err := checkAttrs(n, "method", "path", "id", "prefix", "ttl"); err != nil {
+		return nil, err
+	}
+	for _, child := range n.Children() {
+		return nil, fmt.Errorf("<whoami>: unexpected child element <%s>", child.Name())
+	}
+	w := &Whoami{
+		Method: strings.ToUpper(n.Attr("method")),
+		Path:   n.Attr("path"),
+		ID:     n.Attr("id"),
+		Prefix: n.Attr("prefix"),
+	}
+	if v := n.Attr("ttl"); v != "" {
+		d, err := parseDuration("<whoami> ttl", v)
+		if err != nil {
+			return nil, err
+		}
+		w.TTL = d
+	}
+	return w, nil
 }
 
 func buildRateHeaders(n *node) (RateHeaders, error) {

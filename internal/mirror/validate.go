@@ -1,8 +1,10 @@
 package mirror
 
 import (
+	"cmp"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -12,7 +14,13 @@ import (
 )
 
 // Duration parses a Go duration string, rejecting the empty and the negative.
+// A value may be template source over `.env`, so an operator can set it
+// without editing the spec.
 func parseDuration(what, s string) (time.Duration, error) {
+	s, err := loadTimeValue(what, s)
+	if err != nil {
+		return 0, err
+	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %q is not a duration: %w", what, s, err)
@@ -21,6 +29,33 @@ func parseDuration(what, s string) (time.Duration, error) {
 		return 0, fmt.Errorf("%s: %q must be positive", what, s)
 	}
 	return d, nil
+}
+
+// parseDurationOrOff is parseDuration where "0" means the feature is off,
+// the convention an environment variable uses to turn a job off.
+func parseDurationOrOff(what, s string) (time.Duration, bool, error) {
+	v, err := loadTimeValue(what, s)
+	if err != nil {
+		return 0, false, err
+	}
+	if v == "0" || v == "0s" {
+		return 0, true, nil
+	}
+	d, err := parseDuration(what, v)
+	return d, false, err
+}
+
+// loadTimeValue renders a load-time attribute that is template source over
+// `.env`. A value with no template is returned as it is.
+func loadTimeValue(what, s string) (string, error) {
+	if !strings.Contains(s, "{{") {
+		return s, nil
+	}
+	out, err := renderString(s, map[string]any{"env": envMap()})
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", what, err)
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // validate rejects a spec the engine cannot serve honestly. Every check here
@@ -118,13 +153,16 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		if s.Replay.ID == "" {
 			return fmt.Errorf("<replay> needs <id>: without it a delivery cannot be named, so every cycle would ask for all of them again")
 		}
-		if s.Replay.Interval <= 0 {
+		if s.Replay.Interval <= 0 && !s.Replay.Off {
 			return fmt.Errorf("<replay> needs a positive interval")
 		}
 	}
 	if s.Notify != nil {
 		if s.Events == nil {
 			return fmt.Errorf("<notify> has nothing to announce: this spec declares no <events>")
+		}
+		if err := s.Notify.validate(byName, s.Dashboard.Path); err != nil {
+			return err
 		}
 	}
 	if err := s.Identity.validate(s.Upstream.Forward); err != nil {
@@ -140,6 +178,22 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 	}
 	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
 		return fmt.Errorf("<health> names no path, so it registers nothing and every check falls through to the upstream")
+	}
+	if s.Identity != nil {
+		s.Identity.Method = cmp.Or(s.Identity.Method, http.MethodGet)
+		s.Identity.Send = cmp.Or(s.Identity.Send, "Authorization")
+		if err := s.Identity.validate(s.Upstream.Forward); err != nil {
+			return err
+		}
+	}
+	if w := s.Whoami; w != nil {
+		w.Method = cmp.Or(w.Method, http.MethodGet)
+		if !strings.HasPrefix(w.Path, "/") || w.ID == "" || w.Prefix == "" || strings.Contains(w.Prefix, ":") {
+			return fmt.Errorf("<whoami> needs path= starting with /, id=, and a prefix= with no ':'")
+		}
+		if s.Identity != nil && s.Identity.Prefix == w.Prefix {
+			return fmt.Errorf("<whoami> and <identity> share prefix %q, so two callers could name one principal", w.Prefix)
+		}
 	}
 	if s.CORS != nil && len(s.CORS.Origins) == 0 {
 		return fmt.Errorf("<cors> names no <origin>, so it would allow nothing while looking like a policy")
@@ -263,6 +317,11 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	res, ok := resources[rt.Resource]
 	if !ok {
 		return fmt.Errorf("route %s names resource %q, which is not declared", rt.Path, rt.Resource)
+	}
+	for _, sp := range rt.Spreads {
+		if err := sp.validate(rt.Path, resources); err != nil {
+			return err
+		}
 	}
 	if rt.Method != "GET" && rt.Method != "HEAD" {
 		// A credential-gated mint replays a still-valid answer, so it is
@@ -506,7 +565,7 @@ func (e *Events) validate(resources map[string]*Resource) error {
 	if e.TypeHeader == "" {
 		return fmt.Errorf("<events> needs a type header")
 	}
-	seen := set.New[string]()
+	// A type is declared per resource it moves.
 	for _, ev := range e.List {
 		if ev.Type == "" {
 			return fmt.Errorf("<event> needs a type")
@@ -587,14 +646,38 @@ func validateEventKeys(ev *Event, res *Resource) error {
 	if ev.Invalidate != nil {
 		// A partial key is legitimate here and deletes everything beneath it,
 		// but naming none of them would delete the resource unless it says so.
+		if inv := ev.Invalidate; (inv.Field == "") != (inv.Differs == "") {
+			return fmt.Errorf("event %q: <invalidate> field= and differs= go together", ev.Type)
+		}
+		if inv := ev.Invalidate; inv.Field != "" {
+			if inv.Every {
+				return fmt.Errorf("event %q: <invalidate every=\"true\"> has no one row to compare field= against", ev.Type)
+			}
+			if !slices.ContainsFunc(res.Fields, func(f Field) bool { return f.Name == inv.Field }) {
+				return fmt.Errorf("event %q: <invalidate field=%q> is not a field of resource %q", ev.Type, inv.Field, res.Name)
+			}
+			// A comparison is against one row, so the whole key is needed.
+			for _, k := range res.Keys {
+				if !named(k.Name) {
+					return fmt.Errorf("event %q: a conditional <invalidate> compares one row, so it needs <key field=%q>", ev.Type, k.Name)
+				}
+			}
+			return nil
+		}
 		if ev.Invalidate.All {
 			if len(ev.Keys) > 0 {
 				return fmt.Errorf("event %q invalidates all of resource %q: a <key> would narrow nothing", ev.Type, res.Name)
 			}
 			return nil
 		}
+		if ev.Invalidate.Every {
+			if len(ev.Keys) > 0 {
+				return fmt.Errorf("event %q: <invalidate every=\"true\"> drops every row, so its <key> elements would be ignored", ev.Type)
+			}
+			return nil
+		}
 		if len(ev.Keys) == 0 {
-			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about",
+			return fmt.Errorf("event %q invalidates every row of resource %q: add <key field=...> naming what this delivery is about, or declare every=\"true\"",
 				ev.Type, res.Name)
 		}
 		return nil

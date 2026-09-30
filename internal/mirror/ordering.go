@@ -15,11 +15,36 @@ type Delivery struct {
 	Event   *Event
 	Payload any
 	Raw     []byte
-	// Subject is what this delivery is a view of, and At is the moment that
+	// Subject is what this delivery is a view of.
 	Subject string
 	At      time.Time
 	// Received is when the mirror took the delivery in.
 	Received time.Time
+	// UpstreamID is the provider's own id for the delivery, when it sends one.
+	UpstreamID string
+	// group joins the handlers of one delivery, so subscribers hear once.
+	group *deliveryGroup
+}
+
+// deliveryGroup counts the handlers of one delivery that are still to
+// apply, and folds their outcomes.
+type deliveryGroup struct {
+	mu      sync.Mutex
+	pending int
+	disp    DeliveryDisposition
+}
+
+// finish records one handler's outcome. It reports the folded outcome, and
+// whether this was the last handler. A delivery with no group is alone.
+func (g *deliveryGroup) finish(d DeliveryDisposition) (DeliveryDisposition, bool) {
+	if g == nil {
+		return d, true
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.disp = foldDisposition(g.disp, d)
+	g.pending--
+	return g.disp, g.pending == 0
 }
 
 // orderOf resolves a delivery's subject and clock from its event declaration.
@@ -108,7 +133,7 @@ func NewReorderer(window time.Duration, apply applyFunc) *Reorderer {
 // Submit hands delivery to the reorderer.
 //
 // With a window it returns immediately and the delivery applies later, so the
-// caller answers the provider before the write lands. That is deliberate: a
+// caller answers the provider before the write lands. That is deliberate.
 func (r *Reorderer) Submit(d *Delivery) {
 	if r.window <= 0 {
 		r.wg.Add(1)

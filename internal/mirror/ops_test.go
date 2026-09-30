@@ -191,17 +191,22 @@ func TestNotifierSignsAndTellsSubscribersAfterTheWriteLands(t *testing.T) {
 	var got struct {
 		body      []byte
 		signature string
+		event     string
+		delivery  string
 	}
 	done := make(chan struct{})
 	subscriber := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got.body, _, _ = readCapped(r.Body)
 		got.signature = r.Header.Get("X-Hub-Signature-256")
+		got.event = r.Header.Get("X-Mirror-Event")
+		got.delivery = r.Header.Get("X-Mirror-Delivery")
 		close(done)
 	}))
 	t.Cleanup(subscriber.Close)
 
 	e := notifyEngine(t)
-	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", subscriber.URL, nil)
+	e.notify.rule.Fields = []Set{{Field: "widget", From: "widget.id"}, {Field: "missing", From: "nope"}}
+	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", subscriber.URL, "", nil, nil)
 	require.NoError(t, err)
 
 	e.notify.Fan(context.Background(), widgetDelivery(e, "widget:7"), DeliveryApplied)
@@ -213,11 +218,17 @@ func TestNotifierSignsAndTellsSubscribersAfterTheWriteLands(t *testing.T) {
 	}
 	require.True(t, e.notify.Drain(5*time.Second))
 
-	var note Notification
+	var note map[string]any
 	require.NoError(t, json.Unmarshal(got.body, &note))
-	assert.Equal(t, "widget.changed", note.Type)
-	assert.Equal(t, "widget:7", note.Subject)
-	assert.Equal(t, DeliveryApplied, note.Disposition)
+	assert.Equal(t, "widget.changed", note["event"])
+	assert.Equal(t, string(DeliveryApplied), note["disposition"])
+	assert.Equal(t, sub.ID, note["subscription_id"])
+	assert.Equal(t, "up-1", note["upstream_delivery"])
+	assert.Equal(t, "7", note["widget"], "a declared field carries its payload value")
+	assert.NotContains(t, note, "missing", "an absent value is left out, never sent empty")
+	assert.NotEmpty(t, note["sent_at"])
+	assert.Equal(t, "widget.changed", got.event)
+	assert.Equal(t, "d1", got.delivery)
 	assert.True(t, verifyDelivery([]byte(sub.Secret), got.signature, got.body),
 		"the signature is the only thing telling the subscriber this came from us")
 }
@@ -231,7 +242,7 @@ func TestNotifierParksASubscriptionThatKeepsFailing(t *testing.T) {
 	e := notifyEngine(t)
 	e.notify.rule.Retries = 0
 	e.notify.rule.DisableAfter = 1
-	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", dead.URL, nil)
+	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", dead.URL, "", nil, nil)
 	require.NoError(t, err)
 
 	e.notify.Fan(context.Background(), widgetDelivery(e, ""), DeliveryApplied)
@@ -249,9 +260,9 @@ func TestNotifierParksASubscriptionThatKeepsFailing(t *testing.T) {
 func TestSubscriptionEventFilterDefaultsToEverything(t *testing.T) {
 	e := notifyEngine(t)
 	subs := e.notify.Subs()
-	_, err := subs.Create(context.Background(), "token:a", "https://a.example/hook", nil)
+	_, err := subs.Create(context.Background(), "token:a", "https://a.example/hook", "", nil, nil)
 	require.NoError(t, err)
-	_, err = subs.Create(context.Background(), "token:b", "https://b.example/hook", []string{"other.event"})
+	_, err = subs.Create(context.Background(), "token:b", "https://b.example/hook", "", []string{"other.event"}, nil)
 	require.NoError(t, err)
 
 	matched, err := subs.Matching(context.Background(), "widget.changed")
@@ -265,7 +276,7 @@ func TestSubscriptionEventFilterDefaultsToEverything(t *testing.T) {
 func TestSubscriptionDeleteIsScopedToItsOwner(t *testing.T) {
 	e := notifyEngine(t)
 	subs := e.notify.Subs()
-	mine, err := subs.Create(context.Background(), "token:mine", "https://a.example/hook", nil)
+	mine, err := subs.Create(context.Background(), "token:mine", "https://a.example/hook", "", nil, nil)
 	require.NoError(t, err)
 
 	gone, err := subs.Delete(context.Background(), "token:someone-else", mine.ID)

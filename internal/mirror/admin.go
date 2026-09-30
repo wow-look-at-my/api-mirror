@@ -21,6 +21,8 @@ type Admin struct {
 	mux    *http.ServeMux
 	// signIn is the OAuth sign-in, nil when the spec declares none.
 	signIn *signIn
+	// login is the operator sign-in, or nil when the spec declares none.
+	login *adminLogin
 }
 
 // NewAdmin builds the operator surface, always. A spec chooses where it lives
@@ -47,6 +49,9 @@ func NewAdmin(e *Engine) (*Admin, error) {
 	a.signIn, err = newSignIn(e)
 	if err != nil {
 		return nil, err
+	}
+	if d.Login != nil {
+		a.login = newAdminLogin(a, d.Login)
 	}
 	a.routes()
 	return a, nil
@@ -114,6 +119,26 @@ func (a *Admin) routes() {
 // standing.
 func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+	if a.login != nil && r.Method == http.MethodGet {
+		// The sign-in pair is the way in, so neither can require being in.
+		switch path {
+		case a.prefix + "/login":
+			a.login.start(a, w, r)
+			return
+		case a.prefix + "/auth/callback":
+			a.login.callback(a, w, r)
+			return
+		}
+	}
+	if a.login != nil && a.login.session(r) != "" {
+		if path == a.prefix {
+			http.Redirect(w, r, a.prefix+"/", http.StatusMovedPermanently)
+			return
+		}
+		a.engine.setCORS(w, r)
+		a.serveMux(w, r)
+		return
+	}
 	switch {
 	case a.signIn != nil && (path == a.prefix+"/auth/login" || path == a.prefix+"/auth/callback"):
 	case a.authorized(r):
@@ -144,6 +169,16 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w = &gzipWriter{ResponseWriter: w, zw: zw}
 	}
 	a.engine.setCORS(w, r)
+	a.serveMux(w, r)
+}
+
+// serveMux gzips the admin JSON, which the dashboard polls. The check
+// streams its progress, so it is left alone to keep flushing.
+func (a *Admin) serveMux(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, a.prefix+"/api/") && r.URL.Path != a.prefix+"/api/check" {
+		compressed(w, r, a.mux.ServeHTTP)
+		return
+	}
 	a.mux.ServeHTTP(w, r)
 }
 

@@ -298,6 +298,8 @@ type EventsView struct {
 	// Missing is absent, never empty, when the upstream could not be asked.
 	Missing           []MissingSubscription `json:"missing_subscriptions,omitempty"`
 	SubscriptionError string                `json:"subscription_error,omitempty"`
+	// Subscribed names declared types the provider does not send.
+	Subscribed SubscribedView `json:"subscribed"`
 }
 
 // EventView is declared event and how it is ordered.
@@ -319,6 +321,7 @@ func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, view)
 		return
 	}
+	view.Subscribed = a.engine.subscribedView(r.Context())
 	view.Configured = a.engine.ingest != nil
 	view.Path = a.engine.spec.Events.Path
 	view.Stats = a.engine.ingest.Stats()

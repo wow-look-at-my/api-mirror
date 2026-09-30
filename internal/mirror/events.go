@@ -14,14 +14,11 @@ import (
 	"time"
 )
 
-// maxDeliveryBytes caps delivery. A body past the cap is refused rather
+// maxDeliveryBytes caps delivery.
 const maxDeliveryBytes = 8 << 20
 
 // deliverTimeout bounds the writes of delivery answered in the request.
 const deliverTimeout = 30 * time.Second
-
-// dispositionHeader reports what the mirror did with a delivery. The provider
-const dispositionHeader = "X-Mirror-Disposition"
 
 // watermarkRetention is how long a subject's applied moment is kept.
 const watermarkRetention = 30 * 24 * time.Hour
@@ -38,7 +35,7 @@ type Ingest struct {
 	events  *Events
 	store   *Store
 	reorder *Reorderer
-	// secret is the resolved HMAC key. An empty refuses every delivery: an
+	// secret is the resolved HMAC key. An empty refuses every delivery.
 	secret []byte
 	byType map[string][]*Event
 	window time.Duration
@@ -51,6 +48,7 @@ type Ingest struct {
 	stats    deliveryStats
 	log      deliveryLog
 	ordering orderingStats
+	dispHeader string
 }
 
 // NewIngest builds the ingest endpoint a spec declares. vars is the spec's
@@ -65,7 +63,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 	}
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
-		// The endpoint refuses every delivery until the secret arrives. Say so
+		// The endpoint refuses every delivery until the secret arrives.
 		logf("<events>: the secret resolved to nothing -- every delivery is refused until it is set")
 	}
 	i := &Ingest{
@@ -74,7 +72,9 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 		secret: []byte(secret),
 		byType: make(map[string][]*Event, len(spec.Events.List)),
 		window: spec.Events.ReorderWindow,
-		now:    time.Now,
+		// A provider records this header, so an operator reads what each delivery did.
+		dispHeader: headersFor(spec.HeaderPrefix).Disposition,
+		now:        time.Now,
 	}
 	// A type fans out to every event declared for it, in spec order: a push
 	// states a branch tip AND makes the repo's file-derived answers wrong.
@@ -92,10 +92,10 @@ func (i *Ingest) Path() string { return i.events.Path }
 // Handler serves that path.
 func (i *Ingest) Handler() http.Handler { return i }
 
-// Reorderer is the window behind the handler. A shutdown waits on it, so it is
+// Reorderer is the window behind the handler. A shutdown waits on it.
 func (i *Ingest) Reorderer() *Reorderer { return i.reorder }
 
-// Drain waits for held and in-flight deliveries at shutdown. A provider sends a
+// Drain waits for held and in-flight deliveries at shutdown.
 func (i *Ingest) Drain(timeout time.Duration) bool { return i.reorder.Drain(timeout) }
 
 // ServeHTTP receives delivery.
@@ -159,21 +159,26 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		deliveries = append(deliveries, &Delivery{
-			ID:       id,
-			Type:     typ,
-			Event:    ev,
-			Payload:  payload,
-			Raw:      raw,
-			Subject:  subject,
-			At:       at,
-			Received: i.now(),
+			ID:         id,
+			Type:       typ,
+			Event:      ev,
+			Payload:    payload,
+			Raw:        raw,
+			Subject:    subject,
+			At:         at,
+			Received:   i.now(),
+			UpstreamID: upstreamID(r, i.events.IDHeader),
 		})
 	}
 	if len(deliveries) == 0 {
+		// Every event for this type declined it through when=.
 		i.answer(w, DeliveryIgnored)
 		return
 	}
-
+	group := &deliveryGroup{pending: len(deliveries)}
+	for _, d := range deliveries {
+		d.group = group
+	}
 	if i.window > 0 {
 		// The provider waits for this answer and gives up in single-digit
 		for _, d := range deliveries {
@@ -182,7 +187,7 @@ func (i *Ingest) serve(w http.ResponseWriter, r *http.Request) {
 		i.reply(w, http.StatusAccepted, string(DeliveryHeld))
 		return
 	}
-	// With no window there is nothing to wait for, so the answer carries the
+	// With no window there is nothing to wait for.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), deliverTimeout)
 	defer cancel()
 	disp := DeliveryIgnored
@@ -236,6 +241,44 @@ func dispositionRank(d DeliveryDisposition) int {
 	}
 }
 
+// storedAgrees reports whether the stored row matches what the delivery
+// states for one field. No stored row agrees, because nothing is there
+// to contradict. A payload that states no value also agrees: silence is
+// not a contradiction.
+func (i *Ingest) storedAgrees(ctx context.Context, res *Resource, key map[string]string, inv *Invalidate, payload any) (bool, error) {
+	stated := scalarString(lookupPath(payload, inv.Differs))
+	if stated == "" {
+		return true, nil
+	}
+	row, err := i.store.Get(ctx, res, key)
+	if err != nil {
+		return false, err
+	}
+	if row == nil {
+		return true, nil
+	}
+	return fmt.Sprint(row[inv.Field]) == stated, nil
+}
+
+func upstreamID(r *http.Request, header string) string {
+	if header == "" {
+		return ""
+	}
+	return r.Header.Get(header)
+}
+
+// eventApplies evaluates an event's when= against the delivery.
+func eventApplies(ev *Event, payload any) (bool, error) {
+	if ev.When == "" {
+		return true, nil
+	}
+	s, err := renderString(ev.When, map[string]any{"payload": payload})
+	if err != nil {
+		return false, err
+	}
+	return isTruthy(s), nil
+}
+
 // answer reports a disposition to the provider.
 func (i *Ingest) answer(w http.ResponseWriter, d DeliveryDisposition) {
 	i.reply(w, deliveryStatus(d), string(d))
@@ -243,7 +286,7 @@ func (i *Ingest) answer(w http.ResponseWriter, d DeliveryDisposition) {
 
 func (i *Ingest) reply(w http.ResponseWriter, status int, body string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set(dispositionHeader, body)
+	w.Header().Set(i.dispHeader, body)
 	w.WriteHeader(status)
 	fmt.Fprintln(w, body)
 }
@@ -304,15 +347,23 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		return DeliverySuperseded, nil
 	}
 
-	if ev.Invalidate != nil && ev.Invalidate.All {
-		if _, err := i.store.DeleteAll(ctx, res); err != nil {
-			return DeliveryFailed, err
-		}
-		i.prune(ctx)
-		return DeliveryInvalidated, nil
-	}
 	if ev.Invalidate != nil {
-		if _, err := i.store.Delete(ctx, res, key); err != nil {
+		if ev.Invalidate.Field != "" {
+			agrees, err := i.storedAgrees(ctx, res, key, ev.Invalidate, d.Payload)
+			if err != nil {
+				return DeliveryFailed, err
+			}
+			if agrees {
+				return DeliveryIgnored, nil
+			}
+		}
+		del := i.store.Delete
+		if ev.Invalidate.Every || ev.Invalidate.All {
+			del = func(ctx context.Context, res *Resource, _ map[string]string) (int64, error) {
+				return i.store.DeleteAll(ctx, res)
+			}
+		}
+		if _, err := del(ctx, res, key); err != nil {
 			return DeliveryFailed, err
 		}
 		if err := i.store.Forget(ctx, res, key); err != nil {
@@ -340,7 +391,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 // order asks the watermark whether this view postdates what is already applied,
 // and reports whether the watermark refused it.
 //
-// A failure APPLIES the delivery, loudly. A provider sends a delivery, so
+// A failure APPLIES the delivery, loudly. A provider sends a delivery.
 func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 	if d.Event.Unordered || d.At.IsZero() {
 		return false

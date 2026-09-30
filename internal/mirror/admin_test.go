@@ -297,7 +297,7 @@ func TestCORSExposesTheMirrorsOwnHeaders(t *testing.T) {
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`{"id":"7","title":"hi"}`))
 	}), func(s *Spec) {
-		s.CORS = &CORS{Origins: []string{"*"}, Expose: append([]string{}, defaultExposed...)}
+		s.CORS = &CORS{Origins: []string{"*"}}
 	})
 
 	rec := httptest.NewRecorder()

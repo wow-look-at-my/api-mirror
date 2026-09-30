@@ -26,6 +26,8 @@ type Store struct {
 	// maxRows is the ceiling on every resource table; capRows enforces it.
 	maxRows int64
 	counts  rowCounts
+	// cap trims every table to the spec's max-rows, at most once per interval.
+	cap *rowCap
 }
 
 // Open opens (or creates) the database at path and brings it to the schema this
@@ -73,6 +75,7 @@ func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
 		byName:  make(map[string]*Resource, len(spec.Resources)),
 		maxRows: defaultMaxRows,
 		counts:  rowCounts{n: map[string]int64{}},
+		cap:     &rowCap{max: spec.MaxRows, checked: map[string]time.Time{}},
 	}
 	for _, r := range spec.Resources {
 		s.byName[r.Name] = r
@@ -81,7 +84,7 @@ func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
 }
 
 func openDB(path string) (*sql.DB, error) {
-	// WAL keeps a reader from blocking the writer, which matters because a
+	// WAL keeps a reader from blocking the writer.
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

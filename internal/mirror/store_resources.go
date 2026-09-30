@@ -23,7 +23,11 @@ func (s *Store) Put(ctx context.Context, r *Resource, row Row, at time.Time) err
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return errStoredIsNewer
 	}
-	return s.capRows(ctx, r, 1)
+	if err := s.capRows(ctx, r, 1); err != nil {
+		return err
+	}
+	s.enforceCap(ctx, r)
+	return nil
 }
 
 // PutMany writes a whole list answer in transaction. A partially written
@@ -49,7 +53,11 @@ func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Ti
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return s.capRows(ctx, r, len(rows))
+	if err := s.capRows(ctx, r, len(rows)); err != nil {
+		return err
+	}
+	s.enforceCap(ctx, r)
+	return nil
 }
 
 // ReplaceMany makes the rows under partial key exactly the rows given, in
@@ -88,7 +96,11 @@ func (s *Store) ReplaceMany(ctx context.Context, r *Resource, key map[string]str
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return s.capRows(ctx, r, len(rows))
+	if err := s.capRows(ctx, r, len(rows)); err != nil {
+		return err
+	}
+	s.enforceCap(ctx, r)
+	return nil
 }
 
 // Get reads row by its full key. A missing row is (nil, nil): absent is an
@@ -213,8 +225,7 @@ func rowArgs(r *Resource, row Row, at time.Time) []any {
 
 // keyPredicate builds a WHERE clause over the columns present in key.
 //
-// A key column is the usual case. A FIELD is allowed too, because a list route
-// often selects by an attribute rather than by identity -- every post by an
+// A key column is the usual case. A FIELD is allowed too.
 func keyPredicate(r *Resource, key map[string]string) (string, []any) {
 	var terms []string
 	var args []any

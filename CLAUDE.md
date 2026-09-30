@@ -23,7 +23,14 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `body-key` on a `<route>` — the resource key the REQUEST body fills, for a query language that posts every question to one path. Naming it also makes the body travel: the fetch replays it upstream. Nearly always credential-keyed, because such an API filters by the caller's token.
 - `engine.go` / `fetch.go` — serving a declared route: reveal, ensure fresh, read, rebuild. And the fetch that absorbs.
 - `absorb.go` — document to columns and back, the drop patterns, the one JSON marshaller.
-- `reveal.go` — the authorization ladder: public, grant, cached denial, probe.
+- `reveal.go` — the authorization ladder: public, grant, cached denial, probe. `AllowStored` is the probe-free half, for a decision with no caller credential.
+- `identity.go` — who is asking: `<identity>` (a verified assertion header, as `prefix:id`), `<whoami>` (a credential's owner), else the credential fingerprint. A refused assertion is a 401, never a fallback.
+- `spread.go` — `<spread>` on a route: each item of a fetched listing is a grant for its caller, and optionally truth.
+- `notify_api.go` — the public subscription API at `<notify path=>`, under the caller's own principal, and `<notify>` validation.
+- `jwt.go` — the `jwt` and `readFile` template functions, for a credential that background work signs itself.
+- `headers.go` — the answer-header prefix. `stale.go` — an answer served after a failed refresh.
+- `compress.go` — admin gzip. `rowcap.go` — the per-table row cap.
+- `subscribed.go` — the report of declared types the provider does not send. `admin_login.go` — the dashboard's OAuth sign-in.
 - `ordering.go` / `events.go` — webhook ingest: subject and clock, the reorder window, the watermark, the apply.
 - `upstream.go` — the one outbound client, reporting every request.
 - `load_ops.go` / the ops half of `validate.go` — `<dashboard>`, `<cors>`, `<notify>`, `<refresh>`, `<replay>`, `<health>`, `<ratelimit>`.
@@ -41,6 +48,8 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 
 - **A delivery type reaches every resource it moves.** A push states a branch tip. It also makes the repo's file-derived answers wrong. The type is therefore declared per resource. The engine runs every handler of it. Each handler carries its own subject, so they order apart. On a shared subject the watermark refuses all but the earliest. The answer is the worst of their outcomes. A failed handler is thus never hidden behind a sibling that applied. The same type against the SAME resource stays refused, because the later declaration silently decides the row.
 
+- **A background credential never answers for a caller.** A request-time upstream call drops every forwarded header the caller did not send, so the static header serves only work with no caller.
+- **A delivery notifies once, after its last handler applies**, and only a subscriber with stored proof for the row `<notify><reveal>` names. A failed handler anywhere means no notification.
 - **Storage is global; authorization is at the READ.** One row per fact, no actor column, and no way for a spec to declare one. Grants and denials are the only per-principal tables.
 - **Apply the payload. Invalidation is the last resort.** A delivery carries the new value; the engine writes it. `<invalidate>` needs a stated reason, and `validate.go` rejects one without.
 - **A write touches only the fields its event names.** A payload that does not carry a field cannot blank it. `null="allow"` is the explicit opt-in where absent and empty differ.

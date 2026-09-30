@@ -20,8 +20,8 @@ func githubIdentity() *Identity {
 	}
 }
 
-// identityUpstream answers /user and /app by the Authorization it was sent.
-func identityUpstream(t *testing.T, calls *atomic.Int32) *identities {
+// identityResolverUpstream answers /user and /app by the Authorization it was sent.
+func identityResolverUpstream(t *testing.T, calls *atomic.Int32) *identities {
 	t.Helper()
 	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -55,7 +55,7 @@ func asking(headers map[string]string) *http.Request {
 
 func TestIdentity_AUserKeepsOnePrincipalAcrossTokens(t *testing.T) {
 	var calls atomic.Int32
-	ids := identityUpstream(t, &calls)
+	ids := identityResolverUpstream(t, &calls)
 	ctx := context.Background()
 
 	p, refused := ids.resolve(ctx, asking(map[string]string{"Authorization": "token user-a"}))
@@ -70,7 +70,7 @@ func TestIdentity_AUserKeepsOnePrincipalAcrossTokens(t *testing.T) {
 
 func TestIdentity_ATokenThatIsNoUserKeepsItsFingerprint(t *testing.T) {
 	var calls atomic.Int32
-	ids := identityUpstream(t, &calls)
+	ids := identityResolverUpstream(t, &calls)
 	p, refused := ids.resolve(context.Background(), asking(map[string]string{"Authorization": "token install"}))
 	require.Nil(t, refused)
 	assert.Equal(t, "token:"+fingerprint("token install"), p)
@@ -78,7 +78,7 @@ func TestIdentity_ATokenThatIsNoUserKeepsItsFingerprint(t *testing.T) {
 
 func TestIdentity_RefusesWhatItCannotResolve(t *testing.T) {
 	var calls atomic.Int32
-	ids := identityUpstream(t, &calls)
+	ids := identityResolverUpstream(t, &calls)
 	ctx := context.Background()
 
 	_, refused := ids.resolve(ctx, asking(map[string]string{"Authorization": "token revoked"}))
@@ -92,7 +92,7 @@ func TestIdentity_RefusesWhatItCannotResolve(t *testing.T) {
 
 func TestIdentity_AnAssertionTheUpstreamVouchesForNamesTheApp(t *testing.T) {
 	var calls atomic.Int32
-	ids := identityUpstream(t, &calls)
+	ids := identityResolverUpstream(t, &calls)
 	ctx := context.Background()
 
 	p, refused := ids.resolve(ctx, asking(map[string]string{"Authorization": "token install", "X-Mirror-Identity": "good-jwt"}))
@@ -116,7 +116,4 @@ func TestIdentity_NoBlockKeysByFingerprint(t *testing.T) {
 func TestIdentity_ValidateRefusesAnUnforwardedCredential(t *testing.T) {
 	assert.NoError(t, githubIdentity().validate([]string{"Authorization"}))
 	assert.ErrorContains(t, githubIdentity().validate(nil), "does not forward")
-	id := githubIdentity()
-	id.TTL = 0
-	assert.ErrorContains(t, id.validate([]string{"Authorization"}), "ttl")
 }

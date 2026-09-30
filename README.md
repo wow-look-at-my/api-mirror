@@ -88,7 +88,9 @@ A second half of the spec decides what runs in the background and what an operat
 
 ## Not yet
 
-Absent, and worth knowing before you rely on this. **No read-time contradiction detection**: a stored value that the mirror's own other rows disagree with is still served rather than refetched, which is the shape a lost delivery leaves behind. The consistency check finds one, but only when an operator runs it.
+Absent, and worth knowing before you rely on this. **No GraphQL assembly from stored truth**: a GraphQL answer is cached per caller and query for a minute, and webhooks do not update it. Its repositories do earn the caller grants through `<spread>`.
+
+Contradiction repair is event-driven: `<invalidate field= differs=>` drops a stored row that a later delivery disagrees with. Nothing re-reads a row at serve time to compare it with other rows.
 
 ## Docs
 

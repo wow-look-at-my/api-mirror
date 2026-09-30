@@ -424,7 +424,17 @@ views.webhooks = async () => {
 			]))
 		: panel(el('div', { class: 'empty' }, 'Nothing has arrived since this process started.'))));
 
-	// Declared-but-off and never-declared are different answers, and only any of
+	// Only the provider's own list can say a type is unsubscribed.
+	const sub = v.subscribed || {};
+	if (sub.checked && sub.missing.length) {
+		out.append(section('Not subscribed', panel(el('div', { class: 'empty' },
+			`The provider does not send ${sub.missing.join(', ')}. Every resource those events move waits out its TTL instead.`))));
+	} else if (sub.error) {
+		out.append(section('Not subscribed', panel(el('div', { class: 'empty' },
+			`Unknown: ${sub.error}`))));
+	}
+
+	// Declared-but-off and never-declared are different answers, and only one of
 	// them is somebody's mistake. Reporting both as "no replay" hides which.
 	out.append(section('Delivery-gap replay', v.replay.enabled
 		? table(['Interval', 'Cycles', 'Listed', 'Re-sent', 'Errors', 'Last'],

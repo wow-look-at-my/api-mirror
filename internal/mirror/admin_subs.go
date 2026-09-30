@@ -66,7 +66,11 @@ func createSubscriptionFor(w http.ResponseWriter, r *http.Request, subs *Subscri
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sub, err := subs.Create(r.Context(), principal, req.URL, req.Events)
+	principal := tokenPrincipal(r)
+	if principal == "" {
+		principal = "operator"
+	}
+	sub, err := subs.Create(r.Context(), principal, req.URL, "", req.Events, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -80,7 +84,11 @@ func (a *Admin) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this spec declares no <notify>", http.StatusNotImplemented)
 		return
 	}
-	gone, err := subs.Delete(r.Context(), operatorPrincipal, r.PathValue("id"))
+	principal := tokenPrincipal(r)
+	if principal == "" {
+		principal = "operator"
+	}
+	gone, err := subs.Delete(r.Context(), principal, r.PathValue("id"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

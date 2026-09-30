@@ -88,7 +88,7 @@ func TestDebounceLongerThanTheCapFailsAtLoad(t *testing.T) {
 	assert.Contains(t, err.Error(), "debounce")
 }
 
-func TestLoadCORSAlwaysExposesTheMirrorsOwnHeaders(t *testing.T) {
+func TestLoadCORS(t *testing.T) {
 	spec := opsSpec(t, `	<cors max-age="10m">
 		<origin>https://viewer.example</origin>
 		<expose>X-Total-Count</expose>
@@ -96,9 +96,8 @@ func TestLoadCORSAlwaysExposesTheMirrorsOwnHeaders(t *testing.T) {
 	require.NoError(t, spec.validate())
 	require.NotNil(t, spec.CORS)
 	assert.Equal(t, []string{"https://viewer.example"}, spec.CORS.Origins)
-	assert.Contains(t, spec.CORS.Expose, "X-Total-Count")
-	assert.Contains(t, spec.CORS.Expose, "X-Mirror-Cache",
-		"a spec author cannot be expected to know the engine's private vocabulary")
+	assert.Equal(t, []string{"X-Total-Count"}, spec.CORS.Expose,
+		"the engine adds its own headers when it serves, under whatever prefix the spec names")
 	assert.Equal(t, 10*time.Minute, spec.CORS.MaxAge)
 }
 

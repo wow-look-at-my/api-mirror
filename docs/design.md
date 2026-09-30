@@ -205,9 +205,15 @@ always do. `validate` refuses an event that names neither, because at run time
 this is one failed delivery per delivery, forever, on a mirror that looks like
 it is working.
 
-A write needs the whole key. An invalidate may name a prefix of it and deletes
-every row beneath: a payload names a commit, not one page of a paginated answer,
-so a page-keyed document set can only be dropped wholesale.
+A write needs the whole key. An invalidate may name part of it and deletes every row that matches. A payload names a commit, not one page of a paginated answer, so a page-keyed document set can only be dropped wholesale.
+
+Narrower forms:
+
+- `when="{{ ... }}"` on `<event>` is a predicate over `.payload`. False skips that event for the delivery. A type may declare one resource twice only when every declaration has one. The two then cannot both decide the row.
+- `<invalidate every="true">` drops the whole resource. It is for a per-credential answer whose key the payload cannot state.
+- `<invalidate field="tip_sha" differs="pull_request.base.sha">` drops the one stored row only when its field disagrees with what the delivery states. A disagreement means a delivery was lost, so the next reader refetches.
+
+`<events id-header=>` passes the provider's own delivery id to subscribers, and `<subscribed path= field=>` asks the provider which types it sends. As a result, the dashboard can name each declared type that never arrives.
 
 ### `<reveal>` — who may be told
 
@@ -223,9 +229,15 @@ route that reads that fact is gated the same way.
 </reveal>
 ```
 
-Public is a predicate over the stored row. A probe re-asks upstream with the
-CALLER's own credential; a 2xx earns a grant, an authoritative denial is cached
-briefly, and a transient failure is never cached. Unknown fails closed.
+Public is a predicate over the stored row. A probe re-asks upstream with the CALLER's own credential. A 2xx earns a grant. An authoritative denial is cached briefly. A transient failure is never cached. Unknown fails closed.
+
+A route's `<spread resource="repo" items="...">` earns grants in bulk. Each item of a listing the caller fetched is a grant for that caller, and, unless `absorb="false"`, a stored row of truth.
+
+### Who is asking
+
+A principal is the credential's fingerprint unless the spec names something more stable. `<identity header= path= id= prefix=>` accepts an assertion in a request header, verifies it with one upstream call, and names the caller `prefix:id`. A refused assertion is a 401 and never falls back. `<whoami path= id= prefix=>` asks the upstream who owns the caller's own credential. Both keep a caller's grants across a rotated credential.
+
+A static upstream header never answers for a caller. A request-time call drops every forwarded header the caller did not send.
 
 ## The operations half
 
@@ -277,10 +289,9 @@ reading: with no reader there is no refetch, and a missed delivery goes
 unnoticed for the whole TTL. The sweep holds no caller's credential, so a
 credential-keyed row is skipped rather than refetched under the wrong identity.
 
-`<replay>` reads the upstream's own failure log and asks for what never arrived,
-once per delivery id. `requires=` names a value the log cannot be read without;
-empty means the job declines to start and logs which value would start it,
-rather than calling an authenticated endpoint on a timer forever.
+`<replay>` reads the upstream's own failure log and asks for what never arrived, once per delivery id. `requires=` names a value the log cannot be read without. Empty means the job declines to start and logs which value will start it, rather than calling an authenticated endpoint on a timer forever. Its `<header>` children replace the static headers on its own calls. The `jwt` template function signs the RS256 assertion an App-level endpoint needs.
+
+A duration attribute and a `<cors><origin>` may be template source over `.env`, rendered at load, so an operator tunes them without editing the spec. `0` turns the debounce and the replayer off. `<mirror max-rows=>` caps each resource table, oldest writes first, default one million.
 
 ### `<notify>` — telling consumers, so they stop racing us
 
@@ -299,6 +310,12 @@ with, so anything short of that is silence.
 A probe's grant is keyed by the path it asked, not by the row that asked it, so
 every resource proving access with the same question shares one answer.
 
+A caller manages its own registrations at `<notify path=>`, under its resolved
+principal. A delivery notifies once, after its last handler applies. It reaches
+a subscriber only when `<scope>` matches the subscriber's filter and the
+subscriber holds stored proof for the row `<reveal>` names. `<field>` adds
+payload values to the body.
+
 ### `<identity>` — who is asking
 
 `<user>` asks the upstream who a bearer is and names the principal from the
@@ -308,15 +325,19 @@ a user keeps its fingerprint; one it cannot answer about fails the request.
 with `assert="true"` treats its bearer as that assertion. A key with
 `credential="principal"` files rows under the verified principal.
 
+### `<login>` — operators sign in upstream
+
+`<dashboard><login>` runs an OAuth code flow in front of the dashboard. The
+upstream names the operator, and only a login on the admin list gets an
+HMAC-signed session. The token still works beside it.
+
 ### `<cors>`, `<health>`, and debouncing
 
-`<cors>` names the origins and the response headers a cross-origin script may
-read; the engine always adds its own `X-Mirror-*` headers to that list, since no
-author should have to know them. `<health>` registers the paths an orchestrator
-polls — load-bearing, because an unrouted path falls through to the proxy rather
-than 404ing, and a checker reading any non-404 as "implemented" calls a healthy
-container unhealthy forever. `<upstream debounce=>` shares one upstream call
-between identical concurrent passthrough reads, and never across credentials.
+`<cors>` names the origins and the response headers a cross-origin script may read. The engine always adds its own answer headers to that list, under the prefix `<mirror header-prefix=>` names (default `X-Mirror-`). An author does not have to know them.
+
+`<health>` registers the paths an orchestrator polls. An unrouted path falls through to the proxy rather than answering 404. A checker that reads any non-404 as "implemented" then calls a healthy container unhealthy forever.
+
+`<upstream debounce=>` shares one upstream call between identical concurrent passthrough reads. It never shares one across credentials.
 
 ## What the engine owns
 
