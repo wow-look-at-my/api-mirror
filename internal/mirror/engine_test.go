@@ -102,7 +102,7 @@ func TestServeFetchesThenServesFromCache(t *testing.T) {
 	assert.Equal(t, true, doc["live"])
 	assert.Equal(t, "2026-01-02T03:04:05Z", doc["seen"])
 
-	// A field the spec never declared is a field the mirror never serves, and
+	// A field the spec never declared is a field the mirror never serves.
 	assert.NotContains(t, doc, "html_url")
 
 	second := get(t, e, "/widgets/7")
@@ -163,7 +163,7 @@ func TestTransientUpstreamFailureIsNotStored(t *testing.T) {
 	first := get(t, e, "/widgets/7")
 	assert.Equal(t, http.StatusBadGateway, first.Code)
 
-	// The failure is remembered only for its backoff window, and the window is
+	// The failure is remembered only for its backoff window.
 	require.NoError(t, clearBackoff(e, "widget", "7"))
 
 	second := get(t, e, "/widgets/7")
