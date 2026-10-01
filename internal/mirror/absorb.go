@@ -18,7 +18,7 @@ import (
 func absorb(r *Resource, doc any) (Row, error) {
 	row := make(Row, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
-		// A key with no stated path reads the field of its own name. That is
+		// A key with no stated path reads the field of its own name.
 		from := k.From
 		if from == "" {
 			from = k.Name

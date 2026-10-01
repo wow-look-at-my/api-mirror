@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// jsonValue decodes a fragment the way a fetch decodes an upstream body, with
+// jsonValue decodes a fragment the way a fetch decodes an upstream body.
 func jsonValue(t *testing.T, src string) any {
 	t.Helper()
 	v, err := decodeJSON([]byte(src))

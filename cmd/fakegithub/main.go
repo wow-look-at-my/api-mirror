@@ -54,8 +54,8 @@ func pull(owner, name string, number int, single bool) doc {
 	p := doc{
 		"id": 100 + number, "node_id": "PR_kwDO", "number": number, "state": "open",
 		"title": "Change " + strconv.Itoa(number), "draft": false, "user": user("octocat"),
-		"head": doc{"label": "octocat:feature", "ref": "feature", "sha": "aaaa000000000000000000000000000000000001", "repo": repo(owner, name)},
-		"base": doc{"label": owner + ":main", "ref": "main", "sha": "bbbb000000000000000000000000000000000002", "repo": repo(owner, name)},
+		"head":             doc{"label": "octocat:feature", "ref": "feature", "sha": "aaaa000000000000000000000000000000000001", "repo": repo(owner, name)},
+		"base":             doc{"label": owner + ":main", "ref": "main", "sha": "bbbb000000000000000000000000000000000002", "repo": repo(owner, name)},
 		"merge_commit_sha": "cccc000000000000000000000000000000000003",
 		"updated_at":       "2026-08-25T10:00:00Z",
 		"url":              api + "/repos/" + full + "/pulls/" + strconv.Itoa(number),
@@ -85,7 +85,7 @@ func gitCommit(owner, name, sha string) doc {
 	return doc{
 		"sha": sha, "node_id": "C_kwDO", "url": base + "/commits/" + sha,
 		"html_url": "https://github.com/" + owner + "/" + name + "/commit/" + sha,
-		"author": who, "committer": who, "message": "Fix the thing",
+		"author":   who, "committer": who, "message": "Fix the thing",
 		"tree":         doc{"sha": "dddd000000000000000000000000000000000004", "url": base + "/trees/dddd"},
 		"parents":      []doc{{"sha": "eeee000000000000000000000000000000000005", "url": base + "/commits/eeee"}},
 		"verification": doc{"verified": false, "reason": "unsigned", "signature": nil, "payload": nil},
