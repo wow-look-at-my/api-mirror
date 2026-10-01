@@ -41,6 +41,9 @@ func (no *Notify) validate(resources map[string]*Resource, dashboard string) err
 			return fmt.Errorf("<notify><field name=%q>: give it a payload path or an expr, not both and not neither", f.Field)
 		}
 	}
+	if err := oneOutputPerInput("<notify>", no.Fields); err != nil {
+		return err
+	}
 	if no.Reveal == nil {
 		return nil
 	}

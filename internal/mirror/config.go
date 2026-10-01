@@ -254,6 +254,20 @@ type Key struct {
 	Fold bool
 	// Credential fills this from the caller's own request, not the document.
 	Credential bool
+	// Type is the JSON type the answer serves a From key as: text or int.
+	Type FieldType
+}
+
+// Served reports whether the answer carries this key.
+func (k Key) Served() bool { return k.From != "" }
+
+// sentColumn is the engine column that keeps a folded key's spelling as the
+// upstream sent it, or "" for a key that needs none.
+func (k Key) sentColumn() string {
+	if !k.Fold || !k.Served() {
+		return ""
+	}
+	return enginePrefix + "sent_" + k.Name
 }
 
 // FieldType is a stored column's type. The set is deliberately small: a mirror

@@ -45,8 +45,13 @@ func TestIncompleteListKeepsWhatItNoLongerMentions(t *testing.T) {
 	})
 
 	require.Len(t, listNames(t, e), 2)
-	assert.Len(t, listNames(t, e), 2,
-		"an undeclared list may be one page, so dropping the rest would lose them")
+	assert.Equal(t, []string{"first"}, listNames(t, e), "the answer is the page the upstream returned")
+
+	res, ok := e.store.Resource("part")
+	require.True(t, ok)
+	row, err := e.store.Get(t.Context(), res, map[string]string{"widget_id": "7", "id": "b"})
+	require.NoError(t, err)
+	assert.NotNil(t, row, "an undeclared list may be one page, so its row stays for the page that holds it")
 }
 
 func TestReplaceRefusesAnEmptyKey(t *testing.T) {

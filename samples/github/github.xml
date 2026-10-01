@@ -88,6 +88,7 @@
 		<key name="owner" from="owner.login" fold="true"/>
 		<key name="name" from="name" fold="true"/>
 		<field name="repo_id" type="int">id</field>
+		<field name="full_name" type="text">full_name</field>
 		<field name="visibility" type="text">visibility</field>
 		<field name="private" type="bool">private</field>
 		<field name="default_branch" type="text">default_branch</field>
@@ -106,7 +107,7 @@
 	<resource name="pull" ttl="1h">
 		<key name="owner" from="base.repo.owner.login" fold="true"/>
 		<key name="repo" from="base.repo.name" fold="true"/>
-		<key name="number" from="number"/>
+		<key name="number" from="number" type="int"/>
 		<field name="title" type="text">title</field>
 		<field name="state" type="text">state</field>
 		<field name="draft" type="bool">draft</field>
@@ -172,7 +173,7 @@
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="sha"/>
-		<key name="id"/>
+		<key name="id" from="id" type="int"/>
 		<field name="context" type="text">context</field>
 		<field name="state" type="text">state</field>
 		<field name="description" type="text">description</field>
@@ -269,7 +270,7 @@
 	<resource name="git_commit" ttl="720h">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
-		<key name="sha" fold="true"/>
+		<key name="sha" from="sha" fold="true"/>
 		<field name="message" type="text">message</field>
 		<field name="author_name" type="text">author.name</field>
 		<field name="author_email" type="text">author.email</field>
@@ -745,6 +746,7 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="name">repository.name</set>
 				<set field="repo_id">repository.id</set>
+				<set field="full_name">repository.full_name</set>
 				<set field="visibility">repository.visibility</set>
 				<set field="private">repository.private</set>
 				<set field="default_branch">repository.default_branch</set>

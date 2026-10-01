@@ -14,7 +14,7 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `load.go` / `load_events.go` — XML to Spec. Builders check SHAPE; `validate` checks MEANING.
 - `dsl.go` — the boundary with api-dsl. Below it is the language, above it is what a mirror means.
 - `schema.go` — the derived DDL and the schema fingerprint.
-- `store.go` / `store_resources.go` — engine tables via sqlc, resource tables built at run time from `columnsOf`.
+- `store.go` / `store_resources.go` — engine tables via sqlc, resource tables built at run time from `columnsOf`. `mirror_list_member` (a list answer's rows, in order) is plain SQL in `schema.go`, because a push may not add a generated file.
 - `internal/database/` — `schema.sql`, `queries/*.sql`, and sqlc's generated `dbgen/`.
 - `freshness.go` — the TTL state machine, detached fetches, per-key singleflight, the shutdown drain.
 - `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary.
@@ -60,6 +60,7 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
+- **A rebuilt answer is a subset of the upstream's.** Each field, and each key with `from=`, returns to its source path with its upstream type. A folded key serves its as-sent spelling. One source path is declared once. `dats/upstream-shape.dats` checks the answers against the upstream with `api-mirror-delta`.
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
 - **The fingerprint is derived, never declared.** It hashes the schema the spec produces, so a resource change always nukes and nothing has to be kept in step by hand.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.

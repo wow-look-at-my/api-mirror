@@ -48,9 +48,15 @@ func (e *Engine) planFor(kind string, sk StaleKey) (*fetchPlan, bool) {
 			if v, ok := key[rt.column(q.Name)]; ok {
 				query[q.Name] = v
 			}
+			continue
+		}
+		// A list's answer key carries the query it was asked with.
+		if v, ok := key[queryExtra+q.Name]; ok {
+			query[q.Name] = v
+			delete(key, queryExtra+q.Name)
 		}
 	}
-	return &fetchPlan{route: rt, res: res, key: key, query: query, path: path}, true
+	return &fetchPlan{route: rt, res: res, key: key, query: query, path: path, kind: kind, answer: sk.Key}, true
 }
 
 // routeForKind finds the route whose bookkeeping this kind names.

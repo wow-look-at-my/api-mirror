@@ -8,13 +8,13 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// The engine's own tables. They are the same for every spec, so they carry a
+// The engine's own tables. They are the same for every spec.
 const enginePrefix = "mirror_"
 
 // resourceTable is the derived table name for a resource.
 func resourceTable(name string) string { return "res_" + name }
 
-// sqlType maps a declared field type to its SQLite column type. A time is
+// sqlType maps a declared field type to its SQLite column type.
 func sqlType(t FieldType) string {
 	switch t {
 	case FieldInt, FieldBool, FieldTime:
@@ -35,6 +35,11 @@ func resourceDDL(r *Resource) string {
 	for _, k := range r.Keys {
 		fmt.Fprintf(&b, "\t%s TEXT NOT NULL,\n", k.Name)
 	}
+	for _, k := range r.Keys {
+		if c := k.sentColumn(); c != "" {
+			fmt.Fprintf(&b, "\t%s TEXT,\n", c)
+		}
+	}
 	switch r.Store {
 	case StoreDocument:
 		b.WriteString("\tdocument TEXT NOT NULL,\n")
@@ -53,11 +58,24 @@ func resourceDDL(r *Resource) string {
 	return b.String()
 }
 
+// listMemberDDL holds the rows each list answer named, in the upstream's
+// order.
+const listMemberDDL = `CREATE TABLE mirror_list_member (
+	kind     TEXT    NOT NULL,
+	list_key TEXT    NOT NULL,
+	position INTEGER NOT NULL,
+	row_key  TEXT    NOT NULL,
+	PRIMARY KEY (kind, list_key, position)
+);
+`
+
 // DDL is the whole schema: the engine's fixed tables, then the resources in
 // declared order.
 func (s *Spec) DDL() string {
 	var b strings.Builder
 	b.WriteString(strings.TrimLeft(database.Schema, "\n"))
+	b.WriteString("\n")
+	b.WriteString(listMemberDDL)
 	for _, r := range s.Resources {
 		b.WriteString("\n")
 		b.WriteString(resourceDDL(r))
@@ -77,6 +95,11 @@ func columnsOf(r *Resource) []string {
 	out := make([]string, 0, len(r.Keys)+len(r.Fields)+1)
 	for _, k := range r.Keys {
 		out = append(out, k.Name)
+	}
+	for _, k := range r.Keys {
+		if c := k.sentColumn(); c != "" {
+			out = append(out, c)
+		}
 	}
 	if r.Store == StoreDocument {
 		return append(out, "document")
@@ -100,6 +123,19 @@ func (s *Spec) validateNames() error {
 		}
 		if strings.HasPrefix(r.Name, enginePrefix) {
 			return fmt.Errorf("resource %q: the %s prefix belongs to the engine", r.Name, enginePrefix)
+		}
+		// The engine's own columns carry its prefix, so a declared name may not.
+		declared := make([]string, 0, len(r.Keys)+len(r.Fields))
+		for _, k := range r.Keys {
+			declared = append(declared, k.Name)
+		}
+		for _, f := range r.Fields {
+			declared = append(declared, f.Name)
+		}
+		for _, name := range declared {
+			if strings.HasPrefix(name, enginePrefix) {
+				return fmt.Errorf("resource %q: %q: the %s prefix belongs to the engine", r.Name, name, enginePrefix)
+			}
 		}
 		for _, c := range columnsOf(r) {
 			if err := validateIdent(fmt.Sprintf("resource %q column", r.Name), c); err != nil {

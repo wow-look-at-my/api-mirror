@@ -18,7 +18,7 @@ import (
 func absorb(r *Resource, doc any) (Row, error) {
 	row := make(Row, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
-		// A key with no stated path reads the field of its own name. That is
+		// A key with no stated path reads the field of its own name.
 		from := k.From
 		if from == "" {
 			from = k.Name
@@ -27,7 +27,11 @@ func absorb(r *Resource, doc any) (Row, error) {
 		if v == nil {
 			continue
 		}
-		row[k.Name] = foldKey(k, fmt.Sprintf("%v", v))
+		s := fmt.Sprintf("%v", v)
+		row[k.Name] = foldKey(k, s)
+		if c := k.sentColumn(); c != "" {
+			row[c] = s
+		}
 	}
 	for _, f := range r.Fields {
 		v, err := fieldValue(f, doc)
@@ -174,27 +178,80 @@ func toUnix(v any) (any, error) {
 
 // rebuild renders a stored row back into the document a consumer receives.
 //
-// Hit and miss both go through here, so a route's answer cannot change shape
-// with cache state -- the class of bug where a consumer works until the cache
-// warms up.
+// Each key read from the document, and each field, goes back to its source
+// path. The answer is a subset of the upstream document. A route-only key and
+// an expr field are not the upstream's words, so neither is served.
 func rebuild(r *Resource, row Row) (map[string]any, error) {
 	if r.Store == StoreDocument {
 		return nil, fmt.Errorf("rebuild %s: a document resource replays its stored document", r.Name)
 	}
 	out := make(map[string]any, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
-		if v, ok := row[k.Name]; ok {
-			out[k.Name] = v
-		}
-	}
-	for _, f := range r.Fields {
-		v, ok := row[f.Name]
-		if !ok {
+		if !k.Served() {
 			continue
 		}
-		out[f.Name] = present(f, v)
+		// A folded key serves its as-sent spelling.
+		v := row[k.Name]
+		if c := k.sentColumn(); c != "" {
+			v = row[c]
+		}
+		if v == nil {
+			continue
+		}
+		setPath(out, k.From, presentKey(k, v))
+	}
+	for _, f := range r.Fields {
+		if f.From == "" {
+			continue
+		}
+		// A null cell may be a value the upstream never sent.
+		v := row[f.Name]
+		if v == nil {
+			continue
+		}
+		setPath(out, f.From, present(f, v))
 	}
 	return out, nil
+}
+
+// normalPath is a source path as lookupPath reads it: dotted, with empty
+// segments skipped.
+func normalPath(path string) string {
+	var segs []string
+	for _, s := range strings.Split(path, ".") {
+		if s = strings.TrimSpace(s); s != "" {
+			segs = append(segs, s)
+		}
+	}
+	return strings.Join(segs, ".")
+}
+
+// setPath writes v at a dotted path, creating the objects above it.
+func setPath(doc map[string]any, path string, v any) {
+	segs := strings.Split(normalPath(path), ".")
+	cur := doc
+	for _, s := range segs[:len(segs)-1] {
+		next, ok := cur[s].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			cur[s] = next
+		}
+		cur = next
+	}
+	cur[segs[len(segs)-1]] = v
+}
+
+// presentKey turns a stored key, which is always text, into its declared JSON
+// type. A cell that does not parse is served as stored.
+func presentKey(k Key, v any) any {
+	if k.Type != FieldInt {
+		return v
+	}
+	n, err := toInt(v)
+	if err != nil {
+		return v
+	}
+	return n
 }
 
 // present turns a stored cell back into its JSON shape.

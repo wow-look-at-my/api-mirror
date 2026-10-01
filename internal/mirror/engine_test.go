@@ -102,7 +102,7 @@ func TestServeFetchesThenServesFromCache(t *testing.T) {
 	assert.Equal(t, true, doc["live"])
 	assert.Equal(t, "2026-01-02T03:04:05Z", doc["seen"])
 
-	// A field the spec never declared is a field the mirror never serves, and
+	// A field the spec never declared is a field the mirror never serves.
 	assert.NotContains(t, doc, "html_url")
 
 	second := get(t, e, "/widgets/7")
@@ -123,10 +123,10 @@ func TestServeListStoresEveryRow(t *testing.T) {
 
 	var out []map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	// The answer is read back from rows under the route's key.
 	require.Len(t, out, 2)
 	assert.Equal(t, "first", out[0]["name"])
-	// The list route's own key pins the rows it owns, so an item that does not
-	assert.Equal(t, "7", out[0]["widget_id"])
+	assert.NotContains(t, out[0], "widget_id", "a key addresses the row; the upstream never sent it, so the answer does not either")
 }
 
 func TestUndeclaredPathPassesThroughWithAReason(t *testing.T) {
@@ -163,7 +163,7 @@ func TestTransientUpstreamFailureIsNotStored(t *testing.T) {
 	first := get(t, e, "/widgets/7")
 	assert.Equal(t, http.StatusBadGateway, first.Code)
 
-	// The failure is remembered only for its backoff window, and the window is
+	// The failure is remembered only for its backoff window.
 	require.NoError(t, clearBackoff(e, "widget", "7"))
 
 	second := get(t, e, "/widgets/7")

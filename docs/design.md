@@ -70,10 +70,17 @@ row a delivery never reaches. The engine's own per-row column is
 `mirror_written_at`, prefixed so it cannot collide with a field the upstream
 has — `updated_at` is exactly the name an API uses.
 
-`<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is
-a path into the absorbed document (`owner.login`) or a template. `store="document"`
-on the resource stores the response body itself rather than columns, for a route
-whose answer is a blob nobody needs to query.
+`<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
+
+The rebuilt answer is a subset of the upstream document. A client of the upstream must read the mirror unchanged.
+
+- Each field, and each key with `from=`, goes back to the path it was read from. The value and the JSON type stay the upstream's. `type="int"` on a key serves its stored text as a number.
+- A key without `from=` is the route's word, not the upstream's, so it is never served.
+- A folded key matches without regard to case. The engine also keeps the spelling the upstream sent, and serves that.
+- An expr field is derived. As a result, it is stored and never served.
+- A null cell is left out, because storage cannot tell a sent null from a field that was never sent.
+
+One fact is declared once. Validation refuses declarations that read one source path, or one path under another, in a resource or in one event. `dats/upstream-shape.dats` holds every cached column route against the upstream's own answer.
 
 ### `<route>` — what a consumer asks for
 
@@ -89,13 +96,9 @@ spec never described. `<accept>` does the same for media types. `<absorb
 status="404"/>` names an upstream refusal worth remembering, and a status named
 nowhere relays without being stored.
 
-`list="true"` marks a route whose answer is an array of the resource's rows.
-`complete="true"` adds that the answer is the WHOLE set under its parent key, so
-an item missing from it has been deleted and its row goes too. It is declared
-rather than inferred, because only the author knows whether a page is the whole
-set — replace-syncing one page of a paginated list would throw away the others.
-A list without it only ever adds, and an item that vanished upstream is served
-until its row is evicted some other way.
+`list="true"` marks a route whose answer is an array of the resource's rows. The answer is the page the upstream returned: the rows it named, in its order, and nothing another route stored under the same parent key. Each list answer records its members, keyed by the request together with every query value the route models, so page 2 is its own answer. A row a delivery deletes drops out of every page that named it. A document list stores the upstream's array whole and replays it. 
+
+`complete="true"` adds that the answer is the WHOLE set under its parent key. An item missing from it is deleted upstream, so its row goes too. It is declared rather than inferred, because only the author knows whether a page is the whole set. Replace-syncing one page of a paginated list will throw away the others. A list without it only ever adds rows, and an item that vanished upstream keeps its row until it is evicted some other way.
 
 A route the spec does not declare is a passthrough: forwarded verbatim,
 uncached, and reported as uncached. There is no third state.
