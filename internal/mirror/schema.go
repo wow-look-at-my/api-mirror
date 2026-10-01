@@ -8,13 +8,13 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// The engine's own tables. They are the same for every spec, so they carry a
+// The engine's own tables. They are the same for every spec.
 const enginePrefix = "mirror_"
 
 // resourceTable is the derived table name for a resource.
 func resourceTable(name string) string { return "res_" + name }
 
-// sqlType maps a declared field type to its SQLite column type. A time is
+// sqlType maps a declared field type to its SQLite column type.
 func sqlType(t FieldType) string {
 	switch t {
 	case FieldInt, FieldBool, FieldTime:
