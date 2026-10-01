@@ -27,7 +27,11 @@ func absorb(r *Resource, doc any) (Row, error) {
 		if v == nil {
 			continue
 		}
-		row[k.Name] = foldKey(k, fmt.Sprintf("%v", v))
+		s := fmt.Sprintf("%v", v)
+		row[k.Name] = foldKey(k, s)
+		if c := k.sentColumn(); c != "" {
+			row[c] = s
+		}
 	}
 	for _, f := range r.Fields {
 		v, err := fieldValue(f, doc)
@@ -174,12 +178,28 @@ func toUnix(v any) (any, error) {
 
 // rebuild renders a stored row back into the document a consumer receives.
 //
-// Each field goes back to the path it was read from, so the answer is a subset of the upstream document: same paths, same values, same types. A key only addresses the row and is never echoed; a value the answer must carry is a field. An expr field is derived, the upstream never said it, so it is stored and never served.
+// Each key read from the document, and each field, goes back to its source
+// path. The answer is a subset of the upstream document. A route-only key and
+// an expr field are not the upstream's words, so neither is served.
 func rebuild(r *Resource, row Row) (map[string]any, error) {
 	if r.Store == StoreDocument {
 		return nil, fmt.Errorf("rebuild %s: a document resource replays its stored document", r.Name)
 	}
-	out := make(map[string]any, len(r.Fields))
+	out := make(map[string]any, len(r.Keys)+len(r.Fields))
+	for _, k := range r.Keys {
+		if !k.Served() {
+			continue
+		}
+		// A folded key serves its as-sent spelling.
+		v := row[k.Name]
+		if c := k.sentColumn(); c != "" {
+			v = row[c]
+		}
+		if v == nil {
+			continue
+		}
+		setPath(out, k.From, presentKey(k, v))
+	}
 	for _, f := range r.Fields {
 		if f.From == "" {
 			continue
@@ -219,6 +239,19 @@ func setPath(doc map[string]any, path string, v any) {
 		cur = next
 	}
 	cur[segs[len(segs)-1]] = v
+}
+
+// presentKey turns a stored key, which is always text, into its declared JSON
+// type. A cell that does not parse is served as stored.
+func presentKey(k Key, v any) any {
+	if k.Type != FieldInt {
+		return v
+	}
+	n, err := toInt(v)
+	if err != nil {
+		return v
+	}
+	return n
 }
 
 // present turns a stored cell back into its JSON shape.

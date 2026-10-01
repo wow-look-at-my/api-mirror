@@ -258,29 +258,51 @@ func (r *Resource) validate() error {
 	return r.Reveal.validate(r.Name)
 }
 
-// validateAnswerPaths checks the paths a column resource rebuilds its answer
-// at. Fields at one path, or one field under another, would each overwrite the
-// other's value in the answer.
+// validateAnswerPaths checks the source paths a column resource reads and
+// rebuilds its answer at. Each fact is stored once: declarations of one
+// path store it twice, and a path under another overwrites part of it.
 func (r *Resource) validateAnswerPaths() error {
+	for _, k := range r.Keys {
+		if k.Type != "" && k.Type != FieldText && k.Type != FieldInt {
+			return fmt.Errorf("resource %q key %q: type %q; a key is text or int", r.Name, k.Name, k.Type)
+		}
+	}
 	if r.Store != StoreColumns {
 		return nil
 	}
-	var paths []string
-	owner := map[string]string{}
+	var (
+		paths   []string
+		owner   = map[string]string{}
+		fields  int
+		claimed = func(name, from string) error {
+			p := normalPath(from)
+			for _, q := range paths {
+				if p == q || strings.HasPrefix(p, q+".") || strings.HasPrefix(q, p+".") {
+					return fmt.Errorf("resource %q: %q and %q both read %q and %q; declare one fact once", r.Name, owner[q], name, q, p)
+				}
+			}
+			paths = append(paths, p)
+			owner[p] = name
+			return nil
+		}
+	)
+	for _, k := range r.Keys {
+		if k.Served() {
+			if err := claimed(k.Name, k.From); err != nil {
+				return err
+			}
+		}
+	}
 	for _, f := range r.Fields {
 		if f.From == "" {
 			continue
 		}
-		p := normalPath(f.From)
-		for _, q := range paths {
-			if p == q || strings.HasPrefix(p, q+".") || strings.HasPrefix(q, p+".") {
-				return fmt.Errorf("resource %q: fields %q and %q both rebuild the answer at %q and %q; one would overwrite the other", r.Name, owner[q], f.Name, q, p)
-			}
+		if err := claimed(f.Name, f.From); err != nil {
+			return err
 		}
-		paths = append(paths, p)
-		owner[p] = f.Name
+		fields++
 	}
-	if len(paths) == 0 {
+	if fields == 0 {
 		return fmt.Errorf("resource %q: no <field> reads a source path, so its answer would be empty; an expr field is stored, never served", r.Name)
 	}
 	return nil
@@ -611,9 +633,28 @@ func (e *Events) validate(resources map[string]*Resource) error {
 				return fmt.Errorf("event %q set %q: give it a payload path or an expr, not both and not neither", ev.Type, st.Field)
 			}
 		}
+		if err := validateEventSources(ev); err != nil {
+			return err
+		}
 		if err := validateEventKeys(ev, res); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// That stores one fact twice, and the copies drift apart.
+func validateEventSources(ev *Event) error {
+	reader := map[string]string{}
+	for _, st := range slices.Concat(ev.Keys, ev.Sets) {
+		if st.From == "" {
+			continue
+		}
+		p := normalPath(st.From)
+		if prev, ok := reader[p]; ok && prev != st.Field {
+			return fmt.Errorf("event %q: %q and %q both read %q; store one fact once", ev.Type, prev, st.Field, p)
+		}
+		reader[p] = st.Field
 	}
 	return nil
 }

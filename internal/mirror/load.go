@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"strconv"
@@ -264,7 +265,7 @@ func buildResource(n *node) (*Resource, error) {
 func addResourceChild(r *Resource, child *node) error {
 	switch child.Name() {
 	case "key":
-		if err := checkAttrs(child, "name", "from", "fold", "credential"); err != nil {
+		if err := checkAttrs(child, "name", "from", "fold", "credential", "type"); err != nil {
 			return err
 		}
 		r.Keys = append(r.Keys, Key{
@@ -272,6 +273,7 @@ func addResourceChild(r *Resource, child *node) error {
 			From:       child.Attr("from"),
 			Fold:       child.Attr("fold") == "true",
 			Credential: child.Attr("credential") == "true",
+			Type:       FieldType(cmp.Or(child.Attr("type"), string(FieldText))),
 		})
 	case "field":
 		f, err := buildField(child)
