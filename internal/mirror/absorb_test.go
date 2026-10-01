@@ -177,9 +177,10 @@ func TestAbsorbAndRebuild_ProjectOnlyTheDeclaredFields(t *testing.T) {
 	out, err := rebuild(res, row)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{
+		"owner":            map[string]any{"login": "WowLookAtMy"},
 		"stargazers_count": int64(5),
 		"archived":         false,
-	}, out, "each field goes back to the path it came from; a key and an expr field are not the upstream's words")
+	}, out, "each key and field goes back to its path, a folded key as sent; an expr field is not the upstream's word")
 }
 
 func TestAbsorb_ReportsWhichFieldRefusedTheValue(t *testing.T) {

@@ -87,11 +87,8 @@
 	<resource name="repo" ttl="6h">
 		<key name="owner" from="owner.login" fold="true"/>
 		<key name="name" from="name" fold="true"/>
-		<!-- A folded key loses its case, so the answer's own spelling is a field. -->
 		<field name="repo_id" type="int">id</field>
-		<field name="repo_name" type="text">name</field>
 		<field name="full_name" type="text">full_name</field>
-		<field name="owner_login" type="text">owner.login</field>
 		<field name="visibility" type="text">visibility</field>
 		<field name="private" type="bool">private</field>
 		<field name="default_branch" type="text">default_branch</field>
@@ -110,8 +107,7 @@
 	<resource name="pull" ttl="1h">
 		<key name="owner" from="base.repo.owner.login" fold="true"/>
 		<key name="repo" from="base.repo.name" fold="true"/>
-		<key name="number" from="number"/>
-		<field name="pr_number" type="int">number</field>
+		<key name="number" from="number" type="int"/>
 		<field name="title" type="text">title</field>
 		<field name="state" type="text">state</field>
 		<field name="draft" type="bool">draft</field>
@@ -139,7 +135,6 @@
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="ref"/>
-		<field name="full_ref" type="text">ref</field>
 		<field name="tip_sha" type="text">object.sha</field>
 		<reveal>
 			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
@@ -178,8 +173,7 @@
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="sha"/>
-		<key name="id"/>
-		<field name="status_id" type="int">id</field>
+		<key name="id" from="id" type="int"/>
 		<field name="context" type="text">context</field>
 		<field name="state" type="text">state</field>
 		<field name="description" type="text">description</field>
@@ -276,8 +270,7 @@
 	<resource name="git_commit" ttl="720h">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
-		<key name="sha" fold="true"/>
-		<field name="commit_sha" type="text">sha</field>
+		<key name="sha" from="sha" fold="true"/>
 		<field name="message" type="text">message</field>
 		<field name="author_name" type="text">author.name</field>
 		<field name="author_email" type="text">author.email</field>
@@ -753,9 +746,7 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="name">repository.name</set>
 				<set field="repo_id">repository.id</set>
-				<set field="repo_name">repository.name</set>
 				<set field="full_name">repository.full_name</set>
-				<set field="owner_login">repository.owner.login</set>
 				<set field="visibility">repository.visibility</set>
 				<set field="private">repository.private</set>
 				<set field="default_branch">repository.default_branch</set>
@@ -779,7 +770,6 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="ref" expr='{{ trimPrefix "refs/heads/" .payload.ref }}'/>
-				<set field="full_ref">ref</set>
 				<set field="tip_sha">after</set>
 			</apply>
 		</event>
@@ -873,7 +863,6 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="ref">pull_request.base.ref</set>
-				<set field="full_ref" expr='refs/heads/{{ .payload.pull_request.base.ref }}'/>
 				<set field="tip_sha">pull_request.merge_commit_sha</set>
 			</apply>
 		</event>
@@ -951,7 +940,6 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">number</set>
-				<set field="pr_number">number</set>
 				<set field="title">pull_request.title</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
@@ -1030,7 +1018,6 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">pull_request.number</set>
-				<set field="pr_number">pull_request.number</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
 				<set field="head_sha">pull_request.head.sha</set>

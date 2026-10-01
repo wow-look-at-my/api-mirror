@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -29,6 +30,67 @@ func TestRebuild_NestsEachFieldAtItsSourcePath(t *testing.T) {
 	}, out, "the key's own value is the route's spelling, never the upstream's, so only the field answers")
 }
 
+func TestRebuild_ServesADocumentKeyAtItsPathAndType(t *testing.T) {
+	res := &Resource{
+		Name:   "pull",
+		Store:  StoreColumns,
+		Keys:   []Key{{Name: "owner", From: "base.repo.owner.login", Fold: true}, {Name: "repo"}, {Name: "number", From: "number", Type: FieldInt}},
+		Fields: []Field{{Name: "title", Type: FieldText, From: "title"}},
+	}
+	row, err := absorb(res, jsonValue(t, `{"number":7,"title":"t","base":{"repo":{"owner":{"login":"Octo"}}}}`))
+	require.NoError(t, err)
+	assert.Equal(t, "octo", row["owner"], "the key folds, so a differently cased URL finds the row")
+	row["repo"] = "demo"
+
+	out, err := rebuild(res, row)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"number": int64(7),
+		"title":  "t",
+		"base":   map[string]any{"repo": map[string]any{"owner": map[string]any{"login": "Octo"}}},
+	}, out, "a key read from the document is served as sent and typed; the route-only repo key is not served")
+
+	delete(row, Key{Name: "owner", From: "x", Fold: true}.sentColumn())
+	out, err = rebuild(res, row)
+	require.NoError(t, err)
+	assert.NotContains(t, out, "base", "with no as-sent spelling stored, the folded value is not the upstream's word")
+}
+
+func TestValidate_RefusesOneFactReadTwice(t *testing.T) {
+	res := &Resource{
+		Name: "pull", Store: StoreColumns, Reveal: &Reveal{Public: "true"},
+		Keys:   []Key{{Name: "number", From: "number", Type: FieldInt}},
+		Fields: []Field{{Name: "pr_number", Type: FieldInt, From: "number"}},
+	}
+	err := res.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "declare one fact once")
+
+	ev := &Event{Type: "pull_request", Sets: []Set{
+		{Field: "number", From: "number"},
+		{Field: "pr_number", From: " number "},
+	}}
+	err = validateEventSources(ev)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "store one fact once")
+
+	assert.NoError(t, validateEventSources(&Event{Type: "push",
+		Keys: []Set{{Field: "owner", From: "repository.owner.login"}},
+		Sets: []Set{{Field: "owner", From: "repository.owner.login"}, {Field: "ref", Expr: "{{ .payload.ref }}"}},
+	}), "a key and a set naming the same column are one declaration of one fact")
+}
+
+func TestValidate_RefusesAKeyTypeThatIsNotTextOrInt(t *testing.T) {
+	res := &Resource{
+		Name: "r", Store: StoreColumns, Reveal: &Reveal{Public: "true"},
+		Keys:   []Key{{Name: "id", From: "id", Type: FieldBool}},
+		Fields: []Field{{Name: "a", Type: FieldText, From: "a"}},
+	}
+	err := res.validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a key is text or int")
+}
+
 func TestValidate_RefusesFieldsThatRebuildAtOnePath(t *testing.T) {
 	base := func(fields ...Field) *Resource {
 		return &Resource{
@@ -42,7 +104,7 @@ func TestValidate_RefusesFieldsThatRebuildAtOnePath(t *testing.T) {
 	} {
 		err := res.validate()
 		require.Error(t, err, name)
-		assert.Contains(t, err.Error(), "one would overwrite the other", name)
+		assert.Contains(t, err.Error(), "declare one fact once", name)
 	}
 
 	err := base(Field{Name: "a", Type: FieldText, Expr: "{{ .x }}"}).validate()
@@ -90,8 +152,8 @@ func TestShippedSpecs_RebuildASubsetOfTheUpstreamDocument(t *testing.T) {
 					}
 				}
 				for _, k := range res.Keys {
-					if k.From != "" && lookupPath(upstream, k.From) == nil {
-						setPath(upstream, k.From, sampleOf(FieldText, normalPath(k.From)))
+					if k.Served() {
+						setPath(upstream, k.From, sampleOf(cmp.Or(k.Type, FieldText), normalPath(k.From)))
 					}
 				}
 				doc, err := decodeJSON(mustMarshal(t, upstream))

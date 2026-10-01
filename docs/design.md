@@ -72,7 +72,15 @@ has — `updated_at` is exactly the name an API uses.
 
 `<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
 
-The rebuilt answer is a subset of the upstream document. Each field goes back to the path it came from, with the upstream's value and JSON type, so a client of the upstream reads the mirror unchanged. A key addresses the row and is never echoed: its value is the route's spelling, folded or not. A value the answer must carry, such as an id or the original case of a folded key, is a field. An expr field is derived. As a result, it is stored and never served. A null cell is left out, because storage cannot tell a null the upstream sent from a field it never sent. Fields at one path, or one under another, fail validation. `dats/upstream-shape.dats` holds every cached column route against the upstream's own answer.
+The rebuilt answer is a subset of the upstream document. A client of the upstream must read the mirror unchanged.
+
+- Each field, and each key with `from=`, goes back to the path it was read from. The value and the JSON type stay the upstream's. `type="int"` on a key serves its stored text as a number.
+- A key without `from=` is the route's word, not the upstream's, so it is never served.
+- A folded key matches without regard to case. The engine also keeps the spelling the upstream sent, and serves that.
+- An expr field is derived. As a result, it is stored and never served.
+- A null cell is left out, because storage cannot tell a sent null from a field that was never sent.
+
+One fact is declared once. Validation refuses declarations that read one source path, or one path under another, in a resource or in one event. `dats/upstream-shape.dats` holds every cached column route against the upstream's own answer.
 
 ### `<route>` — what a consumer asks for
 
