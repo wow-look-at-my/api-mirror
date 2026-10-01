@@ -272,6 +272,45 @@ func (s *Store) DeleteFreshness(ctx context.Context, kind, key string) (int64, e
 	return n, nil
 }
 
+// SetListMembers records the row keys one list answer held, in order. the
+// membership goes in the same transaction, so a read never sees pages
+// mixed.
+func (s *Store) SetListMembers(ctx context.Context, kind, listKey string, rowKeys []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("list members %s/%s: %w", kind, listKey, err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM mirror_list_member WHERE kind = ? AND list_key = ?`, kind, listKey); err != nil {
+		return fmt.Errorf("list members %s/%s: %w", kind, listKey, err)
+	}
+	for i, rk := range rowKeys {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO mirror_list_member (kind, list_key, position, row_key) VALUES (?, ?, ?, ?)`,
+			kind, listKey, i, rk); err != nil {
+			return fmt.Errorf("list members %s/%s: %w", kind, listKey, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// ListMembers reads the row keys one list answer held, in order.
+func (s *Store) ListMembers(ctx context.Context, kind, listKey string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT row_key FROM mirror_list_member WHERE kind = ? AND list_key = ? ORDER BY position`, kind, listKey)
+	if err != nil {
+		return nil, fmt.Errorf("read list members %s/%s: %w", kind, listKey, err)
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, fmt.Errorf("read list members %s/%s: %w", kind, listKey, err)
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
 // Watermark reads the newest view already applied for a subject. A subject
 // nothing has been applied for reports found=false.
 func (s *Store) Watermark(ctx context.Context, subject string) (time.Time, bool, error) {

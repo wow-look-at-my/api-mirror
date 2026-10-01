@@ -14,7 +14,7 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `load.go` / `load_events.go` — XML to Spec. Builders check SHAPE; `validate` checks MEANING.
 - `dsl.go` — the boundary with api-dsl. Below it is the language, above it is what a mirror means.
 - `schema.go` — the derived DDL and the schema fingerprint.
-- `store.go` / `store_resources.go` — engine tables via sqlc, resource tables built at run time from `columnsOf`.
+- `store.go` / `store_resources.go` — engine tables via sqlc, resource tables built at run time from `columnsOf`. `mirror_list_member` (a list answer's rows, in order) is plain SQL in `schema.go`, because a push may not add a generated file.
 - `internal/database/` — `schema.sql`, `queries/*.sql`, and sqlc's generated `dbgen/`.
 - `freshness.go` — the TTL state machine, detached fetches, per-key singleflight, the shutdown drain.
 - `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary.

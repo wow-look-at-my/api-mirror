@@ -156,6 +156,26 @@ func (e *Engine) ttlFor(kind string) time.Duration {
 // defaultTTL backs a route that names no TTL anywhere.
 const defaultTTL = time.Hour
 
+// queryExtra marks a query value inside a list's answer key.
+const queryExtra = "?"
+
+// answerKey names one answer's freshness and, for a list, its membership.
+func answerKey(res *Resource, rt *Route, key, query map[string]string) string {
+	if !rt.List {
+		return keyString(res, key)
+	}
+	k := make(map[string]string, len(key)+len(rt.Query))
+	for name, v := range key {
+		k[name] = v
+	}
+	for _, q := range rt.Query {
+		if !q.Key {
+			k[queryExtra+q.Name] = query[q.Name]
+		}
+	}
+	return keyString(res, k)
+}
+
 // routeKind names route's freshness bookkeeping. A list and a single read
 func routeKind(rt *Route) string {
 	if rt.List {
@@ -354,14 +374,16 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	}
 
 	kind := routeKind(m.route)
-	key := keyString(res, m.key)
+	key := answerKey(res, m.route, m.key, m.query)
 	ctx = withPlan(ctx, &fetchPlan{
-		route: m.route,
-		res:   res,
-		key:   m.key,
-		query: m.query,
-		path:  r.URL.EscapedPath(),
-		body:  m.body,
+		route:  m.route,
+		res:    res,
+		key:    m.key,
+		query:  m.query,
+		path:   r.URL.EscapedPath(),
+		body:   m.body,
+		kind:   kind,
+		answer: key,
 	})
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	if err != nil {
@@ -435,13 +457,27 @@ func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
 // cache state. A consumer that works against a warm cache and breaks against a
 // cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
-	if m.route.List {
-		rows, err := e.store.List(ctx, res, m.key)
+	// A document list stored the upstream's whole array as one row, so it
+	// replays like any other document.
+	if m.route.List && res.Store == StoreColumns {
+		// The answer is the rows the upstream's own list named, in its order.
+		members, err := e.store.ListMembers(ctx, routeKind(m.route), answerKey(res, m.route, m.key, m.query))
 		if err != nil {
 			return nil, err
 		}
-		out := make([]any, 0, len(rows))
-		for _, row := range rows {
+		out := make([]any, 0, len(members))
+		for _, rk := range members {
+			key, ok := parseKeyString(res, rk)
+			if !ok {
+				return nil, fmt.Errorf("list %s: member %q is not a key of %s", m.route.Path, rk, res.Name)
+			}
+			row, err := e.store.Get(ctx, res, key)
+			if err != nil {
+				return nil, err
+			}
+			if row == nil {
+				continue
+			}
 			doc, err := rebuildRow(res, row)
 			if err != nil {
 				return nil, err

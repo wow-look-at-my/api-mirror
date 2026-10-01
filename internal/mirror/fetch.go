@@ -17,6 +17,8 @@ type fetchPlan struct {
 	path  string
 	// body is replayed to the upstream for a body-keyed route.
 	body []byte
+	// kind and answer name this answer's freshness, and a list's membership.
+	kind, answer string
 }
 
 type planKey struct{}
@@ -149,11 +151,30 @@ func (e *Engine) absorbAnswer(ctx context.Context, plan *fetchPlan, doc any) err
 		}
 		rows = append(rows, row)
 	}
+	var err error
 	if plan.route.Complete {
 		// The route says this answer is the whole set.
-		return e.store.ReplaceMany(ctx, plan.res, plan.key, rows, now)
+		err = e.store.ReplaceMany(ctx, plan.res, plan.key, rows, now)
+	} else {
+		err = e.store.PutMany(ctx, plan.res, rows, now)
 	}
-	return e.store.PutMany(ctx, plan.res, rows, now)
+	if err != nil {
+		return err
+	}
+	members := make([]string, len(rows))
+	for i, row := range rows {
+		members[i] = keyString(plan.res, rowKey(plan.res, row))
+	}
+	return e.store.SetListMembers(ctx, plan.kind, plan.answer, members)
+}
+
+// rowKey is the declared key of a stored row, as text.
+func rowKey(res *Resource, row Row) map[string]string {
+	key := make(map[string]string, len(res.Keys))
+	for _, k := range res.Keys {
+		key[k.Name] = fmt.Sprint(row[k.Name])
+	}
+	return key
 }
 
 func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now time.Time) error {

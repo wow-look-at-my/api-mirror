@@ -1,5 +1,7 @@
-# Holds every cached column route of the GitHub sample against the upstream's
-# own answer to the same request, cold and then warm. A served answer must be a
+# Holds the GitHub sample's cached column routes, and document lists,
+# against the upstream's own answer to the same request, cold and then warm.
+# The pulls list comes before the single pull, so a warm list proves it holds
+# only what the upstream's page held. A served answer must be a
 # subset of the upstream's: same paths, same values, same types. The unit tests
 # check the spec against itself; only this suite checks it against the upstream.
 sandbox:
@@ -40,14 +42,16 @@ tests:
 				/repos/Octo/Demo/git/ref/heads/main \
 				/repos/Octo/Demo/commits/abc123/statuses \
 				/repos/Octo/Demo/statuses/abc123 \
-				/repos/Octo/Demo/git/commits/abc123
+				/repos/Octo/Demo/git/commits/abc123 \
+				/repos/Octo/Demo/commits \
+				/repos/Octo/Demo/branches
 			echo "exit=$?"
 		done
 	  outputs:
 		stdout:
 			- "=== miss ==="
 			- "=== hit ==="
-			- "exchanges 7  matched 7  differing 0  errors 0"
+			- "exchanges 9  matched 9  differing 0  errors 0"
 		!stdout:
 			- "exit=1"
 			- "exit=2"

@@ -24,6 +24,8 @@ var (
 	pullPath      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls/([0-9]+)$`)
 	branchRefPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/ref/heads/([^/]+)$`)
 	gitCommitPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits/([^/]+)$`)
+	commitsPath   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/commits$`)
+	branchesPath  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/branches$`)
 )
 
 type doc = map[string]any
@@ -119,6 +121,20 @@ func answer(path string) (any, bool) {
 	}
 	if m := gitCommitPath.FindStringSubmatch(path); m != nil {
 		return gitCommit(m[1], m[2], m[3]), true
+	}
+	if m := commitsPath.FindStringSubmatch(path); m != nil {
+		full := m[1] + "/" + m[2]
+		return []doc{{
+			"sha": "abc123", "node_id": "C_kwDO", "commit": gitCommit(m[1], m[2], "abc123"),
+			"author": user("octocat"), "committer": user("octocat"),
+			"url": api + "/repos/" + full + "/commits/abc123", "html_url": "https://github.com/" + full + "/commit/abc123",
+		}}, true
+	}
+	if m := branchesPath.FindStringSubmatch(path); m != nil {
+		return []doc{
+			{"name": "feature", "protected": false, "commit": doc{"sha": "aaaa000000000000000000000000000000000001", "url": api + "/repos/" + m[1] + "/" + m[2] + "/commits/aaaa"}},
+			{"name": "main", "protected": true, "commit": doc{"sha": "ffff000000000000000000000000000000000006", "url": api + "/repos/" + m[1] + "/" + m[2] + "/commits/ffff"}},
+		}, true
 	}
 	return nil, false
 }

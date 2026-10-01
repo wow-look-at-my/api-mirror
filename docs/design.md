@@ -96,13 +96,7 @@ spec never described. `<accept>` does the same for media types. `<absorb
 status="404"/>` names an upstream refusal worth remembering, and a status named
 nowhere relays without being stored.
 
-`list="true"` marks a route whose answer is an array of the resource's rows.
-`complete="true"` adds that the answer is the WHOLE set under its parent key, so
-an item missing from it has been deleted and its row goes too. It is declared
-rather than inferred, because only the author knows whether a page is the whole
-set — replace-syncing one page of a paginated list would throw away the others.
-A list without it only ever adds, and an item that vanished upstream is served
-until its row is evicted some other way.
+`list="true"` marks a route whose answer is an array of the resource's rows. The answer is the page the upstream returned: the rows it named, in its order, and nothing another route stored under the same parent key. Each list answer records its members, keyed by the request together with every query value the route models, so page 2 is its own answer. A row a delivery deletes drops out of every page that named it. A document list stores the upstream's array whole and replays it. `complete="true"` adds that the answer is the WHOLE set under its parent key, so an item missing from it has been deleted and its row goes too. It is declared rather than inferred, because only the author knows whether a page is the whole set. Replace-syncing one page of a paginated list will throw away the others. A list without it only ever adds rows, and an item that vanished upstream keeps its row until it is evicted some other way.
 
 A route the spec does not declare is a passthrough: forwarded verbatim,
 uncached, and reported as uncached. There is no third state.
