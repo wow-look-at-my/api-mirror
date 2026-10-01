@@ -44,6 +44,8 @@
 	-->
 	<resource name="user" ttl="6h">
 		<key name="id"/>
+		<!-- A key addresses the row and is never echoed, so the answer's id is a field. -->
+		<field name="user_id" type="int">id</field>
 		<field name="name" type="text">name</field>
 		<field name="username" type="text">username</field>
 		<field name="email" type="text">email</field>
@@ -63,6 +65,7 @@
 	-->
 	<resource name="post" ttl="1h">
 		<key name="id"/>
+		<field name="post_id" type="int">id</field>
 		<field name="user_id" type="int">userId</field>
 		<field name="title" type="text">title</field>
 		<field name="body" type="text">body</field>

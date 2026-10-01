@@ -1,0 +1,4 @@
+ignore:
+  - path: $
+    kinds: [missing]
+    reason: a spec serves the fields it declares, so a field it does not keep is absent, never wrong

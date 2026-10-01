@@ -177,11 +177,9 @@ func TestAbsorbAndRebuild_ProjectOnlyTheDeclaredFields(t *testing.T) {
 	out, err := rebuild(res, row)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{
-		"owner": "wowlookatmy",
-		"stars": int64(5),
-		"live":  false,
-		"slug":  "WowLookAtMy/api-mirror",
-	}, out, "the rebuilt answer's shape is the spec's, not whatever the upstream added this week")
+		"stargazers_count": int64(5),
+		"archived":         false,
+	}, out, "each field goes back to the path it came from; a key and an expr field are not the upstream's words")
 }
 
 func TestAbsorb_ReportsWhichFieldRefusedTheValue(t *testing.T) {

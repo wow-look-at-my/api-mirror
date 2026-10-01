@@ -235,6 +235,9 @@ func (r *Resource) validate() error {
 			return fmt.Errorf("resource %q field %q: give it a source path or an expr, not both and not neither", r.Name, f.Name)
 		}
 	}
+	if err := r.validateAnswerPaths(); err != nil {
+		return err
+	}
 	for _, k := range r.Keep {
 		if k.Name == "" {
 			return fmt.Errorf("resource %q: <keep> needs a name", r.Name)
@@ -253,6 +256,34 @@ func (r *Resource) validate() error {
 		return fmt.Errorf("resource %q: <reveal><credential/></reveal> needs a <key credential=\"true\">, or a different caller could read another's row", r.Name)
 	}
 	return r.Reveal.validate(r.Name)
+}
+
+// validateAnswerPaths checks the paths a column resource rebuilds its answer
+// at. Fields at one path, or one field under another, would each overwrite the
+// other's value in the answer.
+func (r *Resource) validateAnswerPaths() error {
+	if r.Store != StoreColumns {
+		return nil
+	}
+	var paths []string
+	owner := map[string]string{}
+	for _, f := range r.Fields {
+		if f.From == "" {
+			continue
+		}
+		p := normalPath(f.From)
+		for _, q := range paths {
+			if p == q || strings.HasPrefix(p, q+".") || strings.HasPrefix(q, p+".") {
+				return fmt.Errorf("resource %q: fields %q and %q both rebuild the answer at %q and %q; one would overwrite the other", r.Name, owner[q], f.Name, q, p)
+			}
+		}
+		paths = append(paths, p)
+		owner[p] = f.Name
+	}
+	if len(paths) == 0 {
+		return fmt.Errorf("resource %q: no <field> reads a source path, so its answer would be empty; an expr field is stored, never served", r.Name)
+	}
+	return nil
 }
 
 func (rv *Reveal) validate(resource string) error {

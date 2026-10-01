@@ -174,27 +174,51 @@ func toUnix(v any) (any, error) {
 
 // rebuild renders a stored row back into the document a consumer receives.
 //
-// Hit and miss both go through here, so a route's answer cannot change shape
-// with cache state -- the class of bug where a consumer works until the cache
-// warms up.
+// Each field goes back to the path it was read from, so the answer is a subset of the upstream document: same paths, same values, same types. A key only addresses the row and is never echoed; a value the answer must carry is a field. An expr field is derived, the upstream never said it, so it is stored and never served.
 func rebuild(r *Resource, row Row) (map[string]any, error) {
 	if r.Store == StoreDocument {
 		return nil, fmt.Errorf("rebuild %s: a document resource replays its stored document", r.Name)
 	}
-	out := make(map[string]any, len(r.Keys)+len(r.Fields))
-	for _, k := range r.Keys {
-		if v, ok := row[k.Name]; ok {
-			out[k.Name] = v
-		}
-	}
+	out := make(map[string]any, len(r.Fields))
 	for _, f := range r.Fields {
-		v, ok := row[f.Name]
-		if !ok {
+		if f.From == "" {
 			continue
 		}
-		out[f.Name] = present(f, v)
+		// A null cell may be a value the upstream never sent.
+		v := row[f.Name]
+		if v == nil {
+			continue
+		}
+		setPath(out, f.From, present(f, v))
 	}
 	return out, nil
+}
+
+// normalPath is a source path as lookupPath reads it: dotted, with empty
+// segments skipped.
+func normalPath(path string) string {
+	var segs []string
+	for _, s := range strings.Split(path, ".") {
+		if s = strings.TrimSpace(s); s != "" {
+			segs = append(segs, s)
+		}
+	}
+	return strings.Join(segs, ".")
+}
+
+// setPath writes v at a dotted path, creating the objects above it.
+func setPath(doc map[string]any, path string, v any) {
+	segs := strings.Split(normalPath(path), ".")
+	cur := doc
+	for _, s := range segs[:len(segs)-1] {
+		next, ok := cur[s].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			cur[s] = next
+		}
+		cur = next
+	}
+	cur[segs[len(segs)-1]] = v
 }
 
 // present turns a stored cell back into its JSON shape.

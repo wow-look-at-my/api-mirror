@@ -70,10 +70,9 @@ row a delivery never reaches. The engine's own per-row column is
 `mirror_written_at`, prefixed so it cannot collide with a field the upstream
 has — `updated_at` is exactly the name an API uses.
 
-`<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is
-a path into the absorbed document (`owner.login`) or a template. `store="document"`
-on the resource stores the response body itself rather than columns, for a route
-whose answer is a blob nobody needs to query.
+`<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
+
+The rebuilt answer is a subset of the upstream document. Each field goes back to the path it came from, with the upstream's value and JSON type, so a client of the upstream reads the mirror unchanged. A key addresses the row and is never echoed: its value is the route's spelling, folded or not. A value the answer must carry, such as an id or the original case of a folded key, is a field. An expr field is derived. As a result, it is stored and never served. A null cell is left out, because storage cannot tell a null the upstream sent from a field it never sent. Fields at one path, or one under another, fail validation. `dats/upstream-shape.dats` holds every cached column route against the upstream's own answer.
 
 ### `<route>` — what a consumer asks for
 

@@ -60,6 +60,7 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
+- **A rebuilt answer is a subset of the upstream's.** Each field returns to its source path with its upstream type. A key is never echoed. `dats/upstream-shape.dats` checks it against the upstream with `api-mirror-delta`.
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
 - **The fingerprint is derived, never declared.** It hashes the schema the spec produces, so a resource change always nukes and nothing has to be kept in step by hand.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
