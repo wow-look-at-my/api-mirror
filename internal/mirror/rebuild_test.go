@@ -74,6 +74,11 @@ func TestValidate_RefusesOneFactReadTwice(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "store one fact once")
 
+	no := &Notify{Fields: []Set{{Field: "owner", From: "repository.owner.login"}, {Field: "login", From: "repository.owner.login"}}}
+	err = no.validate(nil, "")
+	require.Error(t, err, "a notification body is a response too")
+	assert.Contains(t, err.Error(), "store one fact once")
+
 	assert.NoError(t, validateEventSources(&Event{Type: "push",
 		Keys: []Set{{Field: "owner", From: "repository.owner.login"}},
 		Sets: []Set{{Field: "owner", From: "repository.owner.login"}, {Field: "ref", Expr: "{{ .payload.ref }}"}},

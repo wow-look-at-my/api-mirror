@@ -1,7 +1,6 @@
 package mirror
 
 import (
-	"cmp"
 	"fmt"
 	"os"
 	"strconv"
@@ -273,7 +272,7 @@ func addResourceChild(r *Resource, child *node) error {
 			From:       child.Attr("from"),
 			Fold:       child.Attr("fold") == "true",
 			Credential: child.Attr("credential") == "true",
-			Type:       FieldType(cmp.Or(child.Attr("type"), string(FieldText))),
+			Type:       FieldType(child.Attr("type")),
 		})
 	case "field":
 		f, err := buildField(child)

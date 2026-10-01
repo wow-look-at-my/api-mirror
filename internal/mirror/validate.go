@@ -645,14 +645,20 @@ func (e *Events) validate(resources map[string]*Resource) error {
 
 // That stores one fact twice, and the copies drift apart.
 func validateEventSources(ev *Event) error {
+	return oneOutputPerInput(fmt.Sprintf("event %q", ev.Type), slices.Concat(ev.Keys, ev.Sets))
+}
+
+// oneOutputPerInput refuses outputs of one response that read one input
+// path. A <set> and a <key> that name the same output are one declaration.
+func oneOutputPerInput(what string, outs []Set) error {
 	reader := map[string]string{}
-	for _, st := range slices.Concat(ev.Keys, ev.Sets) {
+	for _, st := range outs {
 		if st.From == "" {
 			continue
 		}
 		p := normalPath(st.From)
 		if prev, ok := reader[p]; ok && prev != st.Field {
-			return fmt.Errorf("event %q: %q and %q both read %q; store one fact once", ev.Type, prev, st.Field, p)
+			return fmt.Errorf("%s: %q and %q both read %q; store one fact once", what, prev, st.Field, p)
 		}
 		reader[p] = st.Field
 	}
