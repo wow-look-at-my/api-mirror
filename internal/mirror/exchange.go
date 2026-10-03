@@ -76,7 +76,7 @@ func (c *credentials) announce() {
 		if want := c.missing(cred); want != "" {
 			logf("credential %s: OFF because %s is empty. A call with no caller sends the other upstream headers.", cred.Name, want)
 		} else {
-			logf("credential %s: on", cred.Name)
+			logger.Info(fmt.Sprintf("credential %s: on", cred.Name))
 		}
 	}
 }

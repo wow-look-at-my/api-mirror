@@ -38,9 +38,12 @@ type cachedJWT struct {
 var (
 	jwtMu    sync.Mutex
 	jwtCache = map[string]cachedJWT{}
-	// jwtClock is a var so a test can move time past a token's expiry.
-	jwtClock = time.Now
 )
+
+func jwtCacheKey(issuer, key string) string {
+	sum := sha256.Sum256([]byte(issuer + "\x00" + key))
+	return string(sum[:])
+}
 
 // signedJWT mints an RS256 JWT with iss=issuer, signed by an RSA private
 // key in PEM form. A key passed through an environment variable often
@@ -52,9 +55,8 @@ func signedJWT(issuer, key string) (string, error) {
 	if issuer == "" || key == "" {
 		return "", errors.New("jwt: the issuer and the key are both required")
 	}
-	sum := sha256.Sum256([]byte(issuer + "\x00" + key))
-	cacheKey := string(sum[:])
-	now := jwtClock()
+	cacheKey := jwtCacheKey(issuer, key)
+	now := time.Now()
 
 	jwtMu.Lock()
 	defer jwtMu.Unlock()

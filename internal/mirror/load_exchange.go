@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"net/http"
 	"strings"
 )
@@ -133,7 +134,7 @@ func (s *Spec) validateCredentials() error {
 		}
 		byName[c.Name] = c
 	}
-	used := map[string]bool{}
+	used := set.New[string]()
 	for _, h := range s.Upstream.Headers {
 		if h.Credential == "" {
 			continue
@@ -141,10 +142,10 @@ func (s *Spec) validateCredentials() error {
 		if byName[h.Credential] == nil {
 			return fmt.Errorf("<upstream><header name=%q> names credential %q, which no <credential> declares", h.Name, h.Credential)
 		}
-		used[h.Credential] = true
+		used.Add(h.Credential)
 	}
 	for _, c := range s.Credentials {
-		if !used[c.Name] {
+		if !used.Contains(c.Name) {
 			// A token nothing sends is an exchange nobody can see is idle.
 			return fmt.Errorf("<credential name=%q>: no <upstream><header credential=%q> sends it", c.Name, c.Name)
 		}

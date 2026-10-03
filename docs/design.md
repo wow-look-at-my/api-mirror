@@ -232,7 +232,7 @@ A route's `<spread resource="repo" items="...">` earns grants in bulk. Each item
 
 A principal is the credential's fingerprint unless the spec names something more stable. `<identity header= path= id= prefix=>` accepts an assertion in a request header, verifies it with one upstream call, and names the caller `prefix:id`. A refused assertion is a 401 and never falls back. `<whoami path= id= prefix=>` asks the upstream who owns the caller's own credential. Both keep a caller's grants across a rotated credential.
 
-A static upstream header never answers for a caller. A request-time call drops every forwarded header the caller did not send.
+A static upstream header never answers for a caller. A request-time call drops every forwarded header the caller did not send, and never renders a `<credential>` header at all.
 
 ## The operations half
 
@@ -287,6 +287,32 @@ credential-keyed row is skipped rather than refetched under the wrong identity.
 `<replay>` reads the upstream's own failure log and asks for what never arrived, once per delivery id. `requires=` names a value the log cannot be read without. Empty means the job declines to start and logs which value will start it, rather than calling an authenticated endpoint on a timer forever. Its `<header>` children replace the static headers on its own calls. The `jwt` template function signs the RS256 assertion an App-level endpoint needs.
 
 A duration attribute and a `<cors><origin>` may be template source over `.env`, rendered at load, so an operator tunes them without editing the spec. `0` turns the debounce and the replayer off. `<mirror max-rows=>` caps each resource table, oldest writes first, default one million.
+
+### `<credential>` — a token the mirror obtains itself
+
+A request with no caller needs a credential of its own. A static header cannot hold one that expires within the hour, such as a GitHub App installation token. A `<credential>` declares how to obtain the token. An upstream header sends it.
+
+```xml
+<upstream base="...">
+	<header name="Authorization"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
+	<header name="Authorization" credential="app">token <value name="credential"/></header>
+	<forward name="Authorization"/>
+</upstream>
+
+<credential name="app" requires="env.GITHUB_APP_ID" for="{{ .key.owner }}" margin="5m">
+	<header name="Authorization">Bearer <value expr='{{ jwt .env.GITHUB_APP_ID .env.GITHUB_APP_PRIVATE_KEY }}'/></header>
+	<lookup method="GET" path="/users/{{ urlpath .for }}/installation" field="id" ttl="1h"/>
+	<exchange method="POST" path="/app/installations/{{ .lookup }}/access_tokens" token="token" expires="expires_at"/>
+</credential>
+```
+
+- `for=` is template source over `.key`, the key of the row the request is about. Its value picks the token, so each owner gets the token of its own installation. Without it, one token serves every request.
+- `<lookup>` finds which grant covers that value. The exchange path reads its `field` as `.lookup`. The answer is kept for `ttl`, default one hour.
+- `<exchange>` issues the token. `token` and `expires` are paths into its answer. `ttl` stands in for an answer that states no expiry. The engine keeps a token until `margin` before it expires, default a few minutes.
+- The credential's own `<header>` children authenticate both calls.
+- Empty `requires` turns the credential off. The log says so at startup. The header is then skipped, and an earlier header of the same name stands. That is how a spec states a fallback.
+
+A failed lookup or exchange fails the request with an error that names the step and the status. It never falls back to anonymous. An authoritative refusal is kept for a minute. As a result, a missing installation costs one call a minute. A header with `credential=` is never rendered for a caller, whatever `<forward>` lists, so a caller's request never starts an exchange.
 
 ### `<notify>` — telling consumers, so they stop racing us
 

@@ -95,11 +95,9 @@ func jwtClaims(t *testing.T, key *rsa.PrivateKey, bearer string) map[string]any 
 
 func TestReplaySignsAFreshJWTForEveryCycle(t *testing.T) {
 	key, pemText := testKeyPEM(t)
+	escaped := strings.ReplaceAll(pemText, "\n", `\n`)
 	t.Setenv("MIRROR_TEST_APP_ID", "777")
-	t.Setenv("MIRROR_TEST_APP_KEY", strings.ReplaceAll(pemText, "\n", `\n`))
-	now := time.Now()
-	jwtClock = func() time.Time { return now }
-	t.Cleanup(func() { jwtClock = time.Now })
+	t.Setenv("MIRROR_TEST_APP_KEY", escaped)
 
 	var mu sync.Mutex
 	seen := map[string][]string{}
@@ -127,14 +125,19 @@ func TestReplaySignsAFreshJWTForEveryCycle(t *testing.T) {
 	assert.Equal(t, "777", list["iss"])
 	assert.Equal(t, seen[http.MethodGet][0], seen[http.MethodPost][0], "the redelivery carries the same live JWT")
 
-	// Past its expiry less the one-minute margin, the next cycle signs anew.
-	now = now.Add(jwtLifetime)
 	e.replay.cycle()
 	require.Len(t, seen[http.MethodGet], 2)
-	next := jwtClaims(t, key, seen[http.MethodGet][1])
-	assert.Equal(t, "777", next["iss"])
-	assert.Greater(t, next["exp"].(float64), list["exp"].(float64), "a new JWT, not the expired one")
-	assert.Less(t, time.Unix(int64(list["exp"].(float64)), 0), now.Add(time.Minute), "the first JWT was due for replacement")
+	assert.Equal(t, seen[http.MethodGet][0], seen[http.MethodGet][1], "a live JWT is reused")
+
+	// A cached JWT inside its last minute is not sent again.
+	jwtMu.Lock()
+	jwtCache[jwtCacheKey("777", escaped)] = cachedJWT{token: "nearly-expired", expires: time.Now().Add(30 * time.Second)}
+	jwtMu.Unlock()
+	e.replay.cycle()
+	require.Len(t, seen[http.MethodGet], 3)
+	assert.NotEqual(t, "Bearer nearly-expired", seen[http.MethodGet][2])
+	next := jwtClaims(t, key, seen[http.MethodGet][2])
+	assert.Equal(t, "777", next["iss"], "the cycle signed a fresh JWT")
 }
 
 func TestReplayAuthenticatesWithItsOwnHeaders(t *testing.T) {
