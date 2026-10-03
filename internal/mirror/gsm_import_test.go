@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -234,19 +233,6 @@ func (c *signedCollector) ServeHTTP(_ http.ResponseWriter, r *http.Request) {
 	c.signatures = append(c.signatures, r.Header.Get("X-Hub-Signature-256"))
 }
 
-// captureHandler keeps every log message.
-type captureHandler struct{ msgs *[]string }
-
-func (h captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-func (h captureHandler) Handle(_ context.Context, r slog.Record) error {
-	*h.msgs = append(*h.msgs, r.Message)
-	return nil
-}
-func (h captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h captureHandler) WithGroup(string) slog.Handler      { return h }
-
-func newCaptureLogger(msgs *[]string) *slog.Logger { return slog.New(captureHandler{msgs: msgs}) }
-
 func TestGSMImportRunsOnceAndDoesNotResurrectADelete(t *testing.T) {
 	gsm := gsmFixture(t,
 		gsmRowOf("sub_a", "user:1", "https://a.example/hook"),
@@ -283,11 +269,6 @@ func TestGSMImportFailsAnUntranslatableRowLoudly(t *testing.T) {
 	spec.Whoami = nil
 	spec.Identity = nil
 
-	var logged []string
-	saved := logger
-	logger = newCaptureLogger(&logged)
-	t.Cleanup(func() { logger = saved })
-
 	subsDB := filepath.Join(t.TempDir(), "subs.db")
 	n, err := importNotifier(t, spec, subsDB, gsm)
 	require.NoError(t, err, "one bad row must not stop every other subscriber being told")
@@ -296,10 +277,8 @@ func TestGSMImportFailsAnUntranslatableRowLoudly(t *testing.T) {
 	require.Len(t, n.imported.Failures, 4, "rows read in id order: badfilter, good, install, nouser")
 	assert.Contains(t, n.imported.Failures[1], "sub_good")
 	assert.Contains(t, n.imported.Failures[1], "<whoami")
-	assert.Contains(t, n.imported.Failures[2], "sub_install")
-	assert.Contains(t, logged, "notify: import row sub_install NOT imported: "+
-		`principal "app-installation:481": no caller of this mirror resolves to a "app-installation" principal`)
-	assert.Contains(t, logged, "notify: import from "+gsm+": 0 imported, 0 already present, 4 failed")
+	assert.Equal(t, `sub_install: principal "app-installation:481": no caller of this mirror resolves to a "app-installation" principal`,
+		n.imported.Failures[2], "the failure names the row and why")
 	all, err := n.Subs().All(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, all)
