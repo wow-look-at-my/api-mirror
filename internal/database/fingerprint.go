@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Fingerprint identifies a whole schema: this package's fixed tables plus the
+// Fingerprint identifies a whole schema.
 func Fingerprint(ddl string) string {
 	sum := sha256.Sum256([]byte(Scrub(ddl)))
 	return hex.EncodeToString(sum[:])
@@ -82,13 +82,13 @@ func (s *scrubbed) write(tok string) {
 	s.last = tok[len(tok)-1]
 }
 
-// selfDelimiting reports whether a character separates tokens by itself, so
+// selfDelimiting reports whether a character separates tokens by itself.
 func selfDelimiting(c byte) bool {
 	return c == '(' || c == ')' || c == ',' || c == ';'
 }
 
-// endOfQuoted returns the index just past the quoted run opening at
-// sql[start]. A doubled closing quote is an escaped. An unterminated run
+// endOfQuoted returns the index past the quoted run opening at sql[start]. A
+// doubled closing quote is an escaped. An unterminated run
 func endOfQuoted(sql string, start int, closer byte) int {
 	for i := start + 1; i < len(sql); i++ {
 		if sql[i] != closer {

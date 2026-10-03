@@ -375,8 +375,7 @@ func (n *Notifier) recordSent(ctx context.Context, s Subscription) {
 // recordFailure counts a failure and parks a subscription that keeps failing.
 //
 // Parking is loud, not quiet: the subscription stays in the store, marked
-// disabled with the reason, so an operator sees a consumer that stopped being
-// told rather than that silently never was.
+// disabled with the reason, so an operator sees a consumer that.
 func (n *Notifier) recordFailure(ctx context.Context, s Subscription, cause error) {
 	limit := n.rule.DisableAfter
 	if limit <= 0 {

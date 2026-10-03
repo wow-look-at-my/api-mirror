@@ -152,7 +152,7 @@ func (a *Admin) serveMux(w http.ResponseWriter, r *http.Request) {
 // sessionCookie carries the token for a BROWSER's own subresource fetches.
 const sessionCookie = "mirror_admin"
 
-// keepToken hands the browser back the token the caller just proved. Strict
+// keepToken hands the browser back the token the caller proved. Strict
 // same-site keeps it off a cross-site request.
 func (a *Admin) keepToken(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value == a.token {

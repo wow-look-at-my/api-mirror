@@ -25,8 +25,7 @@ const (
 )
 
 // Exchange is completed request, inbound or outbound, as reported to the
-// telemetry sink. Everything the mirror exchanges lands here: a request nobody
-// can see is a request nobody can account for.
+// telemetry sink.
 type Exchange struct {
 	Lane     Lane
 	Method   string
@@ -83,8 +82,8 @@ type observeTransport struct {
 
 // observedClient derives a reporting client from that is not, keeping the
 // original's deadline. Observation lives in the TRANSPORT rather than at the
-// call sites, because call sites only ever cover the calls somebody remembered
-// to instrument. A client built here cannot make an invisible request.
+// call sites, because call sites only ever cover the calls somebody
+// remembered to instrument.
 func observedClient(base *http.Client, lane Lane, obs Observer) *http.Client {
 	if base == nil {
 		base = http.DefaultClient

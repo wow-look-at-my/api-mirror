@@ -204,11 +204,6 @@ type Refresh struct {
 }
 
 // Replay asks the upstream to re-send deliveries the mirror never received.
-//
-// A lost delivery is the quietest failure a mirror has: every cache the
-// delivery would have moved serves its last absorbed answer for the whole TTL,
-// and nothing reports a gap. A shorter TTL hides that window; it does not close
-// it.
 type Replay struct {
 	Interval time.Duration
 	// List is the upstream path returning failed deliveries.
@@ -277,10 +272,7 @@ const (
 	StoreDocument StoreMode = "document"
 )
 
-// Resource is kind of stored fact: derived SQLite table, row per
-// key. There is deliberately no actor column and no way to declare --
-// true state upstream is row here, and who may SEE that row is the reveal
-// layer's question, never the storage layer's.
+// Resource is kind of stored fact: derived SQLite table, row per key.
 type Resource struct {
 	Name   string
 	Store  StoreMode
@@ -347,9 +339,7 @@ type Keep struct {
 	Reason string
 }
 
-// QueryParam is query parameter a route models. A request carrying a
-// parameter the route does not declare is passed through rather than answered
-// from a row keyed on a shape the spec never described.
+// QueryParam is query parameter a route models.
 type QueryParam struct {
 	Name    string
 	Type    FieldType
@@ -360,10 +350,9 @@ type QueryParam struct {
 	Key bool
 }
 
-// Route binds an HTTP path the consumer asks for to a resource that answers it.
-// A path the spec does not declare is a passthrough: forwarded verbatim and
-// reported as uncached. There is no state and no "correctly uncached"
-// verdict.
+// Route binds an HTTP path the consumer asks for to a resource that answers
+// it. A path the spec does not declare is a passthrough: forwarded verbatim
+// and reported as uncached.
 type Route struct {
 	Method   string
 	Path     string // "/repos/{owner}/{repo}"
@@ -380,17 +369,14 @@ type Route struct {
 	Accept []string
 	// Absorb lists the upstream statuses whose answer is stored.
 	Absorb []int
-	// BodyKey names the resource key the REQUEST body fills, as a digest,
-	// for a route whose question travels in its body. Naming it also makes
-	// that body travel: the fetch replays it upstream.
+	// BodyKey names the resource key the REQUEST body fills, as a digest, for a route whose question travels in its body.
 	BodyKey string
 	// Spreads carry the items of a fetched answer into another resource.
 	Spreads []*Spread
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
-// them. Every branch is deliberate: a resource with no reveal rule is a config
-// error, not an open resource.
+// them.
 type Reveal struct {
 	// Public is a predicate over the stored row (`.row.<field>`). True means
 	Public string
@@ -417,18 +403,15 @@ type Purge struct {
 	Resource string
 }
 
-// Rewrite canonicalises an inbound path prefix before anything matches it,
-// so a client with its own spelling still reaches the declared routes. It
-// grants nothing. docs/design.md says why gh needs it.
+// Rewrite canonicalises an inbound path prefix before anything matches it.
 type Rewrite struct {
-	// From is the prefix a caller sends, and To what it becomes. An empty To
-	// strips it.
+	// From is the prefix a caller sends, and To what it becomes. An empty To strips it.
 	From string
 	To   string
 }
 
 // Relay forwards a path to a fixed URL off the upstream base, uncached and
-// with no bearer: on a login path the BODY is the credential. docs/design.md.
+// with no bearer.
 type Relay struct {
 	Method string
 	Path   string

@@ -1,8 +1,8 @@
 # api-mirror
 
-Declare an API in one XML file; get a caching mirror of it.
+Declare an API in one XML file. Get a caching mirror of it.
 
-`api-mirror` reads a spec and serves an HTTP endpoint that answers a consumer's requests from SQLite, keeps that SQLite current from the upstream and from the upstream's webhooks, and reveals each cached fact only to a caller who could have read it upstream.
+`api-mirror` reads a spec. It serves an HTTP endpoint that answers a consumer's requests from SQLite, keeps that SQLite current from the upstream and from the upstream's webhooks. The HTTP endpoint reveals each cached fact only to a caller who can have read it upstream.
 
 It is the sibling of [api-cli](https://github.com/wow-look-at-my/api-cli), which turns the same kind of file into a command-line tool. Both share the spec language, in [api-dsl](https://github.com/wow-look-at-my/api-dsl).
 
@@ -56,16 +56,16 @@ api-mirror --spec mirror.xml --check     # print the derived schema and routes, 
 
 - **A derived schema.** One table per resource, fingerprinted. Editing a resource rebuilds the cache on the next start, with no migration and no version constant to forget.
 - **A cache that stores state, not bytes.** An answer is rebuilt from stored columns, so its shape is yours and cannot drift with whatever the upstream added this week.
-- **Webhooks that apply.** A delivery carries the new value, so the engine writes it. Discarding it and refetching is not the default here; it is a last resort that has to state its reason.
+- **Webhooks that apply.** A delivery carries the new value. As a result, the engine writes it. Discarding it and refetching is not the default here. It is a last resort that has to state its reason.
 - **Ordering.** Deliveries are sorted per subject inside a short window, and a view older than one already applied is refused. A redelivered payload cannot reopen something that closed.
 - **Authorization at the read.** Storage is global — one row per fact. Whether a caller may see it is proven per request, against the upstream, with that caller's own credential.
 - **Honest passthrough.** A path the spec does not declare is forwarded and labelled with why. There is no "correctly uncached".
 - **A dashboard, on by default.** Traffic, cache contents, rate budget, deliveries, principals, and the passthrough brief. It mints its own token and logs the URL that opens it.
-- **A consistency check.** Every other view reports what this process has seen. This one re-asks the upstream about each stored key of one kind and names what disagrees, which is the only way a delivery that never arrived surfaces. It reports on a GET and rewrites the drifted rows on a POST.
+- **A consistency check.** Every other view reports what this process has seen. This re-asks the upstream about each stored key of one kind and names what disagrees. This is the only way a delivery that never arrived surfaces. It reports on a GET and rewrites the drifted rows on a POST.
 
 ## Operations
 
-A second half of the spec decides what runs in the background and what an operator can see. None of it changes an answer; all of it changes whether anybody can tell the answers are right.
+A second half of the spec decides what runs in the background and what an operator can see. None of it changes an answer. All of it changes whether anybody can tell the answers are right.
 
 ```xml
 <dashboard path="/_mirror" title="GitHub mirror"/>
@@ -81,8 +81,8 @@ A second half of the spec decides what runs in the background and what an operat
 ```
 
 - **Every request is on the chart.** The observation is in the transport, not at the call sites, so a client built here cannot make an invisible request — the passthrough proxy included.
-- **The passthrough tab is a to-do list.** Requests are grouped by route shape, counted, and each family comes with the `<resource>` and `<route>` that would stop it leaving.
-- **Delivery-gap replay.** A provider sends once. The replayer reads its failure log and asks for what never arrived, once per delivery. `requires=` names the credential it needs; without it the job declines to start and says so, rather than failing on a timer forever.
+- **The passthrough tab is a to-do list.** Requests are grouped by route shape, counted, and each family comes with the `<resource>` and `<route>` that will stop it leaving.
+- **Delivery-gap replay.** A provider sends once. The replayer reads its failure log and asks for what never arrived, once per delivery. `requires=` names the credential it needs. Without it the job declines to start and says so, rather than failing on a timer forever.
 - **A background credential that expires.** `<credential>` exchanges, for example, a GitHub App JWT for the installation token of the row's owner, and keeps it until shortly before it expires. Only a request with no caller sends it. A failed exchange fails that request instead of sending it anonymous.
 - **Subscriber notifications.** Consumers register a webhook endpoint and get an HMAC-signed notification *after* a delivery lands, so they stop racing this mirror's ingestion. Their registrations live in a separate database the schema nuke never touches. `import=` adopts a github-state-mirror registry at startup, so its subscribers carry over.
 - **A periodic sweep**, a **passthrough debounce** that shares one upstream call between identical concurrent reads (never across credentials), and **liveness paths** that hold while a detached fetch is in flight.

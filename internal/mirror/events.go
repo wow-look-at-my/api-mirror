@@ -26,10 +26,6 @@ const watermarkRetention = 30 * 24 * time.Hour
 const watermarkPruneInterval = 10 * time.Minute
 
 // Ingest is the webhook endpoint: the upstream telling the mirror what changed.
-//
-// A delivery is the ANSWER, not a hint to go and ask. The apply path writes the
-// values the payload carries and fetches nothing. It also writes ONLY the
-// fields the event names, so a partial view cannot blank known state.
 type Ingest struct {
 	events  *Events
 	store   *Store

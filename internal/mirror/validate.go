@@ -507,7 +507,7 @@ func isLoopbackHost(host string) bool {
 }
 
 // validate checks a <purge>: a write with somewhere real to land and a key
-// the path can actually supply.
+// the path can supply.
 func (p *Purge) validate(resources map[string]*Resource) error {
 	if p.Path == "" || !strings.HasPrefix(p.Path, "/") {
 		return fmt.Errorf("<purge> needs an absolute path, got %q", p.Path)
@@ -521,9 +521,7 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 	if !ok {
 		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
 	}
-	// The path may name a PREFIX of the key, and the delete reaches everything
-	// beneath it. A gap is refused: a key named after a missing one would
-	// widen the delete past what the path says.
+	// The path may name a PREFIX of the key, and the delete reaches everything beneath it.
 	params := pathParams(p.Path)
 	named, missing := 0, ""
 	for _, k := range res.Keys {

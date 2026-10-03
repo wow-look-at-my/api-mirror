@@ -1,8 +1,4 @@
 // The dashboard.
-//
-// Plain ES modules, no build step and no dependencies. The page is served from
-// the binary, so a toolchain between the source and what ships would be one
-// more thing that can be stale in a way nothing checks.
 
 const token = new URLSearchParams(location.search).get('token') || '';
 
@@ -106,9 +102,7 @@ const PILL_VARIANT = {
 
 function pill(text) {
 	const word = String(text).toLowerCase();
-	// A danger chip is not one of the shipped variants, so it borrows the plain
-	// key chip and takes its colour from a token here rather than from a
-	// variant the library does not have.
+	// A danger chip is not one of the shipped variants.
 	const variant = PILL_VARIANT[word] || 'key';
 	if (variant === 'danger') {
 		return el('scratch-badge', { variant: 'key', class: 'bad' }, text);
@@ -239,8 +233,7 @@ views.timeline = async () => {
 		return out;
 	}
 
-	// One row per lane, bars positioned by time. Everything the mirror
-	// exchanged is here; a gap in a lane is a real gap, not a filter.
+	// One row per lane, bars positioned by time.
 	const lanes = new Map();
 	for (const f of v.frames) {
 		if (!lanes.has(f.lane)) lanes.set(f.lane, []);
@@ -301,8 +294,7 @@ views.rates = async () => {
 				el('div', { class: 'row' }, meter, el('span', { class: 'num' }, fmt.int(b.remaining))),
 				b.limit,
 				b.used,
-				// A reset already in the past is said plainly. Rendering it as
-				// "resets now" would read as a budget about to refresh.
+				// A reset already in the past is said plainly.
 				b.stale ? el('span', { class: 'muted' }, `${fmt.ago(b.reset)} - stale`) : fmt.ago(b.reset),
 				fmt.ago(b.observed_at),
 			];
@@ -325,8 +317,7 @@ views.webhooks = async () => {
 
 	out.append(section('Outcomes', el('div', { class: 'row' }, dispositions(s.dispositions))));
 
-	// Declared types with a zero are the point of this table: a type the
-	// provider was never subscribed to looks exactly like a quiet week.
+	// Declared types with a zero are the point of this table.
 	const seen = new Map((s.types || []).map((t) => [t.type, t.count]));
 	out.append(section('Event types', table(
 		['Type', 'Resource', 'Clock', 'Sets', 'Received'],
@@ -383,8 +374,7 @@ views.resources = async () => {
 			['Column', 'Type', 'From'],
 			chosen.fields.map((f) => [el('span', { class: 'mono' }, f.name), f.type,
 				el('span', { class: 'mono' }, f.from || '(expr)')]))));
-		// An errored key is the reason to open this tab, so it is shown before
-		// the rows: the overview counts them and this is where they are named.
+		// An errored key is the reason to open this tab.
 		const keyed = chosen.keyed || [];
 		out.append(section(`${chosen.name} keys`, table(
 			['Key', 'State', 'Fetched', 'Expires', 'Detail'],
@@ -417,9 +407,7 @@ const checkResults = new Map();
 // one that asks the upstream whether the stored answers are still right, which
 // is the only way a delivery that never arrived ever surfaces.
 function checkSection(kind) {
-	// The page re-reads on a timer, which rebuilds this whole panel. A check
-	// takes one upstream call per key, so its result has to outlive that: it is
-	// held per kind and redrawn, or a long check finishes into a discarded DOM.
+	// The page re-reads on a timer, which rebuilds this whole panel.
 	const held = checkResults.get(kind);
 	const results = el('div', { class: 'panel scroll' },
 		held ? checkTable(held.lines) : el('div', { class: 'empty' }, 'Not run. The check asks the upstream once per stored key.'));
@@ -597,18 +585,14 @@ function currentTab() {
 	return views[name] ? name : 'overview';
 }
 
-// drawTabs fills <scratch-tabs strip-only>, which renders the strip and leaves
-// the panel to this page. The hash stays the source of truth for which tab is
-// open, so a reload and a shared link land in the same place; the component's
-// own selection follows it rather than the other way round.
+// drawTabs fills <scratch-tabs strip-only>, which renders the strip and leaves the panel to this page.
 let tabStrip = null;
 
 function drawTabs() {
 	const active = tabs.findIndex(([id]) => id === currentTab());
 	if (!tabStrip) {
 		// The strip is built from the children present when the component is
-		// inserted, so it arrives whole. Filling an empty one already in the
-		// page leaves a bar with no buttons.
+		// inserted, so it arrives whole.
 		tabStrip = el('scratch-tabs', { 'strip-only': true },
 			tabs.map(([id, label], i) => el('scratch-tab', { label, 'data-tab': id, selected: i === active })));
 		tabStrip.addEventListener('change', (e) => {
@@ -626,8 +610,7 @@ async function render() {
 	try {
 		view.replaceChildren(await views[currentTab()]());
 	} catch (e) {
-		// A failed panel says so. A tab that silently stays on its last content
-		// is a tab that lies about how current it is.
+		// A failed panel says so. A tab that silently stays on its last content is a tab that lies about how current it is.
 		view.replaceChildren(el('div', { class: 'err' }, String(e.message || e)));
 	}
 	document.getElementById('clock').textContent = `updated ${new Date().toLocaleTimeString()}`;
@@ -638,6 +621,5 @@ api('api/overview').then(nameTheMirror).catch(() => {});
 window.addEventListener('hashchange', render);
 document.getElementById('reload').addEventListener('click', render);
 render();
-// The page re-reads on a fixed cadence. It is a live view of a running process,
-// so a stale one is worse than a slow one.
+// The page re-reads on a fixed cadence.
 setInterval(render, 15000);

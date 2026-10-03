@@ -83,7 +83,7 @@ func openDB(path string) (*sql.DB, error) {
 }
 
 // removeDB deletes the database and the sidecars WAL mode leaves beside it.
-// Leaving a sidecar behind resurrects part of the old database on the next open.
+// Leaving a sidecar behind resurrects part of the database on the next open.
 func removeDB(path string) error {
 	for _, p := range []string{path, path + "-wal", path + "-shm"} {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
@@ -273,8 +273,7 @@ func (s *Store) DeleteFreshness(ctx context.Context, kind, key string) (int64, e
 }
 
 // SetListMembers records the row keys one list answer held, in order. the
-// membership goes in the same transaction, so a read never sees pages
-// mixed.
+// membership goes in the same transaction, so a read never sees pages mixed.
 func (s *Store) SetListMembers(ctx context.Context, kind, listKey string, rowKeys []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -376,8 +375,8 @@ func (s *Store) HasGrant(ctx context.Context, principal, resource, key string, n
 	return n > 0, nil
 }
 
-// RecordGrant stores proof and drops this principal's cached denial of the same
-// key in the same transaction. Upstream just said yes; a cached no beside it
+// RecordGrant stores proof and drops this principal's cached denial of the
+// same key in the same transaction. Upstream said yes; a cached no beside it
 // answers question ways.
 func (s *Store) RecordGrant(ctx context.Context, g Grant) error {
 	if err := s.tx(ctx, func(q *dbgen.Queries) error { return recordGrant(ctx, q, g) }); err != nil {

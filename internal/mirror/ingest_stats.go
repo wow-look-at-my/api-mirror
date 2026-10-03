@@ -39,7 +39,7 @@ func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// dispositionProbe reads what the ingest handler actually answered.
+// dispositionProbe reads what the ingest handler answered.
 type dispositionProbe struct {
 	http.ResponseWriter
 	status int

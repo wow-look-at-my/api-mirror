@@ -171,7 +171,7 @@ func TestUnsetSecretRefusesEveryDelivery(t *testing.T) {
 	body := deliveryBody(t, repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
-	// Even a body signed with the empty key is refused: with no secret there is
+	// Even a body signed with the empty key is refused.
 	w := postDelivery(t, in, "repository", body, signBody("", body))
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
@@ -371,7 +371,7 @@ func TestAFailedHandlerDecidesTheAnswerForTheWholeDelivery(t *testing.T) {
 
 func TestWatermarkFailureStillApplies(t *testing.T) {
 	in, store := newIngest(t, ingestSpec())
-	// The ordering gate is now broken. A provider sends a delivery, so the
+	// The ordering gate is now broken. A provider sends a delivery.
 	_, err := store.db.Exec(`DROP TABLE mirror_watermark`)
 	require.NoError(t, err)
 
@@ -420,7 +420,7 @@ func TestWindowedDeliveryAnswersBeforeItApplies(t *testing.T) {
 	w := deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
 		map[string]any{"visibility": "public"}))
 
-	// The provider gives up in single-digit seconds, so the answer precedes the
+	// The provider gives up in single-digit seconds.
 	assert.Equal(t, http.StatusAccepted, w.Code)
 	assert.Equal(t, "accepted", w.Header().Get(dispositionHeader))
 

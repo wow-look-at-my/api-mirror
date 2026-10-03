@@ -33,8 +33,8 @@ func NewRefresher(e *Engine) *Refresher {
 	r.interval = e.spec.Refresh.Interval
 	r.kinds = e.spec.Refresh.Kinds
 	if len(r.kinds) == 0 {
-		// A resource nobody reads has nothing to keep warm, so the default is
-		// every resource some route actually serves.
+		// A resource nobody reads has nothing to keep warm, so the default is every
+		// resource some route serves.
 		for _, rt := range e.spec.Routes {
 			kind := routeKind(rt)
 			if !slices.Contains(r.kinds, kind) {

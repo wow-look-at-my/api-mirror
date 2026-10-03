@@ -61,7 +61,6 @@ func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.Respon
 			w.Header().Set(d.header, "true")
 			replay(w, inflight)
 		case <-r.Context().Done():
-			// The caller left; the shared call carries on for the rest.
 		}
 		return
 	}
