@@ -179,7 +179,7 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 	if s.CORS != nil && len(s.CORS.Origins) == 0 {
 		return fmt.Errorf("<cors> names no <origin>, so it would allow nothing while looking like a policy")
 	}
-	return nil
+	return s.validateCredentials()
 }
 
 func (r *Resource) validate() error {

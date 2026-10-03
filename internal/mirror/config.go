@@ -35,6 +35,52 @@ type Spec struct {
 	Identity *Identity
 	// Whoami resolves a caller's own credential to a stable principal.
 	Whoami *Whoami
+	// Credentials are background credentials obtained by an exchange.
+	Credentials []*Credential
+}
+
+// Credential is a background credential that the engine obtains by an
+// exchange and caches until shortly before it expires. Only a call with no
+// caller uses it.
+type Credential struct {
+	Name string
+	// Requires names a value without which the credential is off.
+	Requires string
+	// For is template source over `.key`. Its value picks the token, so each owner gets the token that covers it.
+	For string
+	// Margin is how long before its expiry a token is replaced.
+	Margin time.Duration
+	// Headers authenticate the lookup and the exchange.
+	Headers []Header
+	// Lookup finds the value the exchange path needs. Nil means none.
+	Lookup *CredentialLookup
+	// Exchange is the call whose answer carries the token.
+	Exchange CredentialExchange
+}
+
+// CredentialLookup is the call that finds which grant covers a `.for`
+// value, such as the installation of an owner.
+type CredentialLookup struct {
+	Method string
+	// Path is template source over `.for`.
+	Path string
+	// Field is the path into the answer that the exchange reads as `.lookup`.
+	Field string
+	// TTL bounds how long an answer is reused.
+	TTL time.Duration
+}
+
+// CredentialExchange is the call that issues the token.
+type CredentialExchange struct {
+	Method string
+	// Path is template source over `.for` and `.lookup`.
+	Path string
+	// Token is the path into the answer that holds the token.
+	Token string
+	// Expires is the path into the answer that states when the token expires.
+	Expires string
+	// TTL is the lifetime of a token whose answer states no expiry.
+	TTL time.Duration
 }
 
 // Whoami is the upstream call that names the owner of a credential. A
@@ -217,6 +263,8 @@ type Upstream struct {
 type Header struct {
 	Name  string
 	Value string // template source
+	// Credential names the <credential> whose token renders as `.credential`.
+	Credential string
 }
 
 // StoreMode says what a resource keeps per key.
