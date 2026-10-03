@@ -27,6 +27,7 @@ The engine is `internal/mirror`, one package; `cmd/api-mirror` is the entry poin
 - `identity.go` — who is asking: `<identity>` (a verified assertion header, as `prefix:id`), `<whoami>` (a credential's owner), else the credential fingerprint. A refused assertion is a 401, never a fallback.
 - `spread.go` — `<spread>` on a route: each item of a fetched listing is a grant for its caller, and optionally truth.
 - `notify_api.go` — the public subscription API at `<notify path=>`, under the caller's own principal, and `<notify>` validation.
+- `gsm_import.go` — `<notify import=>`: adopts a github-state-mirror subscription file once per row, translating each owner to the principal it resolves to here.
 - `jwt.go` — the `jwt` and `readFile` template functions, for a credential that background work signs itself.
 - `headers.go` — the answer-header prefix. `stale.go` — an answer served after a failed refresh.
 - `compress.go` — admin gzip. `rowcap.go` — the per-table row cap.

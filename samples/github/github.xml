@@ -1688,7 +1688,13 @@
 		No db= here, so it is derived from whatever -db names: the two files
 		belong together and travel together.
 	-->
-	<notify path="/_mirror/subscriptions"
+	<!--
+		import= adopts every registration github-state-mirror holds, so its
+		subscribers keep being told after the cutover. Each keeps its id,
+		secret, filters and owner. GSM_SUBSCRIPTIONS_DB names that service's
+		subscriptions file. Unset imports nothing.
+	-->
+	<notify path="/_mirror/subscriptions" import='{{ .env.GSM_SUBSCRIPTIONS_DB }}'
 		signature-header="X-Hub-Signature-256" timeout="10s" retries="3" disable-after="20"
 		scope-field="repos" event-header="X-Mirror-Event" delivery-header="X-Mirror-Delivery">
 		<!--

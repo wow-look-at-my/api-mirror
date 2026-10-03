@@ -230,7 +230,7 @@ A route's `<spread resource="repo" items="...">` earns grants in bulk. Each item
 
 ### Who is asking
 
-A principal is the credential's fingerprint unless the spec names something more stable. `<identity header= path= id= prefix=>` accepts an assertion in a request header, verifies it with one upstream call, and names the caller `prefix:id`. A refused assertion is a 401 and never falls back. `<whoami path= id= prefix=>` asks the upstream who owns the caller's own credential. Both keep a caller's grants across a rotated credential.
+A principal is the credential's fingerprint unless the spec names something more stable. The fingerprint is `token:` and the hex SHA-256 of the bare credential. A `Bearer` or `token` scheme word is not part of it, so one token is one caller. `<identity header= path= id= prefix=>` accepts an assertion in a request header, verifies it with one upstream call, and names the caller `prefix:id`. A refused assertion is a 401 and never falls back. `<whoami path= id= prefix=>` asks the upstream who owns the caller's own credential. Both keep a caller's grants across a rotated credential.
 
 A static upstream header never answers for a caller. A request-time call drops every forwarded header the caller did not send.
 
@@ -296,7 +296,9 @@ has ingested the delivery and gets the state that delivery was about to replace.
 AFTER the write lands. Registrations live in a separate database file, because
 the cache nuke is safe only for rows the upstream still has a copy of.
 
-A caller manages its own registrations at `<notify path=>`, under its resolved principal. A delivery notifies once, after its last handler applies. It reaches a subscriber only when `<scope>` matches the subscriber's filter and the subscriber holds stored proof for the row `<reveal>` names. `<field>` adds payload values to the body.
+A caller manages its own registrations at `<notify path=>`, under its resolved principal. A delivery notifies once, after its last handler applies. It reaches a subscriber only when `<scope>` matches the subscriber's filter and the subscriber holds stored proof for the row `<reveal>` names. A filter entry matches its scope or any scope beneath it at a `/`, so `acme` admits `acme/widget`. `<field>` adds payload values to the body.
+
+`<notify import=>` names a github-state-mirror subscription file, as template source over `.env`. At startup the engine adopts each row it has not adopted before. The row keeps its id, secret, filters, counters, timestamps (to the second) and owner. A ledger records each source id, so a registration deleted here stays deleted. The owner is translated into the principal the same caller resolves to here. A row that no caller here can own is not imported. It is logged by id and counted on the dashboard, and the next start tries it again. A named file that is missing or not that format stops startup. A value that renders empty imports nothing and logs that once. The format belongs to that service. As a result, the importer is its own file, `gsm_import.go`.
 
 ### `<login>` — operators sign in upstream
 
