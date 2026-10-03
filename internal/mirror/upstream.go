@@ -24,6 +24,7 @@ type Upstreamer struct {
 	headers []Header
 	client  *http.Client
 	observe Observer
+	creds   *credentials
 }
 
 // NewUpstreamer resolves the upstream's base URL and static headers.
@@ -39,14 +40,16 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 	if observe == nil {
 		observe = funcObserver(func(Exchange) {})
 	}
-	return &Upstreamer{
+	u := &Upstreamer{
 		spec:    spec,
 		base:    base,
 		headers: spec.Upstream.Headers,
 		// Reports from its transport: no call site can forget to.
 		client:  observedClient(upstreamClient, LaneFetch, observe),
 		observe: observe,
-	}, nil
+	}
+	u.creds = newCredentials(u, spec, vars)
+	return u, nil
 }
 
 // Answer is what the upstream said.
@@ -83,7 +86,27 @@ func (u *Upstreamer) CallWith(ctx context.Context, method, path string, vars map
 		if err != nil {
 			return nil, fmt.Errorf("upstream header name: %w", err)
 		}
-		value, err := renderString(h.Value, vars)
+		if _, ok := set[http.CanonicalHeaderKey(name)]; ok {
+			// The engine sets this last, so its static value would never leave.
+			continue
+		}
+		hvars := vars
+		if h.Credential != "" {
+			// A caller is never answered with the background credential,
+			// whatever <forward> lists.
+			if forward != nil || inExchange(ctx) {
+				continue
+			}
+			token, on, err := u.creds.token(ctx, h.Credential, keyOf(ctx))
+			if err != nil {
+				return nil, fmt.Errorf("upstream %s %s: %w", method, path, err)
+			}
+			if !on {
+				continue
+			}
+			hvars = withCredential(vars, token)
+		}
+		value, err := renderString(h.Value, hvars)
 		if err != nil {
 			return nil, fmt.Errorf("upstream header %s: %w", name, err)
 		}
@@ -119,6 +142,25 @@ func (u *Upstreamer) CallWith(ctx context.Context, method, path string, vars map
 		return nil, fmt.Errorf("read upstream %s %s: %w", method, path, err)
 	}
 	return &Answer{Status: resp.StatusCode, Header: resp.Header, Body: body, Overflow: overflow}, nil
+}
+
+// keyOf is the resource key a background call is about, for a credential's
+// for=. A call with no plan has an empty key.
+func keyOf(ctx context.Context) map[string]string {
+	if p := planFrom(ctx); p != nil && p.key != nil {
+		return p.key
+	}
+	return map[string]string{}
+}
+
+// withCredential adds the token to a copy of vars as `.credential`.
+func withCredential(vars map[string]any, token string) map[string]any {
+	out := make(map[string]any, len(vars)+1)
+	for k, v := range vars {
+		out[k] = v
+	}
+	out["credential"] = token
+	return out
 }
 
 // readCapped reads at most maxBodyBytes and reports whether more was waiting.

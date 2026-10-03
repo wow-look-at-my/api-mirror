@@ -38,6 +38,8 @@ type cachedJWT struct {
 var (
 	jwtMu    sync.Mutex
 	jwtCache = map[string]cachedJWT{}
+	// jwtClock is a var so a test can move time past a token's expiry.
+	jwtClock = time.Now
 )
 
 // signedJWT mints an RS256 JWT with iss=issuer, signed by an RSA private
@@ -52,7 +54,7 @@ func signedJWT(issuer, key string) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(issuer + "\x00" + key))
 	cacheKey := string(sum[:])
-	now := time.Now()
+	now := jwtClock()
 
 	jwtMu.Lock()
 	defer jwtMu.Unlock()
