@@ -82,6 +82,6 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 ## Conventions
 
 - Tabs for indentation, in Go and in XML. Shipped `*.xml` declare `version="1.1"`. The loader strips the declaration, so inline test snippets omit it.
-- Comments state the invariant and why, in short sentences and active voice. No changelogs, no dates, no ".
+- Comments state the invariant and why, in short sentences and active voice. No changelogs, no dates, no history.
 - Tests use testify, `require` to stop and `assert` to check. Package-level vars (`upstreamClient`, `logger`) are swapped with save-and-restore in `t.Cleanup`.
-- go-toolchain warns at many lines and errors at 750. Extract into a topical file rather than growing one.
+- go-toolchain warns, then errors, on a long file. Extract into a topical file rather than growing one.
