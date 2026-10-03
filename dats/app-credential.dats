@@ -22,7 +22,7 @@ tests:
 		set -e
 		{shared.fakegithub} -listen 127.0.0.1:19961 -app-id 4242 -app-key {outputs.app.pem} &
 		FAKE_PID=$!
-		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
+		trap 'kill $FAKE_PID $MIRROR_PID 2>/dev/null' EXIT
 		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19961/_requests && break; sleep 0.1; done
 		GITHUB_API_URL=http://127.0.0.1:19961 GITHUB_APP_ID=4242 GITHUB_APP_PRIVATE_KEY_PATH={outputs.app.pem} \
 			MIRROR_ADMIN_TOKEN=admin WEBHOOK_REPLAY_INTERVAL=0 \

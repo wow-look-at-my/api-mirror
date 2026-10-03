@@ -83,6 +83,7 @@ A second half of the spec decides what runs in the background and what an operat
 - **Every request is on the chart.** The observation is in the transport, not at the call sites, so a client built here cannot make an invisible request — the passthrough proxy included.
 - **The passthrough tab is a to-do list.** Requests are grouped by route shape, counted, and each family comes with the `<resource>` and `<route>` that would stop it leaving.
 - **Delivery-gap replay.** A provider sends once. The replayer reads its failure log and asks for what never arrived, once per delivery. `requires=` names the credential it needs; without it the job declines to start and says so, rather than failing on a timer forever.
+- **A background credential that expires.** `<credential>` exchanges, for example, a GitHub App JWT for the installation token of the row's owner, and keeps it until shortly before it expires. Only a request with no caller sends it. A failed exchange fails that request instead of sending it anonymous.
 - **Subscriber notifications.** Consumers register a webhook endpoint and get an HMAC-signed notification *after* a delivery lands, so they stop racing this mirror's ingestion. Their registrations live in a separate database the schema nuke never touches.
 - **A periodic sweep**, a **passthrough debounce** that shares one upstream call between identical concurrent reads (never across credentials), and **liveness paths** that hold while a detached fetch is in flight.
 

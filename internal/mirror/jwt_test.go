@@ -94,6 +94,8 @@ func jwtClaims(t *testing.T, key *rsa.PrivateKey, bearer string) map[string]any 
 }
 
 func TestReplaySignsAFreshJWTForEveryCycle(t *testing.T) {
+	// It plants an entry in the shared JWT cache.
+	t.Serial()
 	key, pemText := testKeyPEM(t)
 	escaped := strings.ReplaceAll(pemText, "\n", `\n`)
 	t.Setenv("MIRROR_TEST_APP_ID", "777")
