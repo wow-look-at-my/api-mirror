@@ -102,8 +102,10 @@ func withAppCredential(s *Spec) {
 }
 
 // sweep refreshes one widget the way the background sweep does: no caller.
+// It ages the row first, so the refresh always reaches the upstream.
 func sweep(t *testing.T, e *Engine, id string) error {
 	t.Helper()
+	expire(t, e, "widget", id)
 	return e.refresh.refreshOne(context.Background(), "widget", StaleKey{Key: id})
 }
 
