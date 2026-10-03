@@ -83,9 +83,9 @@ func NewRequestLog() *RequestLog {
 
 // Record files handled request.
 //
-// The SHAPE is the point. line per request answers "what happened just
-// now"; the tally per shape answers "what is this mirror actually asked for",
-// which is the question that decides what to model next.
+// The SHAPE is the point. line per request answers "what happened now"; the
+// tally per shape answers "what is this mirror asked for", which is the
+// question that decides what to model next.
 func (l *RequestLog) Record(r Request) {
 	if l == nil {
 		return

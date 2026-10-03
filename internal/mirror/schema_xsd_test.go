@@ -66,7 +66,7 @@ func declaredNames(t *testing.T) (elements, attributes []string) {
 		append(attributes, "test", "eq", "each", "expr", "as", "default")
 }
 
-// namesUsedBy reads every element and attribute name spec actually uses.
+// namesUsedBy reads every element and attribute name spec uses.
 func namesUsedBy(t *testing.T, path string) (elements, attributes []string) {
 	t.Helper()
 	body, err := os.ReadFile(path)

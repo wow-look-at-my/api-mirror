@@ -232,7 +232,7 @@ func (rv *Revealer) remember(ctx context.Context, principal string, res *Resourc
 // RenewOn2xx renews a caller's proof after the engine fetched this key with
 // that caller's own credential.
 //
-// The upstream just answered them yes, which is the same proof a probe buys. A
+// The upstream answered them yes, which is the same proof a probe buys. A
 // steady consumer therefore never ages out, and never pays for a probe that
 // re-asks a question the fetch already answered.
 func (rv *Revealer) RenewOn2xx(ctx context.Context, principal string, res *Resource, key map[string]string, status int) {

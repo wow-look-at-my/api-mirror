@@ -208,13 +208,25 @@ func scalarString(v any) string {
 	}
 }
 
-// tokenPrincipal names a caller by the fingerprint of its credential.
+// tokenPrincipal names a caller by the full SHA-256 of its bare credential.
 func tokenPrincipal(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if auth == "" {
+	cred := bareCredential(r.Header.Get("Authorization"))
+	if cred == "" {
 		return ""
 	}
-	return "token:" + fingerprint(auth)
+	sum := sha256.Sum256([]byte(cred))
+	return "token:" + hex.EncodeToString(sum[:])
+}
+
+// bareCredential strips a Bearer or token scheme word from an Authorization
+// value. Any other scheme stays part of the value.
+func bareCredential(auth string) string {
+	for _, scheme := range []string{"Bearer ", "token "} {
+		if len(auth) >= len(scheme) && strings.EqualFold(auth[:len(scheme)], scheme) {
+			return strings.TrimSpace(auth[len(scheme):])
+		}
+	}
+	return strings.TrimSpace(auth)
 }
 
 func (id *Identity) validate(forward []string) error {

@@ -53,7 +53,7 @@ func assetNames() []string {
 	return names
 }
 
-// referencedAssets reads the file names index.html actually asks for.
+// referencedAssets reads the file names index.html asks for.
 func referencedAssets() ([]string, error) {
 	body, err := webFS.ReadFile("web/index.html")
 	if err != nil {

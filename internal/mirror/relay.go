@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// relayHeaders are what a relay forwards. Authorization is absent on
-// purpose: a foreign host must not receive what was meant for the upstream.
+// relayHeaders are what a relay forwards.
 var relayHeaders = []string{"Content-Type", "Accept", "Accept-Encoding"}
 
 // matchRelay finds the declared relay this request names.
@@ -25,7 +24,7 @@ func (e *Engine) matchRelay(r *http.Request) (*Relay, bool) {
 // happens to leave the upstream's host.
 //
 // The mirror's own CORS headers are already on the answer, and the foreign
-// host's are dropped: corsMiddleware is the single authority, and a duplicate
+// host's are dropped: corsMiddleware is the authority, and a duplicate
 // allow-origin makes a browser refuse the response outright.
 func (e *Engine) relay(w *recorder, r *http.Request, rl *Relay) {
 	w.note(DispPassthrough, rl.Path, "", string(PassRelay))

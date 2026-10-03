@@ -87,7 +87,6 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(base)
-			// The upstream does not need the client's address, and adding it
 		},
 		ModifyResponse: stripUpstreamCORS,
 		// The path an instrumented call site would have missed entirely.
@@ -114,10 +113,10 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 // Telemetry exposes what the mirror knows about its own traffic.
 func (e *Engine) Telemetry() *Telemetry { return e.tel }
 
-// resolveVars renders the spec's vars, in declaration order, each seeing
-// the ones before it.
+// resolveVars renders the spec's vars, in declaration order, each seeing the
+// ones before it.
 //
-// It returns the whole template context, not just the vars.
+// It returns the whole template context, not the vars.
 func resolveVars(spec *Spec) (map[string]any, error) {
 	vars := map[string]any{}
 	ctx := map[string]any{"env": envMap(), "var": vars}
@@ -284,8 +283,8 @@ func (e *Engine) matchPurges(r *http.Request) ([]*Purge, map[string]string, bool
 }
 
 // forwardAndPurge forwards a write verbatim, then drops the rows it changed
-// after the upstream confirms the write actually happened. A write is never
-// cached itself. This only clears what it made stale.
+// after the upstream confirms the write happened. A write is never cached
+// itself. This only clears what it made stale.
 func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, params map[string]string) {
 	keys := make([]map[string]string, 0, len(purges))
 	resources := make([]*Resource, 0, len(purges))
@@ -307,8 +306,8 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 	w.Header().Set(e.hdr.Cache, "purge")
 	e.proxy.ServeHTTP(w, r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, "purge")))
 
-	// The recorder already holds what the caller actually received, so the
-	// purge decides on that rather than on what the write was expected to do.
+	// The recorder already holds what the caller received, so the purge decides
+	// on that rather than on what the write was expected to do.
 	if w.status < 200 || w.status >= 300 {
 		return
 	}
@@ -320,8 +319,8 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 }
 
 // purgeKey builds the row key a write addresses. A path parameter the
-// resource does not key on is dropped, so a write on the single item can
-// still name the listing it belongs to, which keys on fewer columns.
+// resource does not key on is dropped, so a write on the item can still name
+// the listing it belongs to, which keys on fewer columns.
 func purgeKey(res *Resource, params map[string]string, auth string) (map[string]string, bool) {
 	key := make(map[string]string, len(res.Keys))
 	for _, k := range res.Keys {

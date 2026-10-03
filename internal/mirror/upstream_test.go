@@ -350,8 +350,8 @@ func TestUpstreamCall_ObservesWhatTheExchangeCost(t *testing.T) {
 	assert.GreaterOrEqual(t, e.Duration, time.Duration(0))
 }
 
-// The client is a package var only so a test can point it somewhere. Proving the
-// swap actually takes hold keeps a later test from silently talking to the real
+// The client is a package var only so a test can point it somewhere. Proving
+// the swap takes hold keeps a later test from silently talking to the real
 // internet.
 func TestUpstreamCall_UsesTheSwappedClient(t *testing.T) {
 	swapUpstreamClient(t, &http.Client{Timeout: time.Second})

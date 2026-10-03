@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync/atomic"
 )
 
@@ -141,17 +142,46 @@ func answer(path string) (any, bool) {
 
 func main() {
 	listen := flag.String("listen", ":8081", "listen address")
+	appID := flag.String("app-id", "", "play a GitHub App with this id; needs -app-key")
+	appKey := flag.String("app-key", "", "write the App's new private key to this file")
 	flag.Parse()
 
+	var app *fakeApp
+	if *appID != "" {
+		var err error
+		if app, err = newFakeApp(*appID, *appKey); err != nil {
+			log.Fatalf("fakegithub: %v", err)
+		}
+	}
+
 	var requests atomic.Int64
+	var repoAuth atomic.Value
+	repoAuth.Store("")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_requests", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%d", requests.Load())
 	})
+	// The Authorization the latest /repos/ request carried, so a test can see who asked.
+	mux.HandleFunc("/_auth", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, repoAuth.Load())
+	})
+	mux.HandleFunc("/_exchanges", func(w http.ResponseWriter, r *http.Request) {
+		if app == nil {
+			http.Error(w, "not playing an App: start with -app-id", http.StatusNotFound)
+			return
+		}
+		fmt.Fprintf(w, "%d", app.count())
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
+		if strings.HasPrefix(r.URL.Path, "/repos/") {
+			repoAuth.Store(r.Header.Get("Authorization"))
+		}
+		if app != nil && app.answer(w, r) {
+			return
+		}
 		if v, ok := answer(r.URL.Path); ok {
 			_ = json.NewEncoder(w).Encode(v)
 			return

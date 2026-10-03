@@ -35,6 +35,52 @@ type Spec struct {
 	Identity *Identity
 	// Whoami resolves a caller's own credential to a stable principal.
 	Whoami *Whoami
+	// Credentials are background credentials obtained by an exchange.
+	Credentials []*Credential
+}
+
+// Credential is a background credential that the engine obtains by an
+// exchange and caches until shortly before it expires. Only a call with no
+// caller uses it.
+type Credential struct {
+	Name string
+	// Requires names a value without which the credential is off.
+	Requires string
+	// For is template source over `.key`. Its value picks the token, so each owner gets the token that covers it.
+	For string
+	// Margin is how long before its expiry a token is replaced.
+	Margin time.Duration
+	// Headers authenticate the lookup and the exchange.
+	Headers []Header
+	// Lookup finds the value the exchange path needs. Nil means none.
+	Lookup *CredentialLookup
+	// Exchange is the call whose answer carries the token.
+	Exchange CredentialExchange
+}
+
+// CredentialLookup is the call that finds which grant covers a `.for`
+// value, such as the installation of an owner.
+type CredentialLookup struct {
+	Method string
+	// Path is template source over `.for`.
+	Path string
+	// Field is the path into the answer that the exchange reads as `.lookup`.
+	Field string
+	// TTL bounds how long an answer is reused.
+	TTL time.Duration
+}
+
+// CredentialExchange is the call that issues the token.
+type CredentialExchange struct {
+	Method string
+	// Path is template source over `.for` and `.lookup`.
+	Path string
+	// Token is the path into the answer that holds the token.
+	Token string
+	// Expires is the path into the answer that states when the token expires.
+	Expires string
+	// TTL is the lifetime of a token whose answer states no expiry.
+	TTL time.Duration
 }
 
 // Whoami is the upstream call that names the owner of a credential. A
@@ -120,6 +166,8 @@ type Notify struct {
 	Path string
 	// DB is a SEPARATE file: the cache nuke must not delete a registration.
 	DB string
+	// Import is template source naming a github-state-mirror registry to adopt at startup. Empty renders mean no import.
+	Import string
 	// SignatureHeader carries the HMAC digest of each notification body.
 	SignatureHeader string
 	// Timeout bounds delivery attempt.
@@ -156,11 +204,6 @@ type Refresh struct {
 }
 
 // Replay asks the upstream to re-send deliveries the mirror never received.
-//
-// A lost delivery is the quietest failure a mirror has: every cache the
-// delivery would have moved serves its last absorbed answer for the whole TTL,
-// and nothing reports a gap. A shorter TTL hides that window; it does not close
-// it.
 type Replay struct {
 	Interval time.Duration
 	// List is the upstream path returning failed deliveries.
@@ -215,6 +258,8 @@ type Upstream struct {
 type Header struct {
 	Name  string
 	Value string // template source
+	// Credential names the <credential> whose token renders as `.credential`.
+	Credential string
 }
 
 // StoreMode says what a resource keeps per key.
@@ -227,10 +272,7 @@ const (
 	StoreDocument StoreMode = "document"
 )
 
-// Resource is kind of stored fact: derived SQLite table, row per
-// key. There is deliberately no actor column and no way to declare --
-// true state upstream is row here, and who may SEE that row is the reveal
-// layer's question, never the storage layer's.
+// Resource is kind of stored fact: derived SQLite table, row per key.
 type Resource struct {
 	Name   string
 	Store  StoreMode
@@ -297,9 +339,7 @@ type Keep struct {
 	Reason string
 }
 
-// QueryParam is query parameter a route models. A request carrying a
-// parameter the route does not declare is passed through rather than answered
-// from a row keyed on a shape the spec never described.
+// QueryParam is query parameter a route models.
 type QueryParam struct {
 	Name    string
 	Type    FieldType
@@ -310,10 +350,9 @@ type QueryParam struct {
 	Key bool
 }
 
-// Route binds an HTTP path the consumer asks for to a resource that answers it.
-// A path the spec does not declare is a passthrough: forwarded verbatim and
-// reported as uncached. There is no state and no "correctly uncached"
-// verdict.
+// Route binds an HTTP path the consumer asks for to a resource that answers
+// it. A path the spec does not declare is a passthrough: forwarded verbatim
+// and reported as uncached.
 type Route struct {
 	Method   string
 	Path     string // "/repos/{owner}/{repo}"
@@ -330,17 +369,14 @@ type Route struct {
 	Accept []string
 	// Absorb lists the upstream statuses whose answer is stored.
 	Absorb []int
-	// BodyKey names the resource key the REQUEST body fills, as a digest,
-	// for a route whose question travels in its body. Naming it also makes
-	// that body travel: the fetch replays it upstream.
+	// BodyKey names the resource key the REQUEST body fills, as a digest, for a route whose question travels in its body.
 	BodyKey string
 	// Spreads carry the items of a fetched answer into another resource.
 	Spreads []*Spread
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
-// them. Every branch is deliberate: a resource with no reveal rule is a config
-// error, not an open resource.
+// them.
 type Reveal struct {
 	// Public is a predicate over the stored row (`.row.<field>`). True means
 	Public string
@@ -367,18 +403,15 @@ type Purge struct {
 	Resource string
 }
 
-// Rewrite canonicalises an inbound path prefix before anything matches it,
-// so a client with its own spelling still reaches the declared routes. It
-// grants nothing. docs/design.md says why gh needs it.
+// Rewrite canonicalises an inbound path prefix before anything matches it.
 type Rewrite struct {
-	// From is the prefix a caller sends, and To what it becomes. An empty To
-	// strips it.
+	// From is the prefix a caller sends, and To what it becomes. An empty To strips it.
 	From string
 	To   string
 }
 
 // Relay forwards a path to a fixed URL off the upstream base, uncached and
-// with no bearer: on a login path the BODY is the credential. docs/design.md.
+// with no bearer.
 type Relay struct {
 	Method string
 	Path   string

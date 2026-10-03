@@ -74,6 +74,7 @@
 				<xs:element name="health" type="health"/>
 				<xs:element name="identity" type="identity"/>
 				<xs:element name="whoami" type="whoami"/>
+				<xs:element name="credential" type="credential"/>
 			</xs:choice>
 			<xs:attribute name="name" type="xs:string" use="required"/>
 			<xs:attribute name="schema" type="xs:string"/>
@@ -97,7 +98,7 @@
 
 	<xs:complexType name="upstream">
 		<xs:choice minOccurs="0" maxOccurs="unbounded">
-			<xs:element name="header" type="headerType"/>
+			<xs:element name="header" type="upstreamHeaderType"/>
 			<xs:element name="forward">
 				<xs:complexType>
 					<xs:attribute name="name" type="xs:string" use="required"/>
@@ -122,6 +123,13 @@
 	<xs:complexType name="headerType" mixed="true">
 		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
 		<xs:attribute name="name" type="xs:string" use="required"/>
+	</xs:complexType>
+
+	<!-- credential= renders that <credential>'s token as `.credential`, on a call with no caller only. -->
+	<xs:complexType name="upstreamHeaderType" mixed="true">
+		<xs:group ref="placeholders" minOccurs="0" maxOccurs="unbounded"/>
+		<xs:attribute name="name" type="xs:string" use="required"/>
+		<xs:attribute name="credential" type="xs:string"/>
 	</xs:complexType>
 
 	<xs:complexType name="resource">
@@ -391,6 +399,8 @@
 		<xs:attribute name="event-header" type="xs:string"/>
 		<xs:attribute name="delivery-header" type="xs:string"/>
 		<xs:attribute name="db" type="xs:string"/>
+		<!-- Template source over `.env` and `.var`: a github-state-mirror registry to adopt at startup. -->
+		<xs:attribute name="import" type="xs:string"/>
 		<xs:attribute name="signature-header" type="xs:string"/>
 		<xs:attribute name="timeout" type="xs:string"/>
 		<xs:attribute name="retries" type="xs:integer"/>
@@ -449,6 +459,40 @@
 		<xs:attribute name="name" type="xs:string"/>
 		<xs:attribute name="prefix" type="xs:string" use="required"/>
 		<xs:attribute name="ttl" type="xs:string"/>
+	</xs:complexType>
+
+	<!--
+		A token obtained by an exchange, cached until `margin` before it
+		expires. `for` is template source over `.key` that picks the token.
+		Empty `requires` turns the credential off.
+	-->
+	<xs:complexType name="credential">
+		<xs:choice minOccurs="0" maxOccurs="unbounded">
+			<!-- Authenticates the lookup and the exchange. -->
+			<xs:element name="header" type="headerType"/>
+			<!-- Finds the value the exchange path reads as `.lookup`. -->
+			<xs:element name="lookup">
+				<xs:complexType>
+					<xs:attribute name="method" type="xs:string"/>
+					<xs:attribute name="path" type="xs:string" use="required"/>
+					<xs:attribute name="field" type="xs:string" use="required"/>
+					<xs:attribute name="ttl" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="exchange">
+				<xs:complexType>
+					<xs:attribute name="method" type="xs:string"/>
+					<xs:attribute name="path" type="xs:string" use="required"/>
+					<xs:attribute name="token" type="xs:string" use="required"/>
+					<xs:attribute name="expires" type="xs:string"/>
+					<xs:attribute name="ttl" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:choice>
+		<xs:attribute name="name" type="xs:string" use="required"/>
+		<xs:attribute name="requires" type="xs:string"/>
+		<xs:attribute name="for" type="xs:string"/>
+		<xs:attribute name="margin" type="xs:string"/>
 	</xs:complexType>
 
 </xs:schema>
