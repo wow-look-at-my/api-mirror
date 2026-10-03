@@ -49,9 +49,9 @@ The engine enforces all three by construction. A spec cannot express a per-calle
 
 A resource declares WHAT IS STORED. Its `<key>` children are the identity: the primary key of the derived table and the cache key of every route that reads it. There is no actor column and no way to declare one.
 
-A key reads the document field of its own name. `from=` says otherwise, and `fold="true"` lower-cases the value so a differently cased URL cannot land on a row a delivery never reaches. The engine's own per-row column is `mirror_written_at`, prefixed so it cannot collide with a field the upstream has — `updated_at` is exactly the name an API uses.
+A key reads the document field of its own name. `from=` says otherwise, and `fold="true"` lower-cases the value so a differently cased URL cannot land on a row a delivery never reaches. The engine's own per-row column is `mirror_written_at`. The prefix keeps it clear of a field the upstream has. `updated_at` is exactly the name an API uses.
 
-`<field>` declares a stored column: a name, a SQL-ish `type`, and a body that is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
+`<field>` declares a stored column with a name and a SQL-ish `type`. Its body is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
 
 The rebuilt answer is a subset of the upstream document. A client of the upstream must read the mirror unchanged.
 
@@ -67,7 +67,7 @@ One fact is declared once. Validation refuses declarations that read one source 
 
 A route binds an HTTP path pattern to a resource. Path parameters (`{owner}`) become the key. A cached route serves stored state. On a miss or a stale row it fetches upstream, absorbs, and REBUILDS the answer from what it stored. A route never replays bytes it did not parse.
 
-`<param>` declares the query shape: a name, a type, a default, and a range. A parameter the route does not declare, a repeated one, or a value outside its range makes the request a passthrough rather than an answer keyed on a shape the spec never described. `<accept>` does the same for media types. `<absorb status="404"/>` names an upstream refusal worth remembering, and a status named nowhere relays without being stored.
+`<param>` declares the query shape: a name, a type, a default, and a range. Some requests become a passthrough: a parameter the route does not declare, a repeated one, or a value outside its range. The mirror never keys an answer on a shape the spec did not describe. `<accept>` does the same for media types. `<absorb status="404"/>` names an upstream refusal worth remembering, and a status named nowhere relays without being stored.
 
 `list="true"` marks a route whose answer is an array of the resource's rows. The answer is the page the upstream returned: the rows it named, in its order, and nothing another route stored under the same parent key. Each list answer records its members, keyed by the request together with every query value the route models, so page 2 is its own answer. A row a delivery deletes drops out of every page that named it. A document list stores the upstream's array whole and replays it.
 
@@ -95,7 +95,7 @@ Such a resource is almost always credential-keyed, because a query language filt
 
 ### `<rewrite>` — the client's spelling of the same path
 
-A client can insist on a path shape the upstream's own docs do not use, and then every declared route misses. `gh` is the case that forces this. It reads any host that is not github.com as GitHub Enterprise Server, so pointing it at a mirror with `GH_HOST` puts REST under `/api/v3` and GraphQL at `/api/graphql`. Nothing matches, and the whole session forwards uncached.
+A client can insist on a path shape the upstream's own docs do not use, and then every declared route misses. `gh` is the case that forces this. It reads any host that is not github.com as GitHub Enterprise Server. Pointed at a mirror with `GH_HOST`, it puts REST under `/api/v3` and GraphQL at `/api/graphql`. Nothing matches, and the whole session forwards uncached.
 
 ```xml
 <rewrite from="/api/v3"/>
@@ -116,7 +116,7 @@ An API's login endpoints usually sit on a different host from its data, and send
 
 A relay forwards the body verbatim to a fixed URL and answers with what comes back. Nothing is stored and nothing is keyed. As a result, it is a passthrough that happens to leave the upstream's host. It is reported as uncached like any other.
 
-It carries no bearer. On these paths the BODY is the credential, an OAuth `client_secret` or a bare public `client_id`, so the caller's `Authorization` header is deliberately not forwarded to a foreign host. The foreign host's own allow-origin headers are dropped as well. This is because `<cors>` is the single authority and a duplicate makes a browser refuse the answer.
+It carries no bearer. On these paths the BODY is the credential: an OAuth `client_secret` or a bare public `client_id`. The caller's `Authorization` header therefore never goes to a foreign host. The foreign host's own allow-origin headers are dropped as well. This is because `<cors>` is the single authority and a duplicate makes a browser refuse the answer.
 
 `to` must be https, unless it names loopback, which is how a test points one at a local stand-in.
 
@@ -181,7 +181,7 @@ Everything above decides what an answer IS. What follows decides whether anybody
 
 The surface exists whether or not a spec declares one. This decides where it lives and what gates it. An absent `<token>` mints one per process and logs the URL that carries it — on by default, never open by default. Everything admin hangs off the prefix, so a deployment gates the whole thing in one rule.
 
-The page reports traffic by lane, cache contents by kind, the rate budget per identity, deliveries by type, principals and their standing, and — the tab that matters most — **what is still leaving**. A passthrough is unfinished work. As a result, each leaking family is grouped by route shape, counted, given real sample paths, and handed the `<resource>` and `<route>` that will stop it.
+The page reports traffic by lane, cache contents by kind, the rate budget per identity, deliveries by type, and principals with their standing. The tab that matters most shows **what is still leaving**. A passthrough is unfinished work. As a result, the page groups each leaking family by route shape and counts it. It gives each family real sample paths and the `<resource>` and `<route>` that will stop it.
 
 ### Everything the mirror exchanges is on the chart
 
@@ -233,7 +233,7 @@ A failed lookup or exchange fails the request with an error that names the step 
 
 ### `<notify>` — telling consumers, so they stop racing us
 
-A consumer who also receives the upstream's webhooks reads the mirror before it has ingested the delivery and gets the state that delivery was about to replace. `<notify>` lets them register an endpoint and sends an HMAC-signed notification AFTER the write lands. Registrations live in a separate database file, because the cache nuke is safe only for rows the upstream still has a copy of.
+A consumer can also receive the upstream's webhooks. It then reads the mirror before the mirror has ingested the delivery. It gets the state that delivery was about to replace. `<notify>` lets them register an endpoint and sends an HMAC-signed notification AFTER the write lands. Registrations live in a separate database file, because the cache nuke is safe only for rows the upstream still has a copy of.
 
 A caller manages its own registrations at `<notify path=>`, under its resolved principal. A delivery notifies once, after its last handler applies. It reaches a subscriber only when `<scope>` matches the subscriber's filter and the subscriber holds stored proof for the row `<reveal>` names. A filter entry matches its scope or any scope beneath it at a `/`, so `acme` admits `acme/widget`. `<field>` adds payload values to the body.
 
@@ -253,7 +253,14 @@ A caller manages its own registrations at `<notify path=>`, under its resolved p
 
 ## What the engine owns
 
-Schema derivation and the fingerprint nuke, the freshness state machine and its error backoff, detached fetches and the shutdown drain, request coalescing, ordering, HMAC verification, grant and deny bookkeeping, the dashboard and its telemetry, the background jobs, and the observability that makes every upstream request visible.
+- Schema derivation and the fingerprint nuke.
+- The freshness state machine and its error backoff.
+- Detached fetches and the shutdown drain.
+- Request coalescing, ordering, and HMAC verification.
+- Grant and deny bookkeeping.
+- The dashboard and its telemetry.
+- The background jobs.
+- The observability that makes every upstream request visible.
 
 ## What the spec owns
 
