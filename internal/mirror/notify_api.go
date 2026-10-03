@@ -125,7 +125,7 @@ func (e *Engine) scopeField() string {
 func (e *Engine) subscriptionView(s Subscription) map[string]any {
 	disabledReason := ""
 	if s.Disabled {
-		disabledReason = cmp.Or(s.LastError, "disabled")
+		disabledReason = cmp.Or(s.DisabledReason, s.LastError, "disabled")
 	}
 	return map[string]any{
 		"id":                   s.ID,

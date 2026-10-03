@@ -120,6 +120,8 @@ type Notify struct {
 	Path string
 	// DB is a SEPARATE file: the cache nuke must not delete a registration.
 	DB string
+	// Import is template source naming a github-state-mirror registry to adopt at startup. Empty renders mean no import.
+	Import string
 	// SignatureHeader carries the HMAC digest of each notification body.
 	SignatureHeader string
 	// Timeout bounds delivery attempt.

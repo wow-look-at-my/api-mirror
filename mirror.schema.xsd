@@ -391,6 +391,8 @@
 		<xs:attribute name="event-header" type="xs:string"/>
 		<xs:attribute name="delivery-header" type="xs:string"/>
 		<xs:attribute name="db" type="xs:string"/>
+		<!-- Template source over `.env` and `.var`: a github-state-mirror registry to adopt at startup. -->
+		<xs:attribute name="import" type="xs:string"/>
 		<xs:attribute name="signature-header" type="xs:string"/>
 		<xs:attribute name="timeout" type="xs:string"/>
 		<xs:attribute name="retries" type="xs:integer"/>

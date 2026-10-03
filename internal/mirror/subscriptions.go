@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS subscription (
 	last_error   TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS subscription_principal ON subscription (principal);
+CREATE TABLE IF NOT EXISTS subscription_import (
+	source          TEXT NOT NULL,
+	source_id       TEXT NOT NULL,
+	subscription_id TEXT NOT NULL,
+	imported_at     INTEGER NOT NULL,
+	PRIMARY KEY (source, source_id)
+);
 `
 
 // subscriptionColumns are added to a file an older build created. Each
@@ -43,11 +50,12 @@ var subscriptionColumns = []struct{ name, ddl string }{
 	{"scopes", `ALTER TABLE subscription ADD COLUMN scopes TEXT NOT NULL DEFAULT ''`},
 	{"updated_at", `ALTER TABLE subscription ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`},
 	{"last_failure", `ALTER TABLE subscription ADD COLUMN last_failure INTEGER`},
+	{"disabled_reason", `ALTER TABLE subscription ADD COLUMN disabled_reason TEXT NOT NULL DEFAULT ''`},
 }
 
 // subscriptionSelect is the column list every read uses.
 const subscriptionSelect = `SELECT id, principal, url, events, scopes, created_at, updated_at,
-	last_ok, last_failure, failures, disabled, last_error FROM subscription`
+	last_ok, last_failure, failures, disabled, last_error, disabled_reason FROM subscription`
 
 // minCallerSecret is the shortest secret a subscriber may choose.
 const minCallerSecret = 16
@@ -69,6 +77,8 @@ type Subscription struct {
 	Failures    int       `json:"failures"`
 	Disabled    bool      `json:"disabled"`
 	LastError   string    `json:"last_error,omitempty"`
+	// DisabledReason says why a parked subscription stopped. A subscriber that turned itself off has none.
+	DisabledReason string `json:"disabled_reason,omitempty"`
 }
 
 // SubscriptionPatch changes the fields it sets and leaves the rest alone.
@@ -194,6 +204,72 @@ func (s *Subscriptions) Create(ctx context.Context, principal, url, secret strin
 	return sub, nil
 }
 
+// adoptOutcome is what adopt did with one registration of another store.
+type adoptOutcome int
+
+const (
+	adoptImported adoptOutcome = iota
+	adoptPresent
+	adoptIDTaken
+)
+
+// adopt stores a registration that another store issued, under its own id,
+// with every field as given.
+//
+// The import ledger records the source id. A row the ledger names is never
+// written again, so a subscriber deleted here stays deleted.
+func (s *Subscriptions) adopt(ctx context.Context, source, sourceID string, sub Subscription) (adoptOutcome, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM subscription_import WHERE source = ? AND source_id = ?`,
+		source, sourceID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("read import ledger: %w", err)
+	}
+	if n > 0 {
+		return adoptPresent, nil
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM subscription WHERE id = ?`, sub.ID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("read subscription: %w", err)
+	}
+	if n > 0 {
+		return adoptIDTaken, nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO subscription (id, principal, url, secret, events, scopes, created_at, updated_at,
+			last_ok, last_failure, failures, disabled, last_error, disabled_reason)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sub.ID, sub.Principal, sub.URL, sub.Secret, strings.Join(sub.Events, ","), strings.Join(sub.Scopes, ","),
+		sub.CreatedAt.Unix(), sub.UpdatedAt.Unix(), unixOrNull(sub.LastOK), unixOrNull(sub.LastFailure),
+		sub.Failures, boolInt(sub.Disabled), sub.LastError, sub.DisabledReason); err != nil {
+		return 0, fmt.Errorf("adopt subscription %s: %w", sub.ID, err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO subscription_import (source, source_id, subscription_id, imported_at) VALUES (?, ?, ?, ?)`,
+		source, sourceID, sub.ID, time.Now().Unix()); err != nil {
+		return 0, fmt.Errorf("write import ledger: %w", err)
+	}
+	return adoptImported, tx.Commit()
+}
+
+func unixOrNull(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.Unix()
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // Get reads one subscription that belongs to a principal. A subscription
 // of another principal reads as absent.
 func (s *Subscriptions) Get(ctx context.Context, principal, id string) (*Subscription, error) {
@@ -223,7 +299,7 @@ func (s *Subscriptions) Update(ctx context.Context, principal, id string, p Subs
 	}
 	if p.Active != nil {
 		if *p.Active {
-			sets = append(sets, "disabled = 0", "failures = 0", "last_error = ''")
+			sets = append(sets, "disabled = 0", "failures = 0", "last_error = ''", "disabled_reason = ''")
 		} else {
 			sets = append(sets, "disabled = 1")
 		}
@@ -305,8 +381,10 @@ func (s *Subscriptions) MarkDelivered(ctx context.Context, id string) error {
 func (s *Subscriptions) MarkFailed(ctx context.Context, id, cause string, limit int) (int, error) {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE subscription SET failures = failures + 1, last_error = ?, last_failure = ?,
+		 disabled_reason = CASE WHEN failures + 1 >= ? AND disabled = 0
+			THEN 'disabled after ' || (failures + 1) || ' consecutive delivery failures' ELSE disabled_reason END,
 		 disabled = CASE WHEN failures + 1 >= ? THEN 1 ELSE disabled END WHERE id = ?`,
-		cause, time.Now().Unix(), limit, id)
+		cause, time.Now().Unix(), limit, limit, id)
 	if err != nil {
 		return 0, err
 	}
@@ -344,7 +422,7 @@ func (s *Subscriptions) query(ctx context.Context, stmt string, args ...any) ([]
 			disabled         int
 		)
 		if err := rows.Scan(&sub.ID, &sub.Principal, &sub.URL, &events, &scopes, &created, &updated,
-			&lastOK, &lastFail, &sub.Failures, &disabled, &sub.LastError); err != nil {
+			&lastOK, &lastFail, &sub.Failures, &disabled, &sub.LastError, &sub.DisabledReason); err != nil {
 			return nil, fmt.Errorf("read subscriptions: %w", err)
 		}
 		if events != "" {
