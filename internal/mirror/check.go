@@ -144,8 +144,8 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 	}
 
 	// A delivery that landed mid-fetch is a write, not drift. Re-reading the
-	// bookkeeping is what tells the apart, and calling a race drift would
-	// send an operator hunting a bug that just corrected itself.
+	// bookkeeping is what tells the apart, and calling a race drift would send
+	// an operator hunting a bug that corrected itself.
 	if after, err := e.store.Freshness(ctx, kind, f.Key); err == nil && after != nil &&
 		after.ChangedAt.After(f.ChangedAt) {
 		out.Verdict = CheckRaced

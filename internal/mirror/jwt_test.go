@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -72,6 +73,73 @@ func TestReadFileReadsAMountedKey(t *testing.T) {
 	out, err = renderString(`{{ readFile "" }}`, nil)
 	require.NoError(t, err)
 	assert.Empty(t, out)
+}
+
+// jwtClaims checks an RS256 bearer against key and returns its claims.
+func jwtClaims(t *testing.T, key *rsa.PrivateKey, bearer string) map[string]any {
+	t.Helper()
+	token, ok := strings.CutPrefix(bearer, "Bearer ")
+	require.True(t, ok, "not a bearer: %q", bearer)
+	parts := strings.Split(token, ".")
+	require.Len(t, parts, 3)
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	require.NoError(t, err)
+	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	require.NoError(t, rsa.VerifyPKCS1v15(&key.PublicKey, crypto.SHA256, digest[:], sig))
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+	var claims map[string]any
+	require.NoError(t, json.Unmarshal(raw, &claims))
+	return claims
+}
+
+func TestReplaySignsAFreshJWTForEveryCycle(t *testing.T) {
+	// It plants an entry in the shared JWT cache.
+	t.Serial()
+	key, pemText := testKeyPEM(t)
+	escaped := strings.ReplaceAll(pemText, "\n", `\n`)
+	t.Setenv("MIRROR_TEST_APP_ID", "777")
+	t.Setenv("MIRROR_TEST_APP_KEY", escaped)
+
+	var mu sync.Mutex
+	seen := map[string][]string{}
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen[r.Method] = append(seen[r.Method], r.Header.Get("Authorization"))
+		mu.Unlock()
+		if r.Method == http.MethodGet {
+			w.Write([]byte(`[{"id":"d1"}]`))
+		}
+	}), func(s *Spec) {
+		s.Upstream.Headers = append(s.Upstream.Headers, Header{Name: "Authorization", Value: "token background"})
+		s.Replay = &Replay{
+			Interval: time.Minute, List: "/deliveries", Redeliver: "/deliveries/{{ .id }}/attempts", ID: "id",
+			Requires: "env.MIRROR_TEST_APP_ID",
+			Headers:  []Header{{Name: "Authorization", Value: "Bearer {{ jwt .env.MIRROR_TEST_APP_ID .env.MIRROR_TEST_APP_KEY }}"}},
+		}
+	})
+	require.True(t, e.replay.Enabled())
+
+	e.replay.cycle()
+	require.Len(t, seen[http.MethodGet], 1)
+	require.Len(t, seen[http.MethodPost], 1, "the lost delivery was asked for")
+	list := jwtClaims(t, key, seen[http.MethodGet][0])
+	assert.Equal(t, "777", list["iss"])
+	assert.Equal(t, seen[http.MethodGet][0], seen[http.MethodPost][0], "the redelivery carries the same live JWT")
+
+	e.replay.cycle()
+	require.Len(t, seen[http.MethodGet], 2)
+	assert.Equal(t, seen[http.MethodGet][0], seen[http.MethodGet][1], "a live JWT is reused")
+
+	// A cached JWT inside its last minute is not sent again.
+	jwtMu.Lock()
+	jwtCache[jwtCacheKey("777", escaped)] = cachedJWT{token: "nearly-expired", expires: time.Now().Add(30 * time.Second)}
+	jwtMu.Unlock()
+	e.replay.cycle()
+	require.Len(t, seen[http.MethodGet], 3)
+	assert.NotEqual(t, "Bearer nearly-expired", seen[http.MethodGet][2])
+	next := jwtClaims(t, key, seen[http.MethodGet][2])
+	assert.Equal(t, "777", next["iss"], "the cycle signed a fresh JWT")
 }
 
 func TestReplayAuthenticatesWithItsOwnHeaders(t *testing.T) {

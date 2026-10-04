@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// jsonValue decodes a fragment the way a fetch decodes an upstream body, with
+// jsonValue decodes a fragment the way a fetch decodes an upstream body.
 func jsonValue(t *testing.T, src string) any {
 	t.Helper()
 	v, err := decodeJSON([]byte(src))
@@ -177,11 +177,10 @@ func TestAbsorbAndRebuild_ProjectOnlyTheDeclaredFields(t *testing.T) {
 	out, err := rebuild(res, row)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{
-		"owner":            map[string]any{"login": "wowlookatmy"},
+		"owner":            map[string]any{"login": "WowLookAtMy"},
 		"stargazers_count": int64(5),
 		"archived":         false,
-		"slug":             "WowLookAtMy/api-mirror",
-	}, out, "each value is answered where the upstream document had it; an expr field under its own name")
+	}, out, "each key and field goes back to its path, a folded key as sent; an expr field is not the upstream's word")
 }
 
 func TestRebuild_AnIntKeyIsAnsweredAsANumber(t *testing.T) {

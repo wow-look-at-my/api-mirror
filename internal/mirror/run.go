@@ -72,6 +72,7 @@ func run(argv []string, out io.Writer) error {
 		ingest.SetNotifier(engine.notify)
 		engine.SetIngest(ingest)
 	}
+	engine.up.creds.announce()
 	engine.refresh.Start()
 	engine.replay.Start()
 
@@ -181,6 +182,13 @@ func reportOps(spec *Spec, out io.Writer) {
 	say("health", spec.Health != nil, describeHealth(spec.Health))
 	say("ratelimit", spec.Upstream.Rate.declared(), spec.Upstream.Rate.Remaining+" / "+spec.Upstream.Rate.Reset)
 	say("debounce", spec.Upstream.Debounce > 0, spec.Upstream.Debounce.String())
+	for _, c := range spec.Credentials {
+		d := c.Exchange.Method + " " + c.Exchange.Path
+		if c.Requires != "" {
+			d += " (needs " + c.Requires + ")"
+		}
+		say("credential", true, c.Name+": "+d)
+	}
 }
 
 func describeRefresh(r *Refresh) string {

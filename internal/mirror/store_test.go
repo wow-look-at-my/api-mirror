@@ -122,7 +122,7 @@ func TestReopenChangedSpecNukes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, row, "a changed spec must rebuild the cache empty")
 
-	// The new column is the point: the old table could not hold it.
+	// The new column is the point: the table could not hold it.
 	putRepo(t, second, r, "wow", "api-cli", "public", 3)
 	fresh, err := second.Get(ctx, r, map[string]string{"owner": "wow", "repo": "api-cli"})
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestReopenChangedSpecNukes(t *testing.T) {
 	assert.Equal(t, widerSpec().Fingerprint(), fp)
 }
 
-// A sidecar left behind resurrects part of the old database, so the nuke has to
+// A sidecar left behind resurrects part of the database, so the nuke has to
 // take all files.
 func TestNukeRemovesWALSidecars(t *testing.T) {
 	path := dbPath(t)
@@ -240,7 +240,7 @@ func TestRecordGrantClearsDenial(t *testing.T) {
 	require.True(t, found)
 	assert.Equal(t, 404, status)
 
-	// Upstream just said yes. A cached no beside it answers question.
+	// Upstream said yes. A cached no beside it answers question.
 	require.NoError(t, s.RecordGrant(ctx, Grant{
 		Principal: "user:1", Resource: "repo", Key: "wow/secret",
 		Source: "probe", ExpiresAt: now.Add(time.Hour),

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// fetchSafetyTimeout bounds a detached fetch. It is a leak guard, not a
+// fetchSafetyTimeout bounds a detached fetch. It is a leak guard.
 const fetchSafetyTimeout = 5 * time.Minute
 
 // defaultErrorRetry is how long a failed fetch is left alone when the spec
@@ -25,7 +25,7 @@ const (
 	StateError    FetchState = "error"
 )
 
-// Outcome is what a read did to get its answer, as reported to the caller and
+// Outcome is what a read did to get its answer.
 type Outcome string
 
 const (
@@ -38,7 +38,7 @@ const (
 type FetchResult struct {
 	ETag    string
 	Changed bool
-	// Status is the upstream answer the route declared worth keeping. A
+	// Status is the upstream answer the route declared worth keeping.
 	Status int
 }
 
@@ -47,7 +47,7 @@ type Fetcher func(ctx context.Context, kind, key, etag string) (FetchResult, err
 
 // Fresh keeps cached keys current.
 //
-// It holds properties that are easy to lose and expensive to debug: a
+// It holds properties that are easy to lose and expensive to debug.
 type Fresh struct {
 	store *Store
 	fetch Fetcher
@@ -65,7 +65,7 @@ func NewFresh(store *Store, fetch Fetcher, ttl func(kind string) time.Duration) 
 	return &Fresh{store: store, fetch: fetch, ttl: ttl, now: time.Now}
 }
 
-// Busy reports whether a fetch is in flight. It answers immediately, because
+// Busy reports whether a fetch is in flight. It answers immediately.
 func (f *Fresh) Busy() bool { return f.inflight.Load() > 0 }
 
 // Drain waits for in-flight fetches, so a shutdown does not close the database
@@ -106,8 +106,8 @@ func (f *Fresh) Ensure(ctx context.Context, kind, key string) (Outcome, error) {
 	return f.doFetch(ctx, kind, key, meta)
 }
 
-// Refresh fetches whether or not the row is fresh, and ignores the error
-// backoff. It is what a deliberate refresh means: the caller has decided, and a
+// Refresh fetches whether the row is fresh, and ignores the error backoff. It
+// is what a deliberate refresh means: the caller has decided.
 func (f *Fresh) Refresh(ctx context.Context, kind, key string) (Outcome, error) {
 	meta, err := f.store.Freshness(ctx, kind, key)
 	if err != nil {

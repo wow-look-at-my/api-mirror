@@ -255,6 +255,7 @@ func TestNotifierParksASubscriptionThatKeepsFailing(t *testing.T) {
 	assert.True(t, all[0].Disabled)
 	assert.NotEmpty(t, all[0].LastError,
 		"parking is loud: an operator must see a consumer that stopped being told")
+	assert.Equal(t, "disabled after 1 consecutive delivery failures", all[0].DisabledReason)
 }
 
 func TestSubscriptionEventFilterDefaultsToEverything(t *testing.T) {

@@ -21,14 +21,13 @@ const (
 	LaneReplay      Lane = "replay"      // asking the upstream to re-send a lost delivery
 	LaneDelivery    Lane = "delivery"    // an inbound webhook, timed at the handler
 	LaneNotify      Lane = "notify"      // an outbound subscriber notification
-	LaneIdentity    Lane = "identity"    // resolving who a caller's credential belongs to
+	LaneCredential  Lane = "credential"  // obtaining a background credential by exchange
 	LaneAdmin       Lane = "admin"       // the operator surface asking the upstream itself
 	LaneInbound     Lane = "inbound"     // a caller's request, as this mirror answered it
 )
 
 // Exchange is completed request, inbound or outbound, as reported to the
-// telemetry sink. Everything the mirror exchanges lands here: a request nobody
-// can see is a request nobody can account for.
+// telemetry sink.
 type Exchange struct {
 	Lane     Lane
 	Method   string
@@ -88,8 +87,8 @@ type observeTransport struct {
 
 // observedClient derives a reporting client from that is not, keeping the
 // original's deadline. Observation lives in the TRANSPORT rather than at the
-// call sites, because call sites only ever cover the calls somebody remembered
-// to instrument. A client built here cannot make an invisible request.
+// call sites, because call sites only ever cover the calls somebody
+// remembered to instrument.
 func observedClient(base *http.Client, lane Lane, obs Observer) *http.Client {
 	if base == nil {
 		base = http.DefaultClient

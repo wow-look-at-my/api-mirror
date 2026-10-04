@@ -37,6 +37,8 @@ type Notifier struct {
 	store  *Store
 	reveal *Revealer
 	hdr    answerHeaders
+	// imported is the startup import's result, or nil when none ran.
+	imported *ImportReport
 
 	wg sync.WaitGroup
 
@@ -60,14 +62,42 @@ func NewNotifier(spec *Spec, vars map[string]any, tel *Telemetry, cacheDB string
 	if err != nil {
 		return nil, err
 	}
-	return &Notifier{
+	n := &Notifier{
 		spec:   spec,
 		rule:   rule,
 		subs:   subs,
 		client: observedClient(&http.Client{Timeout: notifyTimeout(rule)}, LaneNotify, tel),
 		tel:    tel,
 		hdr:    headersFor(spec.HeaderPrefix),
-	}, nil
+	}
+	if err := n.runImport(vars); err != nil {
+		subs.Close()
+		return nil, err
+	}
+	return n, nil
+}
+
+// runImport adopts the registry <notify import=> names. A declared value
+// that renders empty names nothing, and says so once.
+func (n *Notifier) runImport(vars map[string]any) error {
+	if n.rule.Import == "" {
+		return nil
+	}
+	src, err := renderString(n.rule.Import, vars)
+	if err != nil {
+		return fmt.Errorf("<notify> import: %w", err)
+	}
+	src = strings.TrimSpace(src)
+	if src == "" {
+		logger.Info("notify: <notify import=> renders empty, so no subscriptions are imported")
+		return nil
+	}
+	report, err := importGSMSubscriptions(context.Background(), n.spec, n.subs, src)
+	if err != nil {
+		return err
+	}
+	n.imported = &report
+	return nil
 }
 
 func notifyTimeout(rule *Notify) time.Duration {
@@ -138,7 +168,7 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 
 	detached := context.WithoutCancel(ctx)
 	for _, s := range subs {
-		if len(s.Scopes) > 0 && !containsFold(s.Scopes, scope) {
+		if len(s.Scopes) > 0 && !scopeAdmits(s.Scopes, scope) {
 			continue
 		}
 		if !n.visible(ctx, s.Principal, d) {
@@ -243,9 +273,14 @@ func (n *Notifier) visible(ctx context.Context, principal string, d *Delivery) b
 	return ok
 }
 
-func containsFold(list []string, s string) bool {
-	for _, v := range list {
-		if strings.EqualFold(v, s) {
+// scopeAdmits reports whether a filter names the scope, or an ancestor of it
+// at a "/" boundary. A filter "acme" thus admits "acme/widget".
+func scopeAdmits(filters []string, scope string) bool {
+	for _, f := range filters {
+		if strings.EqualFold(f, scope) {
+			return true
+		}
+		if f != "" && len(scope) > len(f) && scope[len(f)] == '/' && strings.EqualFold(scope[:len(f)], f) {
 			return true
 		}
 	}
@@ -354,8 +389,8 @@ func (n *Notifier) recordSent(ctx context.Context, s Subscription) {
 // recordFailure counts a failure and parks a subscription that keeps failing.
 //
 // Parking is loud, not quiet: the subscription stays in the store, marked
-// disabled with the reason, so an operator sees a consumer that stopped being
-// told rather than that silently never was.
+// disabled with the reason, so an operator can tell a consumer the mirror gave
+// up on from one it never reached.
 func (n *Notifier) recordFailure(ctx context.Context, s Subscription, cause error) {
 	limit := n.rule.DisableAfter
 	if limit <= 0 {
@@ -387,6 +422,8 @@ type NotifyStats struct {
 	LastSent      time.Time `json:"last_sent,omitempty"`
 	LastError     string    `json:"last_error,omitempty"`
 	DB            string    `json:"db,omitempty"`
+	// Import is what the startup import adopted, and which rows it could not.
+	Import *ImportReport `json:"import,omitempty"`
 }
 
 // Stats reports the fan-out's own state.
@@ -404,6 +441,7 @@ func (n *Notifier) Stats(ctx context.Context) NotifyStats {
 		LastSent:  n.lastSent,
 		LastError: n.lastError,
 		DB:        n.subs.Path(),
+		Import:    n.imported,
 	}
 	n.mu.Unlock()
 	if count, err := n.subs.Count(ctx); err == nil {

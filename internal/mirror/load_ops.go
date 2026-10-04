@@ -107,13 +107,14 @@ func buildCORS(n *node) (*CORS, error) {
 }
 
 func buildNotify(n *node) (*Notify, error) {
-	if err := checkAttrs(n, "path", "db", "signature-header", "timeout", "retries", "disable-after",
+	if err := checkAttrs(n, "path", "db", "import", "signature-header", "timeout", "retries", "disable-after",
 		"scope-field", "event-header", "delivery-header"); err != nil {
 		return nil, err
 	}
 	no := &Notify{
 		Path:            n.Attr("path"),
 		DB:              n.Attr("db"),
+		Import:          n.Attr("import"),
 		SignatureHeader: n.Attr("signature-header"),
 		ScopeField:      n.Attr("scope-field"),
 		EventHeader:     n.Attr("event-header"),

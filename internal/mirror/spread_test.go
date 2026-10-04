@@ -57,7 +57,7 @@ func TestSpreadGrantsTheCallerEveryListedItem(t *testing.T) {
 
 	res, ok := e.store.Resource("secret")
 	require.True(t, ok)
-	has, err := e.store.HasGrant(context.Background(), "token:"+fingerprint("token t9"), "secret",
+	has, err := e.store.HasGrant(context.Background(), tokenPrincipal(&http.Request{Header: http.Header{"Authorization": {"token t9"}}}), "secret",
 		keyString(res, map[string]string{"id": "1"}), time.Now())
 	require.NoError(t, err)
 	assert.True(t, has)

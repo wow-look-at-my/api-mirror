@@ -41,6 +41,9 @@ func (no *Notify) validate(resources map[string]*Resource, dashboard string) err
 			return fmt.Errorf("<notify><field name=%q>: give it a payload path or an expr, not both and not neither", f.Field)
 		}
 	}
+	if err := oneOutputPerInput("<notify>", no.Fields); err != nil {
+		return err
+	}
 	if no.Reveal == nil {
 		return nil
 	}
@@ -122,7 +125,7 @@ func (e *Engine) scopeField() string {
 func (e *Engine) subscriptionView(s Subscription) map[string]any {
 	disabledReason := ""
 	if s.Disabled {
-		disabledReason = cmp.Or(s.LastError, "disabled")
+		disabledReason = cmp.Or(s.DisabledReason, s.LastError, "disabled")
 	}
 	return map[string]any{
 		"id":                   s.ID,

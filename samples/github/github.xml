@@ -33,11 +33,23 @@
 		rather than the mirror's, and it is why the mirror never needs a
 		credential of its own to serve a read.
 
-		The background Authorization below is for the requests that have NO
-		caller: the periodic sweep, the consistency check and the delivery-gap
-		replayer. A caller's request never carries it. The forwarded one is
-		required, so a request without a token is refused with a 401 before
-		anything is served or forwarded.
+		The two static Authorization headers below are for the requests that
+		have NO caller: the periodic sweep and the consistency check. Neither
+		answers for a caller: a caller who sends no Authorization reaches
+		GitHub with none, so the mirror's own token cannot reveal what an
+		anonymous caller could not read.
+
+		With GITHUB_APP_ID set, such a request signs in as the GitHub App, as
+		github-state-mirror does. The second header carries the installation
+		token of the row's owner, from <credential name="app"> below. It comes
+		last, so it replaces the first. A failed exchange fails the request; it
+		never falls back to the first header or to none.
+
+		Without GITHUB_APP_ID the App credential is off, and the log says so at
+		startup. GITHUB_BACKGROUND_TOKEN is then the fallback, sent whole, as
+		"token ghp_..." for example: a long-lived token, and a different
+		identity from the App. With neither set, a request with no caller gets
+		whatever an anonymous caller gets.
 
 		<ratelimit> names the headers that carry a budget. Naming them is what
 		lets the Rate limit tab exist at all, and it is also what tells a
@@ -52,19 +64,9 @@
 	<upstream base="{{ .var.base }}" debounce='{{ .env.PASSTHROUGH_DEBOUNCE | default "5s" }}' retry-after="Retry-After">
 		<header name="Accept">application/vnd.github+json</header>
 		<header name="X-GitHub-Api-Version">2022-11-28</header>
-		<header name="Authorization" background="true"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
-		<!--
-			With an App configured, the mirror's own calls carry the App's
-			credential instead: the installation token of the owner a refresh
-			or check is about, and the App JWT for the delivery log. The
-			background header above stays the fallback for an owner the App is
-			not installed on.
-		-->
-		<app id="{{ .env.GITHUB_APP_ID }}" key="{{ .env.GITHUB_APP_PRIVATE_KEY }}"
-			key-file="{{ .env.GITHUB_APP_PRIVATE_KEY_PATH }}"
-			installations="/app/installations" account="account.login"
-			mint="/app/installations/{id}/access_tokens" owner-key="owner"/>
-		<forward name="Authorization" required="true"/>
+		<header name="Authorization"><value name="env.GITHUB_BACKGROUND_TOKEN"/></header>
+		<header name="Authorization" credential="app">token <value name="credential"/></header>
+		<forward name="Authorization"/>
 		<!-- A body-keyed route posts its question, and it has to arrive typed. -->
 		<forward name="Content-Type"/>
 		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
@@ -73,17 +75,25 @@
 	</upstream>
 
 	<!--
-		A caller is a GitHub user by numeric id, which survives a login rename
-		and every token rotation, so earned grants outlive the token that
-		earned them. A token GET /user will not answer for (an installation
-		token) keeps its fingerprint. An App whose installation tokens rotate
-		hourly asserts its identity with an App JWT, which GET /app accepts
-		only when the App's private key signed it.
+		The App's installation token for the owner that a request with no
+		caller is about. Every resource the sweep reads has an owner key. GitHub
+		answers /users/{owner}/installation for an organization as well as for
+		a user, with the installation's id. The id is kept for an hour. The
+		token lives an hour, and the engine replaces it five minutes before
+		its expires_at.
+
+		An owner the App is not installed on answers 404. The sweep then counts
+		that row as failed and names the lookup, rather than reading it under
+		some other identity.
+
+		The JWT is the one the replayer signs: GITHUB_APP_PRIVATE_KEY holds the
+		PEM, or GITHUB_APP_PRIVATE_KEY_PATH names a file.
 	-->
-	<identity ttl="1h">
-		<user path="/user" principal="user:{{ .doc.id }}" name="{{ .doc.login }}"/>
-		<assertion header="X-Mirror-Identity" as="Authorization" scheme="Bearer" path="/app" principal="app:{{ .doc.id }}" name="{{ .doc.slug }}"/>
-	</identity>
+	<credential name="app" requires="env.GITHUB_APP_ID" for="{{ .key.owner }}" margin="5m">
+		<header name="Authorization">Bearer <value expr='{{ jwt .env.GITHUB_APP_ID (or .env.GITHUB_APP_PRIVATE_KEY (readFile .env.GITHUB_APP_PRIVATE_KEY_PATH)) }}'/></header>
+		<lookup method="GET" path="/users/{{ urlpath .for }}/installation" field="id" ttl="1h"/>
+		<exchange method="POST" path="/app/installations/{{ .lookup }}/access_tokens" token="token" expires="expires_at"/>
+	</credential>
 
 	<!--
 		A GitHub App sends its own JWT here. GitHub answers GET /app only for a
@@ -313,7 +323,7 @@
 	<resource name="git_commit" ttl="720h">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
-		<key name="sha" fold="true"/>
+		<key name="sha" from="sha" fold="true"/>
 		<field name="message" type="text">message</field>
 		<field name="author_name" type="text">author.name</field>
 		<field name="author_email" type="text">author.email</field>
@@ -845,6 +855,7 @@
 				<set field="name_given">repository.name</set>
 				<set field="full_name">repository.full_name</set>
 				<set field="repo_id">repository.id</set>
+				<set field="full_name">repository.full_name</set>
 				<set field="visibility">repository.visibility</set>
 				<set field="private">repository.private</set>
 				<set field="default_branch">repository.default_branch</set>
@@ -2038,7 +2049,13 @@
 		No db= here, so it is derived from whatever -db names: the two files
 		belong together and travel together.
 	-->
-	<notify path="/_mirror/subscriptions"
+	<!--
+		import= adopts every registration github-state-mirror holds, so its
+		subscribers keep being told after the cutover. Each keeps its id,
+		secret, filters and owner. GSM_SUBSCRIPTIONS_DB names that service's
+		subscriptions file. Unset imports nothing.
+	-->
+	<notify path="/_mirror/subscriptions" import='{{ .env.GSM_SUBSCRIPTIONS_DB }}'
 		signature-header="X-Hub-Signature-256" timeout="10s" retries="3" disable-after="20"
 		scope-field="repos" event-header="X-Mirror-Event" delivery-header="X-Mirror-Delivery">
 		<!--

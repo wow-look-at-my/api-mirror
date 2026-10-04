@@ -40,7 +40,6 @@ func revealSpec(base string) *Spec {
 	}
 }
 
-// fixture is reveal layer wired to a fake upstream that counts what it is
 type fixture struct {
 	rv    *Revealer
 	store *Store

@@ -468,8 +468,7 @@ views.resources = async () => {
 			['Column', 'Type', 'From'],
 			chosen.fields.map((f) => [el('span', { class: 'mono' }, f.name), f.type,
 				el('span', { class: 'mono' }, f.from || '(expr)')]))));
-		// An errored key is the reason to open this tab, so it is shown before
-		// the rows: the overview counts them and this is where they are named.
+		// An errored key is the reason to open this tab.
 		const keyed = chosen.keyed || [];
 		out.append(section(`${chosen.name} keys`, table(
 			['Key', 'State', 'Fetched', 'Expires', 'Detail'],
@@ -695,10 +694,7 @@ function currentTab() {
 	return tabs.some(([id]) => id === name) ? name : tabs[0][0];
 }
 
-// drawTabs fills <scratch-tabs strip-only>, which renders the strip and leaves
-// the panel to this page. The hash stays the source of truth for which tab is
-// open, so a reload and a shared link land in the same place; the component's
-// own selection follows it rather than the other way round.
+// drawTabs fills <scratch-tabs strip-only>, which renders the strip and leaves the panel to this page.
 let tabStrip = null;
 
 function drawTabs() {
@@ -724,8 +720,7 @@ async function render() {
 	try {
 		view.replaceChildren(await views[currentTab()]());
 	} catch (e) {
-		// A failed panel says so. A tab that silently stays on its last content
-		// is a tab that lies about how current it is.
+		// A failed panel says so. A tab that silently stays on its last content is a tab that lies about how current it is.
 		view.replaceChildren(el('div', { class: 'err' }, String(e.message || e)));
 	}
 	document.getElementById('clock').textContent = `updated ${new Date().toLocaleTimeString()}`;

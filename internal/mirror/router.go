@@ -11,7 +11,6 @@ import (
 	"strings"
 )
 
-// PassReason says why a request was forwarded instead of answered from the
 type PassReason string
 
 const (
@@ -30,7 +29,7 @@ const (
 // match is request resolved against a route.
 type match struct {
 	route *Route
-	// key is the resource key this request addresses, path parameters and
+	// key is the resource key this request addresses.
 	key map[string]string
 	// query is the modelled query, defaults filled in.
 	query map[string]string
@@ -90,8 +89,7 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			}
 			key[k.Name] = v
 		}
-		// The body IS the key here, and a consumed body cannot be re-read, so
-		// the match carries it for the fetch to replay.
+		// The body IS the key here, and a consumed body cannot be re-read, so the match carries it for the fetch to replay.
 		var body []byte
 		if rt.BodyKey != "" {
 			b, overflow, err := readCapped(r.Body)

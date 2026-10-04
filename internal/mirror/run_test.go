@@ -23,9 +23,7 @@ var shippedSpecs = []string{
 	filepath.Join(repoRoot, "samples", "github", "github.xml"),
 }
 
-// withArgs is the command line a test hands run, returned rather than
-// assigned to os.Args. The runner re-executes a test that calls t.Setenv, and
-// that assignment gave it flags this binary does not define.
+// withArgs is the command line a test hands run, returned rather than assigned to os.Args.
 func withArgs(_ *testing.T, args ...string) []string { return args }
 
 // writeSpec drops a spec source in this test's own directory.
@@ -220,7 +218,7 @@ func TestRun_ReportsAStoreItCannotOpen(t *testing.T) {
 
 // A shipped spec is a runnable file, not only a loadable. Building an engine
 // and an ingest from it is what proves the vars, the upstream and the webhook
-// secret a reader copies actually resolve at start.
+// secret a reader copies resolve at start.
 func TestShippedSpecsBuildAnEngine(t *testing.T) {
 	for _, path := range shippedSpecs {
 		t.Run(filepath.Base(path), func(t *testing.T) {

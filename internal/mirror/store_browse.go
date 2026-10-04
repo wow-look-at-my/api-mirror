@@ -103,7 +103,7 @@ type PrincipalStanding struct {
 	Newest    time.Time `json:"newest,omitempty"`
 }
 
-// Principals lists who currently holds proof, most proven.
+// Principals lists who holds proof, most proven.
 func (s *Store) Principals(ctx context.Context, now time.Time) ([]PrincipalStanding, error) {
 	rows, err := s.q.ListGrantPrincipals(ctx, dbgen.ListGrantPrincipalsParams{
 		ExpiresAt: now.Unix(),
@@ -191,7 +191,7 @@ func (s *Store) CountDenials(ctx context.Context, now time.Time) (int64, error) 
 }
 
 // Rows reads a resource's stored rows for the truth browser, narrowed to the
-// columns scope names. a single row past the cap is read so a truncated answer
+// columns scope names. A single row past the cap is read so a truncated answer
 // says so.
 func (s *Store) Rows(ctx context.Context, res *Resource, scope map[string]string, limit int) ([]Row, bool, error) {
 	if limit <= 0 || limit > browseLimit {

@@ -198,7 +198,7 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 	if s.CORS != nil && len(s.CORS.Origins) == 0 {
 		return fmt.Errorf("<cors> names no <origin>, so it would allow nothing while looking like a policy")
 	}
-	return nil
+	return s.validateCredentials()
 }
 
 func (r *Resource) validate() error {
@@ -263,6 +263,9 @@ func (r *Resource) validate() error {
 	if len(versionFields(r)) > 1 {
 		return fmt.Errorf("resource %q: more than one version=\"true\" field, and two clocks cannot order a row", r.Name)
 	}
+	if err := r.validateAnswerPaths(); err != nil {
+		return err
+	}
 	for _, k := range r.Keep {
 		if k.Name == "" {
 			return fmt.Errorf("resource %q: <keep> needs a name", r.Name)
@@ -281,6 +284,56 @@ func (r *Resource) validate() error {
 		return fmt.Errorf("resource %q: <reveal><credential/></reveal> needs a <key credential=\"true\">, or a different caller could read another's row", r.Name)
 	}
 	return r.Reveal.validate(r.Name)
+}
+
+// validateAnswerPaths checks the source paths a column resource reads and
+// rebuilds its answer at. Each fact is stored once: declarations of one
+// path store it twice, and a path under another overwrites part of it.
+func (r *Resource) validateAnswerPaths() error {
+	for _, k := range r.Keys {
+		if k.Type != "" && k.Type != FieldText && k.Type != FieldInt {
+			return fmt.Errorf("resource %q key %q: type %q; a key is text or int", r.Name, k.Name, k.Type)
+		}
+	}
+	if r.Store != StoreColumns {
+		return nil
+	}
+	var (
+		paths   []string
+		owner   = map[string]string{}
+		fields  int
+		claimed = func(name, from string) error {
+			p := normalPath(from)
+			for _, q := range paths {
+				if p == q || strings.HasPrefix(p, q+".") || strings.HasPrefix(q, p+".") {
+					return fmt.Errorf("resource %q: %q and %q both read %q and %q; declare one fact once", r.Name, owner[q], name, q, p)
+				}
+			}
+			paths = append(paths, p)
+			owner[p] = name
+			return nil
+		}
+	)
+	for _, k := range r.Keys {
+		if k.Served() {
+			if err := claimed(k.Name, k.From); err != nil {
+				return err
+			}
+		}
+	}
+	for _, f := range r.Fields {
+		if f.From == "" {
+			continue
+		}
+		if err := claimed(f.Name, f.From); err != nil {
+			return err
+		}
+		fields++
+	}
+	if fields == 0 {
+		return fmt.Errorf("resource %q: no <field> reads a source path, so its answer would be empty; an expr field is stored, never served", r.Name)
+	}
+	return nil
 }
 
 func (rv *Reveal) validate(resource string) error {
@@ -490,7 +543,7 @@ func isLoopbackHost(host string) bool {
 }
 
 // validate checks a <purge>: a write with somewhere real to land and a key
-// the path can actually supply.
+// the path can supply.
 func (p *Purge) validate(resources map[string]*Resource) error {
 	if p.Path == "" || !strings.HasPrefix(p.Path, "/") {
 		return fmt.Errorf("<purge> needs an absolute path, got %q", p.Path)
@@ -616,9 +669,34 @@ func (e *Events) validate(resources map[string]*Resource) error {
 				return fmt.Errorf("event %q set %q: give it a payload path or an expr, not both and not neither", ev.Type, st.Field)
 			}
 		}
+		if err := validateEventSources(ev); err != nil {
+			return err
+		}
 		if err := validateEventKeys(ev, res); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// That stores one fact twice, and the copies drift apart.
+func validateEventSources(ev *Event) error {
+	return oneOutputPerInput(fmt.Sprintf("event %q", ev.Type), slices.Concat(ev.Keys, ev.Sets))
+}
+
+// oneOutputPerInput refuses outputs of one response that read one input
+// path. A <set> and a <key> that name the same output are one declaration.
+func oneOutputPerInput(what string, outs []Set) error {
+	reader := map[string]string{}
+	for _, st := range outs {
+		if st.From == "" {
+			continue
+		}
+		p := normalPath(st.From)
+		if prev, ok := reader[p]; ok && prev != st.Field {
+			return fmt.Errorf("%s: %q and %q both read %q; store one fact once", what, prev, st.Field, p)
+		}
+		reader[p] = st.Field
 	}
 	return nil
 }

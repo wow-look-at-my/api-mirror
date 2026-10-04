@@ -160,6 +160,12 @@ func buildSpec(n *node) (*Spec, error) {
 				return nil, err
 			}
 			spec.Whoami = w
+		case "credential":
+			c, err := buildCredential(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Credentials = append(spec.Credentials, c)
 		default:
 			return nil, fmt.Errorf("<mirror>: unexpected child element <%s>", child.Name())
 		}
@@ -213,7 +219,7 @@ func buildUpstream(n *node) (Upstream, error) {
 			}
 			up.Rate = rate
 		case "header":
-			h, err := buildHeader(child)
+			h, err := buildUpstreamHeader(child)
 			if err != nil {
 				return Upstream{}, err
 			}

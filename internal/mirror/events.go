@@ -27,10 +27,6 @@ const watermarkRetention = 30 * 24 * time.Hour
 const watermarkPruneInterval = 10 * time.Minute
 
 // Ingest is the webhook endpoint: the upstream telling the mirror what changed.
-//
-// A delivery is the ANSWER, not a hint to go and ask. The apply path writes the
-// values the payload carries and fetches nothing. It also writes ONLY the
-// fields the event names, so a partial view cannot blank known state.
 type Ingest struct {
 	events  *Events
 	store   *Store
@@ -337,7 +333,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 	if !ok {
 		return DeliveryFailed, fmt.Errorf("event %q names unknown resource %q", ev.Type, ev.Resource)
 	}
-	key, err := ingestKey(res, ev, d.Payload)
+	key, sent, err := ingestKey(res, ev, d.Payload)
 	if err != nil {
 		return DeliveryFailed, fmt.Errorf("event %q: %w", ev.Type, err)
 	}
@@ -372,7 +368,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		i.prune(ctx)
 		return DeliveryInvalidated, nil
 	}
-	err = i.merge(ctx, res, ev, key, d.Payload)
+	err = i.merge(ctx, res, ev, key, sent, d.Payload)
 	if errors.Is(err, errStoredIsNewer) {
 		// A fetch already stored a later view than this delivery carries.
 		return DeliverySuperseded, nil
@@ -411,29 +407,37 @@ func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 // about, so a write under it lands on the wrong row. An invalidate is the
 // case where a partial key is the right answer -- a payload names a commit, not
 // page of a paginated answer -- and there it deletes every row beneath it.
-func ingestKey(res *Resource, ev *Event, payload any) (map[string]string, error) {
-	key := make(map[string]string, len(res.Keys))
+//
+// sent holds each folded key's spelling as the payload states it, by the
+// engine column that keeps it.
+func ingestKey(res *Resource, ev *Event, payload any) (key, sent map[string]string, err error) {
+	key = make(map[string]string, len(res.Keys))
+	sent = map[string]string{}
 	for _, k := range res.Keys {
 		v, from, err := keyValue(ev, k, payload)
 		if err != nil {
-			return nil, fmt.Errorf("resource %q: key %q: %w", res.Name, k.Name, err)
+			return nil, nil, fmt.Errorf("resource %q: key %q: %w", res.Name, k.Name, err)
 		}
 		if from == "" {
 			if ev.Invalidate != nil {
 				continue
 			}
-			return nil, fmt.Errorf("resource %q: this event says nowhere the delivery carries key %q", res.Name, k.Name)
+			return nil, nil, fmt.Errorf("resource %q: this event says nowhere the delivery carries key %q", res.Name, k.Name)
 		}
 		if v == nil {
-			return nil, fmt.Errorf("resource %q: the payload carries no %s for key %q", res.Name, from, k.Name)
+			return nil, nil, fmt.Errorf("resource %q: the payload carries no %s for key %q", res.Name, from, k.Name)
 		}
-		s := foldKey(k, fmt.Sprintf("%v", v))
+		raw := fmt.Sprintf("%v", v)
+		s := foldKey(k, raw)
 		if s == "" {
-			return nil, fmt.Errorf("resource %q: key %q resolved empty", res.Name, k.Name)
+			return nil, nil, fmt.Errorf("resource %q: key %q resolved empty", res.Name, k.Name)
 		}
 		key[k.Name] = s
+		if c := k.sentColumn(); c != "" {
+			sent[c] = raw
+		}
 	}
-	return key, nil
+	return key, sent, nil
 }
 
 // keyValue reads key component out of a delivery, from the event's own
@@ -467,7 +471,7 @@ func keyValue(ev *Event, k Key, payload any) (any, string, error) {
 // not state leaves its column alone. That is what stops a partial view from
 // blanking known state. AllowNull is the opt-in for a column where cleared and
 // absent are different answers.
-func (i *Ingest) merge(ctx context.Context, res *Resource, ev *Event, key map[string]string, payload any) error {
+func (i *Ingest) merge(ctx context.Context, res *Resource, ev *Event, key, sent map[string]string, payload any) error {
 	row, err := i.store.Get(ctx, res, key)
 	if err != nil {
 		return err
@@ -478,6 +482,9 @@ func (i *Ingest) merge(ctx context.Context, res *Resource, ev *Event, key map[st
 	}
 	for name, v := range key {
 		merged[name] = v
+	}
+	for column, v := range sent {
+		merged[column] = v
 	}
 	for _, st := range ev.Sets {
 		v, err := setValue(st, fieldTypeOf(res, st.Field), payload)

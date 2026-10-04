@@ -92,7 +92,6 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(base)
-			// The upstream does not need the client's address, and adding it
 		},
 		ModifyResponse: e.revokeOnResponse,
 		// The path an instrumented call site would have missed entirely.
@@ -123,10 +122,10 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 // Telemetry exposes what the mirror knows about its own traffic.
 func (e *Engine) Telemetry() *Telemetry { return e.tel }
 
-// resolveVars renders the spec's vars, in declaration order, each seeing
-// the ones before it.
+// resolveVars renders the spec's vars, in declaration order, each seeing the
+// ones before it.
 //
-// It returns the whole template context, not just the vars.
+// It returns the whole template context, not the vars.
 func resolveVars(spec *Spec) (map[string]any, error) {
 	vars := map[string]any{}
 	ctx := map[string]any{"env": envMap(), "var": vars}
@@ -164,6 +163,26 @@ func (e *Engine) ttlFor(kind string) time.Duration {
 
 // defaultTTL backs a route that names no TTL anywhere.
 const defaultTTL = time.Hour
+
+// queryExtra marks a query value inside a list's answer key.
+const queryExtra = "?"
+
+// answerKey names one answer's freshness and, for a list, its membership.
+func answerKey(res *Resource, rt *Route, key, query map[string]string) string {
+	if !rt.List {
+		return keyString(res, key)
+	}
+	k := make(map[string]string, len(key)+len(rt.Query))
+	for name, v := range key {
+		k[name] = v
+	}
+	for _, q := range rt.Query {
+		if !q.Key {
+			k[queryExtra+q.Name] = query[q.Name]
+		}
+	}
+	return keyString(res, k)
+}
 
 // routeKind names route's freshness bookkeeping. A list and a single read
 func routeKind(rt *Route) string {
@@ -326,8 +345,8 @@ func (e *Engine) matchPurges(r *http.Request) ([]*Purge, map[string]string, bool
 }
 
 // forwardAndPurge forwards a write verbatim, then drops the rows it changed
-// after the upstream confirms the write actually happened. A write is never
-// cached itself. This only clears what it made stale.
+// after the upstream confirms the write happened. A write is never cached
+// itself. This only clears what it made stale.
 func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, params map[string]string) {
 	keys := make([]map[string]string, 0, len(purges))
 	resources := make([]*Resource, 0, len(purges))
@@ -349,8 +368,8 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 	w.Header().Set(e.hdr.Cache, "purge")
 	e.proxy.ServeHTTP(w, r.WithContext(withLane(r.Context(), LanePassthrough, w.principal, "purge")))
 
-	// The recorder already holds what the caller actually received, so the
-	// purge decides on that rather than on what the write was expected to do.
+	// The recorder already holds what the caller received, so the purge decides
+	// on that rather than on what the write was expected to do.
 	if w.status < 200 || w.status >= 300 {
 		return
 	}
@@ -420,14 +439,16 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	}
 
 	kind := routeKind(m.route)
-	key := keyString(res, m.key)
+	key := answerKey(res, m.route, m.key, m.query)
 	ctx = withPlan(ctx, &fetchPlan{
-		route: m.route,
-		res:   res,
-		key:   m.key,
-		query: m.query,
-		path:  r.URL.EscapedPath(),
-		body:  m.body,
+		route:  m.route,
+		res:    res,
+		key:    m.key,
+		query:  m.query,
+		path:   r.URL.EscapedPath(),
+		body:   m.body,
+		kind:   kind,
+		answer: key,
 	})
 	if !m.route.List {
 		e.refetchIfContradicted(ctx, res, m.key)
@@ -522,15 +543,27 @@ func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
 // cache state. A consumer that works against a warm cache and breaks against a
 // cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
-	// A document resource keeps each answer whole, a paged list included, so
-	// the stored document IS the answer and is never wrapped another time.
-	if m.route.List && !res.whole() {
-		rows, err := e.store.List(ctx, res, m.key)
+	// A document list stored the upstream's whole array as one row, so it
+	// replays like any other document.
+	if m.route.List && res.Store == StoreColumns {
+		// The answer is the rows the upstream's own list named, in its order.
+		members, err := e.store.ListMembers(ctx, routeKind(m.route), answerKey(res, m.route, m.key, m.query))
 		if err != nil {
 			return nil, err
 		}
-		out := make([]any, 0, len(rows))
-		for _, row := range rows {
+		out := make([]any, 0, len(members))
+		for _, rk := range members {
+			key, ok := parseKeyString(res, rk)
+			if !ok {
+				return nil, fmt.Errorf("list %s: member %q is not a key of %s", m.route.Path, rk, res.Name)
+			}
+			row, err := e.store.Get(ctx, res, key)
+			if err != nil {
+				return nil, err
+			}
+			if row == nil {
+				continue
+			}
 			doc, err := rebuildRow(res, row)
 			if err != nil {
 				return nil, err
