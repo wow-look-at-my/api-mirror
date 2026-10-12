@@ -346,7 +346,11 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		i.prune(ctx)
 		return DeliveryInvalidated, nil
 	}
-	if err := i.merge(ctx, res, ev, key, sent, d.Payload); err != nil {
+	write := i.merge
+	if ev.Document != "" {
+		write = i.putDocument
+	}
+	if err := write(ctx, res, ev, key, sent, d.Payload); err != nil {
 		return DeliveryFailed, err
 	}
 	i.prune(ctx)

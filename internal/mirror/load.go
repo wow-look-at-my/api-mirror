@@ -3,6 +3,7 @@ package mirror
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -465,6 +466,15 @@ func addRouteChild(rt *Route, child *node) error {
 			return fmt.Errorf("route %s: %w", rt.Path, err)
 		}
 		rt.Spreads = append(rt.Spreads, sp)
+	case "match":
+		if err := checkAttrs(child, "param", "pattern"); err != nil {
+			return err
+		}
+		re, err := regexp.Compile(child.Attr("pattern"))
+		if err != nil {
+			return fmt.Errorf("route %s: <match param=%q>: %w", rt.Path, child.Attr("param"), err)
+		}
+		rt.Match = append(rt.Match, ParamMatch{Param: child.Attr("param"), Pattern: re})
 	default:
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}
@@ -525,7 +535,7 @@ func buildPurge(n *node) (*Purge, error) {
 }
 
 func buildQueryParam(n *node) (QueryParam, error) {
-	if err := checkAttrs(n, "name", "type", "default", "min", "max", "key"); err != nil {
+	if err := checkAttrs(n, "name", "type", "default", "min", "max", "key", "empties"); err != nil {
 		return QueryParam{}, err
 	}
 	p := QueryParam{
@@ -533,6 +543,7 @@ func buildQueryParam(n *node) (QueryParam, error) {
 		Type:    FieldType(n.Attr("type")),
 		Default: n.Attr("default"),
 		Key:     n.Attr("key") == "true",
+		Empties: n.Attr("empties"),
 	}
 	if p.Type == "" {
 		p.Type = FieldText

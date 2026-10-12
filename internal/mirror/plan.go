@@ -73,15 +73,24 @@ func (e *Engine) routeForKind(kind string) *Route {
 func (rt *Route) fillPath(key map[string]string) (string, bool) {
 	segs := strings.Split(strings.Trim(rt.Path, "/"), "/")
 	for i, s := range segs {
-		if len(s) < 3 || s[0] != '{' || s[len(s)-1] != '}' {
+		param, ok, rest := pathParam(s)
+		if !ok {
 			continue
 		}
-		param := s[1 : len(s)-1]
 		v, ok := key[rt.column(param)]
 		if !ok || v == "" {
 			return "", false
 		}
-		segs[i] = url.PathEscape(v)
+		if !rest {
+			segs[i] = url.PathEscape(v)
+			continue
+		}
+		// A rest value keeps its slashes: each segment is escaped on its own.
+		parts := strings.Split(v, "/")
+		for j, p := range parts {
+			parts[j] = url.PathEscape(p)
+		}
+		segs[i] = strings.Join(parts, "/")
 	}
 	return "/" + strings.Join(segs, "/"), true
 }

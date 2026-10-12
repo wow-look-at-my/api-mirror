@@ -381,6 +381,12 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 		supplied.Add(name)
 	}
 	supplied.AddRange(rt.queryKeys()...)
+	if err := rt.validatePath(params); err != nil {
+		return err
+	}
+	if err := rt.validateEmpties(); err != nil {
+		return err
+	}
 	if rt.Complete && !rt.List {
 		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
 	}
@@ -565,8 +571,8 @@ func anyCredentialKey(res *Resource) bool {
 func pathParams(path string) []string {
 	var out []string
 	for _, seg := range strings.Split(path, "/") {
-		if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
-			out = append(out, seg[1:len(seg)-1])
+		if name, param, _ := pathParam(seg); param {
+			out = append(out, name)
 		}
 	}
 	return out
@@ -609,8 +615,11 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		if ev.Clock != "" && ev.Unordered {
 			return fmt.Errorf("event %q declares both a clock and unordered", ev.Type)
 		}
-		if len(ev.Sets) == 0 && ev.Invalidate == nil {
-			return fmt.Errorf("event %q does nothing: give it <set> fields, or an <invalidate> with a reason", ev.Type)
+		if len(ev.Sets) == 0 && ev.Invalidate == nil && ev.Document == "" {
+			return fmt.Errorf("event %q does nothing: give it <set> fields, a <document>, or an <invalidate> with a reason", ev.Type)
+		}
+		if err := validateEventDocument(ev, res); err != nil {
+			return err
 		}
 		if len(ev.Sets) > 0 && ev.Invalidate != nil {
 			return fmt.Errorf("event %q both writes and invalidates; the write already replaced the row", ev.Type)

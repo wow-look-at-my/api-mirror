@@ -102,6 +102,10 @@ func refusalBody(res *Resource, body []byte) string {
 func (p *fetchPlan) upstreamPath() string {
 	q := url.Values{}
 	for _, decl := range p.route.Query {
+		if decl.Empties != "" {
+			// The stored answer is the full one; the flag applies when it is served.
+			continue
+		}
 		if v := p.query[decl.Name]; v != "" {
 			q.Set(decl.Name, v)
 		}

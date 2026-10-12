@@ -261,6 +261,8 @@ type EventView struct {
 	Sets      int    `json:"sets"`
 	// Invalidate is the escape hatch's stated reason; empty means it applies.
 	Invalidate string `json:"invalidate,omitempty"`
+	// Document is the payload path a delivery writes as the whole answer.
+	Document string `json:"document,omitempty"`
 }
 
 func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +282,7 @@ func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
 			Clock:     ev.Clock,
 			Unordered: ev.Unordered,
 			Sets:      len(ev.Sets),
+			Document:  ev.Document,
 		}
 		if ev.Invalidate != nil {
 			e.Invalidate = ev.Invalidate.Reason

@@ -1,6 +1,9 @@
 package mirror
 
-import "time"
+import (
+	"regexp"
+	"time"
+)
 
 // Spec is mirror declaration: the whole contents of a mirror XML file.
 type Spec struct {
@@ -355,6 +358,8 @@ type QueryParam struct {
 	Min, Max int
 	// Key includes this parameter in the cache key. A parameter that changes
 	Key bool
+	// Empties is an answer path that a true value serves as an empty array.
+	Empties string
 }
 
 // Route binds an HTTP path the consumer asks for to a resource that answers
@@ -380,6 +385,24 @@ type Route struct {
 	BodyKey string
 	// Spreads carry the items of a fetched answer into another resource.
 	Spreads []*Spread
+	// Match constrains the shape of a path parameter. A request that fails one is left for a later route on the same path.
+	Match []ParamMatch
+}
+
+// ParamMatch requires a path parameter to match a regular expression.
+type ParamMatch struct {
+	Param   string
+	Pattern *regexp.Regexp
+}
+
+// admits reports whether every constrained path parameter has its shape.
+func (rt *Route) admits(params map[string]string) bool {
+	for _, m := range rt.Match {
+		if !m.Pattern.MatchString(params[m.Param]) {
+			return false
+		}
+	}
+	return true
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
@@ -462,6 +485,8 @@ type Event struct {
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set
 	Sets []Set
+	// Document is the payload path whose object becomes a document resource's stored answer.
+	Document string
 	// Invalidate is the last resort: the payload does not carry the new value
 	Invalidate *Invalidate
 }

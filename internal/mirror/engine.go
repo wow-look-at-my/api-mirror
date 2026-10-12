@@ -169,7 +169,7 @@ func answerKey(res *Resource, rt *Route, key, query map[string]string) string {
 		k[name] = v
 	}
 	for _, q := range rt.Query {
-		if !q.Key {
+		if !q.Key && q.Empties == "" {
 			k[queryExtra+q.Name] = query[q.Name]
 		}
 	}
@@ -499,6 +499,15 @@ func (e *Engine) rowDropped(ctx context.Context, m *match, res *Resource, kind, 
 // cache state. A consumer that works against a warm cache and breaks against a
 // cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
+	doc, err := e.readStored(ctx, m, res)
+	if err != nil || doc == nil {
+		return doc, err
+	}
+	return project(m.route, m.query, doc), nil
+}
+
+// readStored rebuilds the full stored answer, before a caller's flags.
+func (e *Engine) readStored(ctx context.Context, m *match, res *Resource) (any, error) {
 	// A document list stored the upstream's whole array as one row, so it
 	// replays like any other document.
 	if m.route.List && res.Store == StoreColumns {
