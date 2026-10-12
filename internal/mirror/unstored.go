@@ -40,8 +40,10 @@ func (e *Engine) relayUnstored(ctx context.Context, w *recorder, m *match, res *
 		w.note(DispPassthrough, "", "", string(PassResponse))
 		w.Header().Set(e.hdr.Reason, string(PassResponse))
 	}
-	if ct := a.Header.Get("Content-Type"); ct != "" {
-		w.Header().Set("Content-Type", ct)
+	for _, h := range []string{"Content-Type", "Location"} {
+		if v := a.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
 	}
 	w.Header().Set(e.hdr.Cache, "passthrough")
 	w.WriteHeader(a.Status)

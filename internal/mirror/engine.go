@@ -426,6 +426,10 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		return
 	}
 
+	if !res.Store.answersJSON() {
+		e.serveHeld(ctx, w, m, res, outcome)
+		return
+	}
 	doc, err := e.read(ctx, m, res)
 	if err != nil {
 		w.note(DispError, "", "", "read-cache")

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/url"
 	"time"
 )
@@ -42,12 +43,25 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if plan == nil {
 		return FetchResult{}, fmt.Errorf("fetch %s/%s: no plan on the context", kind, key)
 	}
-	answer, err := e.up.Call(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), plan.body)
+	var set http.Header
+	switch plan.res.Store {
+	case StoreRedirect:
+		// The Location is the answer, so the client must not follow it.
+		ctx = withoutRedirects(ctx)
+	case StoreText:
+		set = http.Header{"Accept": {plan.route.Accept[0]}}
+	}
+	answer, err := e.up.CallWith(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), set, plan.body)
 	if err != nil {
 		return FetchResult{}, err
 	}
 	if answer.Status == 304 {
 		return FetchResult{ETag: etag}, nil
+	}
+	if !plan.res.Store.answersJSON() {
+		if result, held, err := e.absorbHeld(ctx, plan, answer); held {
+			return result, err
+		}
 	}
 	if !storable(e.up, plan.route, answer) {
 		// The route models the request but not this answer. Storing it anyway

@@ -318,6 +318,12 @@ func addResourceChild(r *Resource, child *node) error {
 			return fmt.Errorf("resource %q: %w", r.Name, err)
 		}
 		r.Reveal = rv
+	case "redirect":
+		rd, err := buildRedirect(child)
+		if err != nil {
+			return fmt.Errorf("resource %q: %w", r.Name, err)
+		}
+		r.Redirect = rd
 	default:
 		return fmt.Errorf("<resource name=%q>: unexpected child element <%s>", r.Name, child.Name())
 	}

@@ -277,6 +277,34 @@ const (
 	StoreDocument StoreMode = "document"
 )
 
+const (
+	// StoreRedirect keeps the Location of a redirect, for as long as the signed URL it names stays valid.
+	StoreRedirect StoreMode = "redirect"
+	// StoreText keeps a representation that is not JSON, such as a diff, with its media type.
+	StoreText StoreMode = "text"
+)
+
+// Redirect says how long a stored Location may be served.
+type Redirect struct {
+	// Margin is how long before a signed URL expires it stops being served.
+	Margin time.Duration
+	// Unsigned is the lifetime of a Location with no query string, which carries no signature to expire. Zero stores none.
+	Unsigned time.Duration
+	// Fallback is the lifetime of a Location whose expiry no <expires> reads. Zero stores none.
+	Fallback time.Duration
+	// Expires are the query parameters that state a signed URL's expiry, tried in order.
+	Expires []ExpiryParam
+}
+
+// ExpiryParam reads a signed URL's expiry from one of its query parameters.
+type ExpiryParam struct {
+	Param string
+	// Format is "time" (RFC 3339), "unix" (seconds since the epoch), or "seconds".
+	Format string
+	// Since names the parameter that holds the signing time, as 20060102T150405Z.
+	Since string
+}
+
 // answersJSON reports whether a resource's answer is a JSON document.
 func (m StoreMode) answersJSON() bool {
 	return m == StoreColumns || m == StoreDocument
@@ -295,6 +323,8 @@ type Resource struct {
 	Keep []Keep
 	// Reveal gates every read of this resource. A resource without cannot
 	Reveal *Reveal
+	// Redirect is the lifetime rule of a redirect resource.
+	Redirect *Redirect
 }
 
 // Key is component of a resource's identity.

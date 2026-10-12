@@ -216,12 +216,15 @@ func (r *Resource) validate() error {
 		if len(r.Fields) == 0 {
 			return fmt.Errorf("resource %q stores columns but declares no <field>: it would serve an empty answer", r.Name)
 		}
-	case StoreDocument:
+	case StoreDocument, StoreRedirect, StoreText:
 		if len(r.Fields) > 0 {
-			return fmt.Errorf("resource %q stores a document, so its <field> declarations would never be read", r.Name)
+			return fmt.Errorf("resource %q stores a %s, so its <field> declarations would never be read", r.Name, r.Store)
 		}
 	default:
 		return fmt.Errorf("resource %q: unknown store mode %q", r.Name, r.Store)
+	}
+	if err := r.validateRedirect(); err != nil {
+		return err
 	}
 	for _, f := range r.Fields {
 		if f.Name == "" {
@@ -385,6 +388,9 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 		return err
 	}
 	if err := rt.validateEmpties(); err != nil {
+		return err
+	}
+	if err := rt.validateHeld(res); err != nil {
 		return err
 	}
 	if rt.Complete && !rt.List {

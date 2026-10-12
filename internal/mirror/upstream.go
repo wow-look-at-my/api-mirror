@@ -49,7 +49,27 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 		observe: observe,
 	}
 	u.creds = newCredentials(u, spec, vars)
+	follow := u.client.CheckRedirect
+	u.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.Context().Value(noFollowKey{}) != nil {
+			return http.ErrUseLastResponse
+		}
+		if follow != nil {
+			return follow(req, via)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after %d redirects", len(via))
+		}
+		return nil
+	}
 	return u, nil
+}
+
+// noFollowKey marks a call whose redirect is itself the answer.
+type noFollowKey struct{}
+
+func withoutRedirects(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noFollowKey{}, true)
 }
 
 // Answer is what the upstream said.

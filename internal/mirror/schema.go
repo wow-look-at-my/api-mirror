@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/wow-look-at-my/api-mirror/internal/database"
@@ -40,10 +41,11 @@ func resourceDDL(r *Resource) string {
 			fmt.Fprintf(&b, "\t%s TEXT,\n", c)
 		}
 	}
-	switch r.Store {
-	case StoreDocument:
-		b.WriteString("\tdocument TEXT NOT NULL,\n")
-	default:
+	if held := heldColumns(r); held != nil {
+		for _, c := range held {
+			fmt.Fprintf(&b, "\t%s TEXT NOT NULL,\n", c)
+		}
+	} else {
 		for _, f := range r.Fields {
 			fmt.Fprintf(&b, "\t%s %s,\n", f.Name, sqlType(f.Type))
 		}
@@ -103,14 +105,36 @@ func columnsOf(r *Resource) []string {
 			out = append(out, c)
 		}
 	}
-	if r.Store == StoreDocument {
-		return append(out, "document")
+	if held := heldColumns(r); held != nil {
+		return append(out, held...)
 	}
 	for _, f := range r.Fields {
 		out = append(out, f.Name)
 	}
 	return out
 }
+
+// heldColumns are the engine's own columns that hold a non-column answer.
+// A column resource has none.
+func heldColumns(r *Resource) []string {
+	switch r.Store {
+	case StoreDocument:
+		return []string{"document"}
+	case StoreRedirect:
+		return []string{colLocation}
+	case StoreText:
+		return []string{colBody, colMedia}
+	}
+	return nil
+}
+
+// The held columns of the newer store modes carry the engine's prefix, so a
+// declared name can never collide with them.
+const (
+	colLocation = enginePrefix + "location"
+	colBody     = enginePrefix + "body"
+	colMedia    = enginePrefix + "media"
+)
 
 // reservedColumns are the names the engine owns inside a resource table.
 var reservedColumns = set.Of("mirror_written_at", "document", "rowid")
@@ -143,7 +167,7 @@ func (s *Spec) validateNames() error {
 			if err := validateIdent(fmt.Sprintf("resource %q column", r.Name), c); err != nil {
 				return err
 			}
-			if reservedColumns.Contains(c) && !(c == "document" && r.Store == StoreDocument) {
+			if reservedColumns.Contains(c) && !slices.Contains(heldColumns(r), c) {
 				return fmt.Errorf("resource %q: column %q is the engine's", r.Name, c)
 			}
 		}
