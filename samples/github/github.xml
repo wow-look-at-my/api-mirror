@@ -588,8 +588,8 @@
 	<!--
 		One commit with its files and stats. A full sha names content that
 		never changes, so it keeps for a month and no delivery moves it. Any
-		other spelling -- a branch, a tag, a short sha -- names whatever the
-		ref points at now, so it is a resource of its own that a push drops.
+		other spelling, such as a branch, a tag or a short sha, names whatever
+		the ref points at now, so it is a resource of its own that a push drops.
 	-->
 	<resource name="commit" store="document" ttl="720h">
 		<key name="owner" fold="true"/>

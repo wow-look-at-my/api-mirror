@@ -42,10 +42,10 @@ func TestARedirectIsHeldUntilItsSignatureExpires(t *testing.T) {
 	expiry := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	e, srv := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		if r.URL.Path == "/blob" {
-			t.Errorf("the fetch followed the redirect it was meant to keep")
+		if !assert.NotEqual(t, "/blob", r.URL.Path) {
 			return
 		}
+
 		w.Header().Set("Location", "/blob?se="+url.QueryEscape(expiry)+"&sig=abc")
 		w.WriteHeader(http.StatusFound)
 	}), heldSpec)
