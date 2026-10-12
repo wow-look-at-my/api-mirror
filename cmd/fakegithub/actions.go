@@ -157,6 +157,8 @@ func raw(w http.ResponseWriter, r *http.Request) bool {
 			"message": "Repository access blocked",
 			"block":   doc{"reason": "dmca", "created_at": "2026-01-01T00:00:00Z", "html_url": "https://github.com/github/dmca/blob/master/x.md"},
 		})
+	case path == "/graphql" && r.Method == http.MethodPost:
+		_ = json.NewEncoder(w).Encode(doc{"data": doc{"repository": doc{"isFork": false, "parent": nil}}})
 	default:
 		return false
 	}

@@ -35,6 +35,11 @@ tests:
 		curl -s -H 'Authorization: token fake' $M/repos/Octo/Blocked/readme; echo
 		echo "== gh accept"
 		ask -H 'Accept: application/vnd.github.merge-info-preview+json, application/vnd.github.nebula-preview' $M/repos/Octo/Demo/actions/workflows/3
+		echo "== graphql"
+		for i in 1 2; do
+			echo "graphql $i: $(ask -X POST -H 'Content-Type: application/json' -H 'Accept: application/vnd.github.merge-info-preview+json, application/vnd.github.nebula-preview' \
+				--data '{"query":"query($o:String!,$n:String!){repository(owner:$o,name:$n){isFork parent{nameWithOwner}}}","variables":{"o":"Octo","n":"Demo"}}' $M/graphql | grep x-gsm-cache)"
+		done
 		echo "== exclude"
 		curl -s -H 'Authorization: token fake' "$M/repos/Octo/Demo/actions/runs/5?exclude_pull_requests=true" | grep -o '"pull_requests":\[[^]]*\]'
 		curl -s -H 'Authorization: token fake' "$M/repos/Octo/Demo/actions/runs/5" | grep -o '"pull_requests":\[{' | head -1
@@ -59,5 +64,6 @@ tests:
 			- "\"pull_requests\":[]"
 			- "\"pull_requests\":[{"
 			- "upstream calls on warm reads: 0"
+			- "graphql 2:   x-gsm-cache: hit"
 		!stdout:
 			- "x-gsm-cache: passthrough"

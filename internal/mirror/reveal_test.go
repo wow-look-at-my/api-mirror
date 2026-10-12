@@ -320,8 +320,9 @@ func TestProbe401CachesNothing(t *testing.T) {
 	key := repoKey("wow", "secret")
 
 	v, err := f.allow(t, "user:1", key)
-	require.Error(t, err)
+	require.NoError(t, err)
 	assert.False(t, v.Allowed)
+	assert.Equal(t, http.StatusUnauthorized, v.Status, "the caller is told their credential is bad")
 
 	_, found, err := f.store.Denial(context.Background(), "user:1", "repo", keyString(f.res, key), time.Now())
 	require.NoError(t, err)
