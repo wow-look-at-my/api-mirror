@@ -164,8 +164,8 @@ type CORS struct {
 }
 
 // Notify declares the mirror telling its own subscribers after a delivery is
-// applied, so a consumer stops racing the mirror's ingestion with its own copy
-// of the upstream's webhooks.
+// applied. A consumer stops racing the mirror's ingestion with its own copy of
+// the upstream's webhooks.
 type Notify struct {
 	// Path is the subscription CRUD prefix.
 	Path string
@@ -527,7 +527,7 @@ type Set struct {
 	Field string
 	From  string // path into the payload
 	Expr  string // or template source
-	// AllowNull writes a null the payload actually states, instead of leaving
+	// AllowNull writes a null the payload states, instead of leaving
 	AllowNull bool
 }
 

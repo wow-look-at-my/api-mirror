@@ -138,9 +138,9 @@ func sampleOf(t FieldType, path string) any {
 }
 
 // Every column resource in every shipped spec must rebuild a subset of the
-// upstream document: each value at the path it came from, with the same value
-// and the same JSON type. A spec that renames, flattens or re-types a value
-// serves a document no client of the upstream can read.
+// upstream document. This covers each value at the path it came from, with
+// the same value and the same JSON type. A spec that renames, flattens or
+// re-types a value serves a document no client of the upstream can read.
 func TestShippedSpecs_RebuildASubsetOfTheUpstreamDocument(t *testing.T) {
 	for _, path := range shippedSpecs {
 		spec, err := Load(path)

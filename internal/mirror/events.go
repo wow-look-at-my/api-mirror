@@ -69,7 +69,7 @@ func NewIngest(spec *Spec, store *Store, vars map[string]any) (*Ingest, error) {
 		dispHeader: headersFor(spec.HeaderPrefix).Disposition,
 		now:        time.Now,
 	}
-	// A type fans out to every event declared for it, in spec order: a push
+	// A type fans out to every event declared for it, in spec order. A push
 	// states a branch tip AND makes the repo's file-derived answers wrong.
 	for _, ev := range spec.Events.List {
 		i.byType[ev.Type] = append(i.byType[ev.Type], ev)
@@ -381,9 +381,9 @@ func (i *Ingest) order(ctx context.Context, d *Delivery) bool {
 // payload.
 //
 // A write needs the whole key: a partial matches rows the delivery is not
-// about, so a write under it lands on the wrong row. An invalidate is the
-// case where a partial key is the right answer -- a payload names a commit, not
-// page of a paginated answer -- and there it deletes every row beneath it.
+// about, so a write under it lands on the wrong row. An invalidate is the case
+// where a partial key is the right answer -- a payload names a commit, not page
+// of a paginated answer. And there it deletes every row beneath it.
 //
 // sent holds each folded key's spelling as the payload states it, by the
 // engine column that keeps it.
@@ -508,8 +508,8 @@ func fieldTypeOf(res *Resource, name string) FieldType {
 
 // prune sweeps watermarks nothing restates any more.
 //
-// It is best effort and throttled. A failed sweep costs disk, so it is logged
-// and the delivery stands; failing the write over housekeeping would lose a
+// It is best effort and throttled. A failed sweep costs disk. It is logged
+// and the delivery stands. Failing the write over housekeeping would lose a
 // delivery to save a row.
 func (i *Ingest) prune(ctx context.Context) {
 	now := i.now()

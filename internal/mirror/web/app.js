@@ -12,9 +12,8 @@ async function api(path, options = {}) {
 	return resp.json();
 }
 
-// el builds one element. Children may be nodes or text; an object of attributes
-// is applied first. It is here so no view has to touch innerHTML with a value
-// that came off the wire.
+// el builds one element. Children may be nodes or text; an object of
+// attributes is applied first.
 function el(tag, attrs = {}, ...children) {
 	const node = document.createElement(tag);
 	for (const [k, v] of Object.entries(attrs)) {
@@ -89,8 +88,8 @@ function table(headers, rows) {
 
 // pill is a scratch-badge in the variant that matches the verdict.
 //
-// The design language's LED reports a STATE, so a colour-only chip is what
-// labels an outcome: signal for what worked, accent for what needs a look,
+// The design language's LED reports a STATE. A colour-only chip is what
+// labels an outcome. Signal for what worked, accent for what needs a look,
 // off for what is inactive, and the neutral key chip for everything else.
 const PILL_VARIANT = {
 	hit: 'signal', applied: 'signal', ok: 'signal', fresh: 'signal',
@@ -404,7 +403,7 @@ const checkResults = new Map();
 // checkSection drives the consistency check.
 //
 // Every other view here reports what this process has SEEN. This is the only
-// one that asks the upstream whether the stored answers are still right, which
+// one that asks the upstream whether the stored answers are still right. This
 // is the only way a delivery that never arrived ever surfaces.
 function checkSection(kind) {
 	// The page re-reads on a timer, which rebuilds this whole panel.
@@ -420,7 +419,7 @@ function checkSection(kind) {
 		status.textContent = '';
 		try {
 			// The stream is read as it arrives rather than awaited whole: a check
-			// is one upstream call per key, so a large kind takes minutes and a
+			// is one upstream call per key. A large kind takes minutes and a
 			// buffered read cannot be told apart from a wedged one.
 			await readNDJSON(`api/check?kind=${encodeURIComponent(kind)}${repair ? '&apply=true' : ''}&stream=1`,
 				repair ? 'POST' : 'GET',

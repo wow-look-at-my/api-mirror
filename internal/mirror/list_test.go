@@ -66,8 +66,8 @@ func TestReplaceRefusesAnEmptyKey(t *testing.T) {
 }
 
 // A <key> that states no path reads the field of its own name. Without that a
-// list route absorbs nothing: every item is refused for a key nobody supplied,
-// and the spec author sees an empty answer with no hint why.
+// list route absorbs nothing: every item is refused for a key nobody supplied.
+// The spec author sees an empty answer with no hint why.
 func TestKeyWithoutAPathReadsItsOwnName(t *testing.T) {
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`[{"id":"a","name":"first"}]`))

@@ -59,7 +59,7 @@ func loadTimeValue(what, s string) (string, error) {
 }
 
 // validate rejects a spec the engine cannot serve honestly. Every check here
-// exists because its absence is a silent failure at runtime: a resource nobody
+// exists because its absence is a silent failure at runtime. A resource nobody
 // gated, a route pointing at nothing, an invalidation with no stated reason.
 func (s *Spec) validate() error {
 	if strings.TrimSpace(s.Name) == "" {
@@ -114,7 +114,7 @@ func (s *Spec) validate() error {
 // validateOps checks the operational half.
 //
 // Each rule here is an operator would otherwise discover from behaviour: a
-// window that adds latency to everything, a sweep that names a kind no route
+// window that adds latency to everything. A sweep that names a kind no route
 // serves, a replayer that lists failures and cannot ask for any of them back.
 func (s *Spec) validateOps(byName map[string]*Resource) error {
 	if s.Upstream.Debounce > maxDebounceWindow {
@@ -471,9 +471,9 @@ func (rt *Route) validateQuery() error {
 	return nil
 }
 
-// validate checks a <rewrite>. The prefix has to be a path, and it has to
-// change something: a rule mapping a prefix to itself reads as configuration
-// and does nothing.
+// validate checks a <rewrite>. The prefix has to be a path. It has to change
+// something: a rule mapping a prefix to itself reads as configuration and
+// does nothing.
 func (rw *Rewrite) validate() error {
 	if rw.From == "" || !strings.HasPrefix(rw.From, "/") {
 		return fmt.Errorf("<rewrite> needs an absolute from, got %q", rw.From)
@@ -686,7 +686,7 @@ func oneOutputPerInput(what string, outs []Set) error {
 // validateEventKeys refuses an event that cannot address the row it is about.
 //
 // A resource's from= names a path in the UPSTREAM document, and a delivery
-// wraps that document in an envelope, so the same path finds nothing at the
+// wraps that document in an envelope. The same path finds nothing at the
 // payload root. The event has to say where the delivery carries each key
 // column. Left to run time it is error per delivery, forever, on a mirror
 // whose dashboard reports every of them accepted.

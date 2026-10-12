@@ -2,13 +2,13 @@
 
 Declare an API in one XML file. Get a caching mirror of it.
 
-`api-mirror` reads a spec. It serves an HTTP endpoint that answers a consumer's requests from SQLite, keeps that SQLite current from the upstream and from the upstream's webhooks. The HTTP endpoint reveals each cached fact only to a caller who can have read it upstream.
+`api-mirror` reads a spec. It serves an HTTP endpoint that answers a consumer's requests from SQLite, keeps that SQLite current from the upstream and from the upstream's webhooks. The HTTP endpoint reveals each cached fact only to a caller who can read it upstream.
 
 It is the sibling of [api-cli](https://github.com/wow-look-at-my/api-cli), which turns the same kind of file into a command-line tool. Both share the spec language, in [api-dsl](https://github.com/wow-look-at-my/api-dsl).
 
 ## Why
 
-A hand-written mirror of one API runs to tens of thousands of lines, and almost none of it is about that API. It is about freshness, ordering, authorization, and the dozen ways a cache goes quietly wrong. That code is the same for every API. Only the vocabulary changes.
+A hand-written mirror of one API runs to tens of thousands of lines, and almost none of it is about that API. It is about freshness, ordering, authorization, and the dozen ways a cache goes quietly incorrect. That code is the same for every API. Only the vocabulary changes.
 
 ## Run it
 
@@ -62,7 +62,7 @@ api-mirror --spec mirror.xml --check     # print the derived schema and routes, 
 - **Honest passthrough.** A path the spec does not declare is forwarded and labelled with why. There is no "correctly uncached".
 - **Answers that are not JSON.** A diff is kept as text with its media type. A redirect to a signed URL is kept until that URL expires.
 - **A dashboard, on by default.** Traffic, cache contents, rate budget, deliveries, principals, and the passthrough brief. It mints its own token and logs the URL that opens it.
-- **A consistency check.** Every other view reports what this process has seen. This re-asks the upstream about each stored key of one kind and names what disagrees. This is the only way a delivery that never arrived surfaces. It reports on a GET and rewrites the drifted rows on a POST.
+- **A consistency check.** Every other view reports what this process saw. This re-asks the upstream about each stored key of one kind and names what disagrees. This is the only way a delivery that never arrived surfaces. It reports on a GET and rewrites the drifted rows on a POST.
 
 ## Operations
 
@@ -82,12 +82,12 @@ A second half of the spec decides what runs in the background and what an operat
 ```
 
 - **Every request is on the chart.** The observation is in the transport, not at the call sites, so a client built here cannot make an invisible request — the passthrough proxy included.
-- **The passthrough tab is a to-do list.** Requests are grouped by route shape, counted, and each family comes with the `<resource>` and `<route>` that will stop it leaving.
+- **The passthrough tab is a to-do list.** Route shape groups requests, counted, and each family comes with the `<resource>` and `<route>` that will stop it leaving.
 - **Delivery-gap replay.** A provider sends once. The replayer reads its failure log and asks for what never arrived, once per delivery. `requires=` names the credential it needs. Without it the job declines to start and says so, rather than failing on a timer forever.
 - **A background credential that expires.** `<credential>` exchanges, for example, a GitHub App JWT for the installation token of the row's owner, and keeps it until shortly before it expires. Only a request with no caller sends it. A failed exchange fails that request instead of sending it anonymous.
 - **Subscriber notifications.** Consumers register a webhook endpoint and get an HMAC-signed notification *after* a delivery lands, so they stop racing this mirror's ingestion. Their registrations live in a separate database the schema nuke never touches. `import=` adopts a github-state-mirror registry at startup, so its subscribers carry over.
 - **A periodic sweep** and **liveness paths** that hold while a detached fetch is in flight.
-- **A passthrough debounce.** It shares one upstream call between identical concurrent reads, never across credentials.
+- **A passthrough debounce.** It shares one upstream call between same concurrent reads, not across credentials.
 
 ## Not yet
 

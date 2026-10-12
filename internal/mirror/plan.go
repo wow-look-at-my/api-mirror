@@ -97,9 +97,9 @@ func (rt *Route) fillPath(key map[string]string) (string, bool) {
 
 // parseKeyString reverses keyString.
 //
-// The are each other's inverse and must stay so: a sweep that decoded a key
-// differently from the way a read encoded it would refresh a row nobody reads
-// and leave the they do read stale. The declared components come in
+// The are each other's inverse. The must stay so: a sweep that decoded a key
+// differently from the way a read encoded it would refresh a row nobody
+// reads. It leave the they do read stale. The declared components come in
 // declaration order, then the sorted name=value extras.
 func parseKeyString(res *Resource, s string) (map[string]string, bool) {
 	parts := strings.Split(s, "/")

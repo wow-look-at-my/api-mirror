@@ -16,7 +16,7 @@ func (i *Ingest) SetNotifier(n *Notifier) { i.notifier = n }
 
 // ServeHTTP receives delivery and records what it cost. The disposition is
 // read back off the response, so a path answering early counts the same as
-// running to the end: an uncounted refusal is the delivery an operator needs.
+// running to the end. An uncounted refusal is the delivery an operator needs.
 func (i *Ingest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	probe := &dispositionProbe{ResponseWriter: w}

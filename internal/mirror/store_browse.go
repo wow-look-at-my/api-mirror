@@ -193,7 +193,7 @@ func (s *Store) CountDenials(ctx context.Context, now time.Time) (int64, error) 
 // Rows reads resource's stored rows for the truth browser.
 //
 // The cap is applied here rather than in SQL because List is the read path a
-// resource table has, and a would be a set of rules about what a row means.
+// resource table has. A would be a set of rules about what a row means.
 func (s *Store) Rows(ctx context.Context, res *Resource, limit int) ([]Row, bool, error) {
 	if limit <= 0 || limit > browseLimit {
 		limit = browseLimit

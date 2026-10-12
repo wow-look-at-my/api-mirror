@@ -14,7 +14,7 @@ import (
 // writeJSON renders admin answer.
 //
 // It marshals. A JSON literal built with string concatenation guesses about
-// every value it interpolates, and a path or a subject carries whatever the
+// every value it interpolates. And a path or a subject carries whatever the
 // upstream put in it.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	body, err := marshalJSON(v)

@@ -44,7 +44,7 @@ func (r *Replayer) Enabled() bool {
 
 // missing names a declared requirement that has no value. A failure log is an
 // authenticated endpoint, so without the credential every cycle is a call that
-// can only fail, forever: a job that looks busy and recovers nothing.
+// can only fail, forever. This is a job that looks busy and recovers nothing.
 func (r *Replayer) missing() string {
 	if r == nil || r.rule == nil || r.rule.Requires == "" {
 		return ""
@@ -115,7 +115,7 @@ func (r *Replayer) Stop() {
 //
 // A lost delivery is the quietest failure a mirror has. The provider sends,
 // nothing retries, and every cache that delivery would have moved serves its
-// last answer for the whole TTL -- well-formed, recent-looking and wrong. A
+// last answer for the whole TTL. Well-formed, recent-looking and wrong. A
 // shorter TTL shrinks that window and hides it; it does not close it.
 func (r *Replayer) cycle() {
 	ctx, cancel := context.WithTimeout(context.Background(), replayCycleTimeout)

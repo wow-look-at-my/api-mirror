@@ -199,7 +199,7 @@ func readCapped(r io.Reader) ([]byte, bool, error) {
 // reasons rather than for access reasons.
 //
 // The header names come from the spec: which header says "wait" and which says
-// "you may not" is the upstream's vocabulary, and getting it wrong stores an
+// "you may not" is the upstream's vocabulary, and getting it wrong stores. An
 // outage as a denial for the whole deny window.
 func (u *Upstreamer) RateLimited(a *Answer) bool {
 	if a == nil {

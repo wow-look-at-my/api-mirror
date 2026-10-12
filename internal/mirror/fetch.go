@@ -36,7 +36,7 @@ func planFrom(ctx context.Context) *fetchPlan {
 // fetch refreshes key from the upstream and absorbs the answer.
 //
 // It stores state, never bytes. What a consumer receives is rebuilt from that
-// state, so the shape of an answer is the spec's and cannot drift with whatever
+// state. The shape of an answer is the spec's and cannot drift with whatever
 // the upstream added this week.
 func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult, error) {
 	plan := planFrom(ctx)
@@ -176,8 +176,8 @@ func (e *Engine) absorbAnswer(ctx context.Context, plan *fetchPlan, doc any) err
 		if err != nil {
 			return err
 		}
-		// A list route's own key components pin the rows it owns, so an item
-		// that does not carry them is still filed where the list will find it.
+		// A list route's own key components pin the rows it owns. An item that
+		// does not carry them is still filed where the list will find it.
 		for k, v := range plan.key {
 			if _, ok := row[k]; !ok {
 				row[k] = v
@@ -220,7 +220,7 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 		return err
 	}
 	// The request's own key wins over anything read out of the document: the
-	// caller asked for this key, and the row must be findable under it.
+	// caller asked for this key. The row must be findable under it.
 	for k, v := range plan.key {
 		row[k] = v
 	}
@@ -231,8 +231,8 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 }
 
 // requireKeys refuses a row whose identity is incomplete. A row filed under a
-// missing key is a row nothing ever finds again, and a webhook naming the real
-// key would write a beside it.
+// missing key is a row nothing ever finds again. A webhook naming the real key
+// would write a beside it.
 func requireKeys(res *Resource, row Row) error {
 	for _, k := range res.Keys {
 		v, ok := row[k.Name]

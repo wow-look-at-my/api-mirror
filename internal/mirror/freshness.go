@@ -91,7 +91,7 @@ func (f *Fresh) Drain(timeout time.Duration) bool {
 // Ensure brings key up to date and reports what it took.
 //
 // A fresh row returns immediately. A row inside its error backoff returns the
-// STORED error rather than re-fetching: an upstream that is failing does not
+// STORED error rather than re-fetching. An upstream that is failing does not
 // need every request to prove it again.
 func (f *Fresh) Ensure(ctx context.Context, kind, key string) (Outcome, error) {
 	meta, err := f.store.Freshness(ctx, kind, key)

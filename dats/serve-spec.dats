@@ -1,5 +1,5 @@
 # The launch contract a container depends on. The image runs the binary with
-# a mounted spec, a database on a volume, and a listen address, and
+# a mounted spec. A database on a volume, and a listen address, and
 # docker-updater polls both health paths the spec declares. Neither path may
 # fall through to the upstream.
 sandbox:

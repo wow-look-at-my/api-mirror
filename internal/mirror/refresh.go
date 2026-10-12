@@ -166,7 +166,7 @@ type RefreshStats struct {
 
 // Stats reports the sweep's own state, errors included. A sweep that has been
 // failing every cycle for a day looks exactly like a healthy from the
-// outside, so the failure count is on the page rather than only in the log.
+// outside. The failure count is on the page rather than only in the log.
 func (r *Refresher) Stats() RefreshStats {
 	if r == nil {
 		return RefreshStats{}

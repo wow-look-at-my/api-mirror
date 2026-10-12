@@ -16,7 +16,7 @@ import (
 )
 
 // The background half: the sweep that keeps keys warm, the replayer that asks
-// for lost deliveries back, the fan-out that tells subscribers, and the window
+// for lost deliveries back. The fan-out that tells subscribers, and the window
 // that stops identical unmodelled questions costing answers.
 
 func TestRefreshSweepsAKeyNobodyIsReading(t *testing.T) {

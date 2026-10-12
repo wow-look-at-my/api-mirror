@@ -53,9 +53,10 @@ func forwardFrom(ctx context.Context) http.Header {
 
 // NewEngine wires a spec into a server.
 //
-// Telemetry is built here rather than passed in when the caller has none: an
+// Telemetry is built here rather than passed in when the caller has none. An
 // operator who has to discover and enable the only view of what the mirror is
-// doing has, in practice, no view of what the mirror is doing.
+// doing has. That operator is in practice, no view of what the mirror is
+// doing.
 func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	vars, err := resolveVars(spec)
 	if err != nil {
@@ -320,7 +321,7 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 }
 
 // purgeKey builds the row key a write addresses. A path parameter the
-// resource does not key on is dropped, so a write on the item can still name
+// resource does not key on is dropped. A write on the item can still name
 // the listing it belongs to, which keys on fewer columns.
 func purgeKey(res *Resource, params map[string]string, auth string) (map[string]string, bool) {
 	key := make(map[string]string, len(res.Keys))
@@ -498,10 +499,6 @@ func (e *Engine) rowDropped(ctx context.Context, m *match, res *Resource, kind, 
 }
 
 // read rebuilds the answer for request from what is stored.
-//
-// Hit and miss both come through here, so a route's shape cannot change with
-// cache state. A consumer that works against a warm cache and breaks against a
-// cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
 	doc, err := e.readStored(ctx, m, res)
 	if err != nil || doc == nil {

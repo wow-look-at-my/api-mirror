@@ -14,7 +14,6 @@ import (
 	"time"
 )
 
-// notifyDefaults back a declaration that leaves them out.
 const (
 	notifyDefaultTimeout = 10 * time.Second
 	notifyDefaultRetries = 3
@@ -122,12 +121,12 @@ func (n *Notifier) Close() error {
 // Fan sends notification to every live subscription that wants this event.
 //
 // A consumer who also receives the upstream's webhooks otherwise races the
-// mirror's ingestion: the delivery reaches them, they read the mirror,
-// and they get the state that delivery was about to replace. Telling them
+// mirror's ingestion. The delivery reaches them, they read the mirror, and
+// they get the state that delivery was about to replace. Telling them
 // AFTER the write lands removes the race instead of narrowing it.
 //
-// Delivery is detached from the request that triggered it: the provider is
-// waiting on the ingest response, and making them wait on a subscriber's own
+// Delivery is detached from the request that triggered it. The provider is
+// waiting on the ingest response. Making them wait on a subscriber's own
 // slow endpoint turns consumer's outage into a lost delivery for everyone.
 func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDisposition) {
 	if n == nil {
@@ -295,7 +294,7 @@ func (n *Notifier) Drain(timeout time.Duration) bool {
 // deliver posts notification, retrying a failure at a fixed cadence.
 //
 // The cadence is fixed rather than backing off. A subscriber that is down comes
-// back at a moment nothing here can predict, and a growing delay means the
+// back at a moment nothing here can predict. A growing delay means the
 // notification after they return is the that waited longest.
 func (n *Notifier) deliver(ctx context.Context, s Subscription, d *Delivery, shared map[string]any) {
 	note := make(map[string]any, len(shared)+2)
@@ -375,8 +374,8 @@ func (n *Notifier) recordSent(ctx context.Context, s Subscription) {
 // recordFailure counts a failure and parks a subscription that keeps failing.
 //
 // Parking is loud, not quiet: the subscription stays in the store, marked
-// disabled with the reason, so an operator can tell a consumer the mirror gave
-// up on from one it never reached.
+// disabled with the reason. An operator can tell a consumer the mirror gave up
+// on from one it never reached.
 func (n *Notifier) recordFailure(ctx context.Context, s Subscription, cause error) {
 	limit := n.rule.DisableAfter
 	if limit <= 0 {

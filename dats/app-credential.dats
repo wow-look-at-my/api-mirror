@@ -1,5 +1,5 @@
 # A request with no caller signs in as the GitHub App, the way
-# github-state-mirror does: the shipped spec exchanges a JWT it signs for the
+# github-state-mirror does. The shipped spec exchanges a JWT it signs for the
 # installation token of the row's owner. A caller's own request never carries
 # that token. The consistency check is the request with no caller here,
 # because it runs on demand rather than on the sweep's timer.

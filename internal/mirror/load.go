@@ -11,7 +11,7 @@ import (
 
 // Load reads a mirror spec from disk.
 //
-// Parsing and validation are separate steps on purpose: a builder checks the
+// Parsing and validation are separate steps on purpose. A builder checks the
 // SHAPE of the file (an unknown element, a missing attribute), and validate
 // checks what the shape MEANS (a route pointing at nothing, a resource nobody
 func Load(path string) (*Spec, error) {
