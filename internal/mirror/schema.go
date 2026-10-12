@@ -76,6 +76,8 @@ func (s *Spec) DDL() string {
 	b.WriteString(strings.TrimLeft(database.Schema, "\n"))
 	b.WriteString("\n")
 	b.WriteString(listMemberDDL)
+	b.WriteString("\n")
+	b.WriteString(refusalDDL)
 	for _, r := range s.Resources {
 		b.WriteString("\n")
 		b.WriteString(resourceDDL(r))

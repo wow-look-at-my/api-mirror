@@ -342,6 +342,7 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		if _, err := del(ctx, res, key); err != nil {
 			return DeliveryFailed, err
 		}
+		i.forgetFreshness(ctx, res, key, ev.Invalidate.Every)
 		i.prune(ctx)
 		return DeliveryInvalidated, nil
 	}

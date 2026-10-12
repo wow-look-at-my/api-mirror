@@ -581,14 +581,20 @@
 		<absorb status="404"/>
 	</route>
 
+	<!--
+		451 is GitHub blocking the whole repository for legal reasons. It is
+		the same answer for every caller, and its document names the block.
+	-->
 	<route method="GET" path="/repos/{owner}/{repo}/readme" resource="readme">
 		<param name="ref" type="text" default="" key="true"/>
 		<absorb status="404"/>
+		<absorb status="451"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir}" resource="readme_dir">
 		<param name="ref" type="text" default="" key="true"/>
 		<absorb status="404"/>
+		<absorb status="451"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/workflows" resource="workflows_list">

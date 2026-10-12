@@ -65,7 +65,8 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 
 	result := FetchResult{ETag: answer.Header.Get("ETag"), Changed: true, Status: answer.Status}
 	if answer.Status >= 400 {
-		// The route declared this refusal worth keeping.
+		// The route declared this refusal worth keeping, and its document says why.
+		result.Body = refusalBody(plan.res, answer.Body)
 		return result, nil
 	}
 
@@ -80,6 +81,20 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return FetchResult{}, err
 	}
 	return result, nil
+}
+
+// refusalBody re-encodes the document a stored refusal carries, with the
+// resource's drop patterns applied. A body that is not JSON keeps nothing.
+func refusalBody(res *Resource, body []byte) string {
+	doc, err := decodeJSON(body)
+	if err != nil {
+		return ""
+	}
+	out, err := marshalJSON(trim(res, doc))
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }
 
 // upstreamPath rebuilds the path this plan asks the upstream for, carrying only

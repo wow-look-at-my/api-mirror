@@ -67,7 +67,9 @@ One fact is declared once. Validation refuses declarations that read one source 
 
 A route binds an HTTP path pattern to a resource. Path parameters (`{owner}`) become the key. A cached route serves stored state. On a miss or a stale row it fetches upstream, absorbs, and REBUILDS the answer from what it stored. A route never replays bytes it did not parse.
 
-`<param>` declares the query shape: a name, a type, a default, and a range. Some requests become a passthrough: a parameter the route does not declare, a repeated one, or a value outside its range. The mirror never keys an answer on a shape the spec did not describe. `<accept>` does the same for media types. `<absorb status="404"/>` names an upstream refusal worth remembering, and a status named nowhere relays without being stored.
+`<param>` declares the query shape: a name, a type, a default, and a range. Some requests become a passthrough: a parameter the route does not declare, a repeated one, or a value outside its range. The mirror never keys an answer on a shape the spec did not describe. `<accept>` does the same for media types. An `<accept>` directly under `<mirror>` names a spelling of the default representation once, and every JSON route answers it too. A route that cannot answer the caller's media type does not end the search: a later route on the same path may answer it.
+
+`<absorb status="404"/>` names an upstream refusal worth remembering. The refusal document is kept with the status and served with it. A 451 still names its block. A status named nowhere is that caller's answer: the fetch went out with their credential. It is relayed to them and nothing is stored, so no backoff reaches another caller. A 403 or 404 also becomes that principal's cached denial, exactly as a refused probe does.
 
 `list="true"` marks a route whose answer is an array of the resource's rows. The answer is the page the upstream returned: the rows it named, in its order, and nothing another route stored under the same parent key. Each list answer records its members, keyed by the request together with every query value the route models, so page 2 is its own answer. A row a delivery deletes drops out of every page that named it. A document list stores the upstream's array whole and replays it.
 
@@ -134,7 +136,7 @@ The engine sorts deliveries for one subject inside a short reorder window, refus
 
 `<key>` exists because a resource's `from=` names a path in the upstream DOCUMENT. A delivery wraps that document in an envelope — the repository under `repository`, the action beside it. So the same path finds nothing at the payload root. A `<set>` that writes a key column answers this too, which is why most events need no `<key>` at all. `<invalidate>` events, which write nothing, always do. `validate` refuses an event that names neither. This is because at run time this is one failed delivery per delivery, forever, on a mirror that looks like it is working.
 
-A write needs the whole key. An invalidate may name part of it and deletes every row that matches. A payload names a commit, not one page of a paginated answer, so a page-keyed document set can only be dropped wholesale.
+A write needs the whole key. An invalidate may name part of it and deletes every row that matches. A payload names a commit, not one page of a paginated answer, so a page-keyed document set can only be dropped wholesale. An invalidate also drops the freshness of what it deleted. A stored refusal goes with it. The next reader refetches: a fresh answer whose row is gone is never served as absent.
 
 Narrower forms:
 

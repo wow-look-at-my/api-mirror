@@ -40,6 +40,10 @@ type FetchResult struct {
 	Changed bool
 	// Status is the upstream answer the route declared worth keeping.
 	Status int
+	// Body is the refusal document kept with a refusal status.
+	Body string
+	// TTL overrides the kind's TTL for this answer. Zero keeps the kind's.
+	TTL time.Duration
 }
 
 // Fetcher performs refresh. The engine supplies it; this file knows nothing
@@ -190,12 +194,16 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 		return OutcomeError, err
 	}
 
+	ttl := f.ttl(kind)
+	if res.TTL > 0 {
+		ttl = res.TTL
+	}
 	record := Freshness{
 		Kind:      kind,
 		Key:       key,
 		FetchedAt: now,
 		ETag:      res.ETag,
-		ExpiresAt: now.Add(f.ttl(kind)),
+		ExpiresAt: now.Add(ttl),
 		State:     string(StateFresh),
 		Status:    res.Status,
 	}
@@ -203,6 +211,11 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 		record.ChangedAt = now
 	} else if meta != nil {
 		record.ChangedAt = meta.ChangedAt
+	}
+	if res.Status >= 400 {
+		if err := f.store.SetRefusalBody(detached, kind, key, res.Body); err != nil {
+			return OutcomeError, err
+		}
 	}
 	if err := f.store.RecordFetched(detached, record); err != nil {
 		return OutcomeError, err
