@@ -1,6 +1,9 @@
 package mirror
 
-import "time"
+import (
+	"regexp"
+	"time"
+)
 
 // Spec is mirror declaration: the whole contents of a mirror XML file.
 type Spec struct {
@@ -8,8 +11,10 @@ type Spec struct {
 	// HeaderPrefix starts the headers the engine sets on an answer.
 	HeaderPrefix string
 	// MaxRows caps every resource table. Zero turns the cap off.
-	MaxRows   int
-	Vars      []Var
+	MaxRows int
+	Vars    []Var
+	// Accept lists media types that name the default representation. Every route that answers JSON also answers these.
+	Accept    []string
 	Upstream  Upstream
 	Resources []*Resource
 	Routes    []*Route
@@ -159,8 +164,8 @@ type CORS struct {
 }
 
 // Notify declares the mirror telling its own subscribers after a delivery is
-// applied, so a consumer stops racing the mirror's ingestion with its own copy
-// of the upstream's webhooks.
+// applied. A consumer stops racing the mirror's ingestion with its own copy of
+// the upstream's webhooks.
 type Notify struct {
 	// Path is the subscription CRUD prefix.
 	Path string
@@ -272,6 +277,39 @@ const (
 	StoreDocument StoreMode = "document"
 )
 
+const (
+	// StoreRedirect keeps the Location of a redirect, for as long as the signed URL it names stays valid.
+	StoreRedirect StoreMode = "redirect"
+	// StoreText keeps a representation that is not JSON, such as a diff, with its media type.
+	StoreText StoreMode = "text"
+)
+
+// Redirect says how long a stored Location may be served.
+type Redirect struct {
+	// Margin is how long before a signed URL expires it stops being served.
+	Margin time.Duration
+	// Unsigned is the lifetime of a Location with no query string, which carries no signature to expire. Zero stores none.
+	Unsigned time.Duration
+	// Fallback is the lifetime of a Location whose expiry no <expires> reads. Zero stores none.
+	Fallback time.Duration
+	// Expires are the query parameters that state a signed URL's expiry, tried in order.
+	Expires []ExpiryParam
+}
+
+// ExpiryParam reads a signed URL's expiry from one of its query parameters.
+type ExpiryParam struct {
+	Param string
+	// Format is "time" (RFC 3339), "unix" (seconds since the epoch), or "seconds".
+	Format string
+	// Since names the parameter that holds the signing time, as 20060102T150405Z.
+	Since string
+}
+
+// answersJSON reports whether a resource's answer is a JSON document.
+func (m StoreMode) answersJSON() bool {
+	return m == StoreColumns || m == StoreDocument
+}
+
 // Resource is kind of stored fact: derived SQLite table, row per key.
 type Resource struct {
 	Name   string
@@ -285,6 +323,8 @@ type Resource struct {
 	Keep []Keep
 	// Reveal gates every read of this resource. A resource without cannot
 	Reveal *Reveal
+	// Redirect is the lifetime rule of a redirect resource.
+	Redirect *Redirect
 }
 
 // Key is component of a resource's identity.
@@ -348,6 +388,8 @@ type QueryParam struct {
 	Min, Max int
 	// Key includes this parameter in the cache key. A parameter that changes
 	Key bool
+	// Empties is an answer path that a true value serves as an empty array.
+	Empties string
 }
 
 // Route binds an HTTP path the consumer asks for to a resource that answers
@@ -373,6 +415,24 @@ type Route struct {
 	BodyKey string
 	// Spreads carry the items of a fetched answer into another resource.
 	Spreads []*Spread
+	// Match constrains the shape of a path parameter. A request that fails one is left for a later route on the same path.
+	Match []ParamMatch
+}
+
+// ParamMatch requires a path parameter to match a regular expression.
+type ParamMatch struct {
+	Param   string
+	Pattern *regexp.Regexp
+}
+
+// admits reports whether every constrained path parameter has its shape.
+func (rt *Route) admits(params map[string]string) bool {
+	for _, m := range rt.Match {
+		if !m.Pattern.MatchString(params[m.Param]) {
+			return false
+		}
+	}
+	return true
 }
 
 // Reveal is the proof a caller must have before a stored fact is revealed to
@@ -455,6 +515,8 @@ type Event struct {
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set
 	Sets []Set
+	// Document is the payload path whose object becomes a document resource's stored answer.
+	Document string
 	// Invalidate is the last resort: the payload does not carry the new value
 	Invalidate *Invalidate
 }
@@ -465,7 +527,7 @@ type Set struct {
 	Field string
 	From  string // path into the payload
 	Expr  string // or template source
-	// AllowNull writes a null the payload actually states, instead of leaving
+	// AllowNull writes a null the payload states, instead of leaving
 	AllowNull bool
 }
 

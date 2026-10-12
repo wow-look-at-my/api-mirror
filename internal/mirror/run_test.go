@@ -60,7 +60,7 @@ const runnableSpec = `
 </mirror>
 `
 
-// report is what an author reads before running anything, so it has to name
+// report is what an author reads before running anything. It has to name
 // every derived thing: the fingerprint that decides a nuke, the tables, the
 // routes, and the deliveries the mirror will accept.
 func TestReport_NamesEverythingTheSpecDerives(t *testing.T) {

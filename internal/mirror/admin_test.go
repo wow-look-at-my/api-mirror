@@ -14,7 +14,7 @@ import (
 )
 
 // The operator surface, and the properties that make it worth having: it is
-// there without being asked for, and it is not open to whoever guesses the
+// there without being asked for. It is not open to whoever guesses the
 // prefix.
 
 // adminGet drives dashboard request, carrying the token the surface minted.
@@ -94,9 +94,9 @@ func TestDashboardServesItsOwnAssets(t *testing.T) {
 }
 
 // A browser fetches a stylesheet and a module ITSELF, with no header and no
-// query string, so the assets were refused and the page loaded unstyled
-// and inert. Every existing asset test passed, because each wired the token
-// the way the PAGE does. This is the sequence a browser performs.
+// query string. The assets were refused and the page loaded unstyled and
+// inert. Every existing asset test passed, because each wired the token the
+// way the PAGE does. This is the sequence a browser performs.
 func TestABrowserCanLoadTheAssetsTheShellAsksFor(t *testing.T) {
 	e, _ := newTestEngine(t, http.NotFoundHandler())
 
@@ -192,9 +192,9 @@ func TestResourcesTabDescribesTheGateAsWellAsTheColumns(t *testing.T) {
 	assert.Equal(t, "true", widget.Reveal.Public)
 }
 
-// The overview counts errored keys per kind. A count with no way to see WHICH
-// keys errored, and why, is a number an operator cannot act on -- and the query
-// that answers it sat written and unwired.
+// The overview counts errored keys per kind. Consider a count with no way to
+// see WHICH. That count keys errored, and why, is a number an operator cannot
+// act on -- and the query that answers it sat written and unwired.
 func TestResourcesTabNamesTheKeysBehindTheErroredCount(t *testing.T) {
 	var fail atomic.Bool
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -284,7 +284,7 @@ func TestHealthAnswersOutsideTheDashboardToken(t *testing.T) {
 		s.Health = &Health{Live: "/.well-known/live", PreUpdate: "/.well-known/pre-update"}
 	})
 	// A checker has no credential to give, and an unregistered path here does
-	// not -- it falls through to the proxy and answers whatever the upstream
+	// not. It falls through to the proxy and answers whatever the upstream
 	// says about it.
 	for _, path := range []string{"/.well-known/live", "/.well-known/pre-update"} {
 		rec := httptest.NewRecorder()

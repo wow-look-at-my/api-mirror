@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/url"
 	"time"
 )
@@ -35,23 +36,40 @@ func planFrom(ctx context.Context) *fetchPlan {
 // fetch refreshes key from the upstream and absorbs the answer.
 //
 // It stores state, never bytes. What a consumer receives is rebuilt from that
-// state, so the shape of an answer is the spec's and cannot drift with whatever
+// state. The shape of an answer is the spec's and cannot drift with whatever
 // the upstream added this week.
 func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult, error) {
 	plan := planFrom(ctx)
 	if plan == nil {
 		return FetchResult{}, fmt.Errorf("fetch %s/%s: no plan on the context", kind, key)
 	}
-	answer, err := e.up.Call(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), plan.body)
+	var set http.Header
+	switch plan.res.Store {
+	case StoreRedirect:
+		// The Location is the answer, so the client must not follow it.
+		ctx = withoutRedirects(ctx)
+	case StoreText:
+		set = http.Header{"Accept": {plan.route.Accept[0]}}
+	}
+	answer, err := e.up.CallWith(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), set, plan.body)
 	if err != nil {
 		return FetchResult{}, err
 	}
 	if answer.Status == 304 {
 		return FetchResult{ETag: etag}, nil
 	}
+	if !plan.res.Store.answersJSON() {
+		if result, held, err := e.absorbHeld(ctx, plan, answer); held {
+			return result, err
+		}
+	}
 	if !storable(e.up, plan.route, answer) {
 		// The route models the request but not this answer. Storing it anyway
 		// would be a guess written down as a fact.
+		if !e.up.Transient(answer) && forwardFrom(ctx) != nil {
+			// The caller's own credential earned this answer, so it is theirs.
+			return FetchResult{}, &UnstoredAnswer{Path: plan.path, Answer: answer}
+		}
 		return FetchResult{}, fmt.Errorf("upstream %s answered %d, which route %s does not absorb",
 			plan.path, answer.Status, plan.route.Path)
 	}
@@ -61,7 +79,8 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 
 	result := FetchResult{ETag: answer.Header.Get("ETag"), Changed: true, Status: answer.Status}
 	if answer.Status >= 400 {
-		// The route declared this refusal worth keeping.
+		// The route declared this refusal worth keeping, and its document says why.
+		result.Body = refusalBody(plan.res, answer.Body)
 		return result, nil
 	}
 
@@ -78,11 +97,29 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	return result, nil
 }
 
+// refusalBody re-encodes the document a stored refusal carries, with the
+// resource's drop patterns applied. A body that is not JSON keeps nothing.
+func refusalBody(res *Resource, body []byte) string {
+	doc, err := decodeJSON(body)
+	if err != nil {
+		return ""
+	}
+	out, err := marshalJSON(trim(res, doc))
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
 // upstreamPath rebuilds the path this plan asks the upstream for, carrying only
 // the query the route models. A parameter the route never modelled cannot reach
 func (p *fetchPlan) upstreamPath() string {
 	q := url.Values{}
 	for _, decl := range p.route.Query {
+		if decl.Empties != "" {
+			// The stored answer is the full one; the flag applies when it is served.
+			continue
+		}
 		if v := p.query[decl.Name]; v != "" {
 			q.Set(decl.Name, v)
 		}
@@ -139,8 +176,8 @@ func (e *Engine) absorbAnswer(ctx context.Context, plan *fetchPlan, doc any) err
 		if err != nil {
 			return err
 		}
-		// A list route's own key components pin the rows it owns, so an item
-		// that does not carry them is still filed where the list will find it.
+		// A list route's own key components pin the rows it owns. An item that
+		// does not carry them is still filed where the list will find it.
 		for k, v := range plan.key {
 			if _, ok := row[k]; !ok {
 				row[k] = v
@@ -183,7 +220,7 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 		return err
 	}
 	// The request's own key wins over anything read out of the document: the
-	// caller asked for this key, and the row must be findable under it.
+	// caller asked for this key. The row must be findable under it.
 	for k, v := range plan.key {
 		row[k] = v
 	}
@@ -194,8 +231,8 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 }
 
 // requireKeys refuses a row whose identity is incomplete. A row filed under a
-// missing key is a row nothing ever finds again, and a webhook naming the real
-// key would write a beside it.
+// missing key is a row nothing ever finds again. A webhook naming the real key
+// would write a beside it.
 func requireKeys(res *Resource, row Row) error {
 	for _, k := range res.Keys {
 		v, ok := row[k.Name]

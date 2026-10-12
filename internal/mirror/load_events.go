@@ -115,6 +115,15 @@ func buildEvent(n *node) (*Event, error) {
 				k.From = strings.TrimSpace(from)
 			}
 			ev.Keys = append(ev.Keys, k)
+		case "document":
+			if err := checkAttrs(child); err != nil {
+				return nil, err
+			}
+			path, err := textOf(child)
+			if err != nil {
+				return nil, err
+			}
+			ev.Document = strings.TrimSpace(path)
 		case "invalidate":
 			if err := checkAttrs(child, "reason", "every", "field", "differs"); err != nil {
 				return nil, err

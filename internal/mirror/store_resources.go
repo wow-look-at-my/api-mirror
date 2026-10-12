@@ -53,10 +53,10 @@ func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Ti
 // transaction.
 //
 // An upsert alone cannot express a DELETION. A list answer that no longer
-// mentions an item is the upstream saying the item is gone, and a store that
-// only ever adds keeps serving it for good. Both halves have to land together:
-// a delete that commits without its insert empties the list instead of
-// correcting it.
+// mentions an item is the upstream saying the item is gone. This is and a
+// store that only ever adds keeps serving it for good. Both halves have to
+// land together: a delete that commits without its insert empties the list
+// instead of correcting it.
 func (s *Store) ReplaceMany(ctx context.Context, r *Resource, key map[string]string, rows []Row, at time.Time) error {
 	where, args := keyPredicate(r, key)
 	if where == "" {
@@ -115,7 +115,7 @@ func (s *Store) Get(ctx context.Context, r *Resource, key map[string]string) (Ro
 
 // List reads every row matching a partial key, in key order. An empty match is
 // an empty list, never an error: the caller decides whether that means "no rows
-// upstream" or "not fetched yet", and the freshness marker is what tells them.
+// upstream" or "not fetched yet". The freshness marker is what tells them.
 func (s *Store) List(ctx context.Context, r *Resource, key map[string]string) ([]Row, error) {
 	cols := columnsOf(r)
 	where, args := keyPredicate(r, key)

@@ -1,4 +1,4 @@
-// Package database holds the engine's own tables: the SQL that declares them,
+// Package database holds the engine's own tables. The SQL that declares them,
 // the typed queries sqlc generates from that SQL, and the fingerprint that
 // decides when a cache is rebuilt.
 //
