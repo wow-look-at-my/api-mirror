@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -175,6 +176,12 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 
 	res, err := f.fetch(fetchCtx, kind, key, etag)
 	now := f.now()
+	var mine interface{ Unstored() bool }
+	if errors.As(err, &mine) && mine.Unstored() {
+		// One caller's answer: other callers must not read it as a backoff.
+		f.restore(detached, kind, key, meta)
+		return OutcomeError, err
+	}
 	if err != nil {
 		retryAfter := now.Add(defaultErrorRetry)
 		if werr := f.store.MarkError(detached, kind, key, err.Error(), retryAfter); werr != nil {
@@ -201,6 +208,23 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 		return OutcomeError, err
 	}
 	return OutcomeMiss, nil
+}
+
+// restore puts back the bookkeeping a fetch found, after a fetch whose answer
+// was not the key's to keep.
+func (f *Fresh) restore(ctx context.Context, kind, key string, meta *Freshness) {
+	var err error
+	switch {
+	case meta == nil:
+		_, err = f.store.DeleteFreshness(ctx, kind, key)
+	case FetchState(meta.State) == StateError:
+		err = f.store.MarkError(ctx, kind, key, meta.Error, meta.RetryAfter)
+	default:
+		err = f.store.RecordFetched(ctx, *meta)
+	}
+	if err != nil {
+		logf("restore freshness %s/%s: %v", kind, key, err)
+	}
 }
 
 // lockFor returns the mutex guarding key, creating it.

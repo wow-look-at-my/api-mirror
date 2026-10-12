@@ -3,6 +3,7 @@ package mirror
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -386,6 +387,12 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	})
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	if err != nil {
+		// Ahead of the stale path: a refused caller must not get the stored row.
+		var mine *UnstoredAnswer
+		if errors.As(err, &mine) {
+			e.relayUnstored(ctx, w, m, res, principal, mine)
+			return
+		}
 		if e.serveStale(ctx, w, m, res, kind, key, err) {
 			return
 		}

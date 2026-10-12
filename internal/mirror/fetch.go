@@ -52,6 +52,10 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	if !storable(e.up, plan.route, answer) {
 		// The route models the request but not this answer. Storing it anyway
 		// would be a guess written down as a fact.
+		if !e.up.Transient(answer) && forwardFrom(ctx) != nil {
+			// The caller's own credential earned this answer, so it is theirs.
+			return FetchResult{}, &UnstoredAnswer{Path: plan.path, Answer: answer}
+		}
 		return FetchResult{}, fmt.Errorf("upstream %s answered %d, which route %s does not absorb",
 			plan.path, answer.Status, plan.route.Path)
 	}
