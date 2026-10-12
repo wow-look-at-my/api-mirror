@@ -53,6 +53,20 @@ A key reads the document field of its own name. `from=` says otherwise, and `fol
 
 `<field>` declares a stored column with a name and a SQL-ish `type`. Its body is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
 
+Store modes hold an answer that is not JSON at all, and neither is rebuilt, because there is nothing in it to parse.
+
+- `store="text"` keeps a body such as a diff, with its media type. Its route lists the media types it answers in `<accept>`, and the fetch asks the upstream for the first. A JSON route and a text route can share one path.
+- `store="redirect"` keeps the `Location` of a 3xx answer. The fetch does not follow it. A signed URL has a short life, so `<redirect>` says how long a row lives:
+
+```xml
+<redirect margin="15s" unsigned="24h" fallback="1m">
+	<expires param="se"/>
+	<expires param="X-Amz-Expires" format="seconds" since="X-Amz-Date"/>
+</redirect>
+```
+
+The first `<expires>` whose parameter parses gives the URL's expiry. The row lives until then, less the margin. `format` is `time` (RFC 3339, the default), `unix`, or `seconds` counted from the `since` parameter. A `Location` with no query string carries no signature and lives `unsigned`. Nobody relays one the rule cannot date lives `fallback`, or. A URL already inside its margin is relayed and not kept.
+
 The rebuilt answer is a subset of the upstream document. A client of the upstream must read the mirror unchanged.
 
 - Each field, and each key with `from=`, goes back to the path it was read from. The value and the JSON type stay the upstream's. `type="int"` on a key serves its stored text as a number.

@@ -21,6 +21,10 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `unstored.go` — an upstream answer the route does not keep: relayed to the caller whose credential earned it, a 403 or 404 recorded as their denial.
 - `invalidate.go` — an invalidation drops the freshness under its key too. A stored refusal goes with the rows.
 - `store_refusal.go` — the refusal document kept with a stored refusal, and prefix deletes, in plain SQL.
+- `redirect.go` — `store="redirect"` (a Location kept until its signed URL expires) and `store="text"` (a non-JSON body with its media type).
+- `events_document.go` — an event's `<document>`: the payload object written whole as a document resource's answer.
+- `project.go` — `<param empties=>`: a bool flag that serves one answer path as an empty array, off one stored answer.
+- `validate_paths.go` — `{name...}` rest parameters and `<match>` shape constraints on path parameters.
 - `<rewrite>` — a client's own spelling of a path, canonicalised in `dispatch` before any gate sees it. `gh` needs one, because it puts REST under `/api/v3` on a non-github.com host. It grants nothing.
 - `relay.go` — `<relay>`: an uncached forward to a fixed URL off the upstream base, for login endpoints on another host that send no CORS headers. It forwards no bearer, because the body is the credential there.
 - `body-key` on a `<route>` — the resource key the REQUEST body fills, for a query language that posts every question to one path. Naming it also makes the body travel: the fetch replays it upstream. Nearly always credential-keyed, because such an API filters by the caller's token.

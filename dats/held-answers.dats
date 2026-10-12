@@ -23,7 +23,7 @@ tests:
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
 		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19981/_requests && curl -s -o /dev/null http://127.0.0.1:19980/.well-known/docker-updater/health && break; sleep 0.1; done
 		M=http://127.0.0.1:19980
-		ask() { curl -s -o /dev/null -D - -H 'Authorization: token fake' "$@" | tr -d '\r' | grep -i -E '^(HTTP|location|x-gsm-cache|content-type)' | sed 's/^/  /'; }
+		ask() { curl -s -o /dev/null -D - -H 'Authorization: token fake' "$@" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | grep -E '^(HTTP|location|x-gsm-cache|content-type)' | sed 's/^/  /'; }
 		for path in /repos/Octo/Demo/actions/runs/5/logs /repos/Octo/Demo/actions/jobs/6/logs /repos/sqlc-dev/sqlc/tarball/cmd/v1.28.0 /repos/sqlc-dev/sqlc/zipball/cmd/sqlc/v1.28.0; do
 			echo "== $path"; ask "$M$path"; ask "$M$path"
 		done

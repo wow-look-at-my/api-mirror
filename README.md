@@ -60,6 +60,7 @@ api-mirror --spec mirror.xml --check     # print the derived schema and routes, 
 - **Ordering.** Deliveries are sorted per subject inside a short window, and a view older than one already applied is refused. A redelivered payload cannot reopen something that closed.
 - **Authorization at the read.** Storage is global — one row per fact. Whether a caller may see it is proven per request, against the upstream, with that caller's own credential.
 - **Honest passthrough.** A path the spec does not declare is forwarded and labelled with why. There is no "correctly uncached".
+- **Answers that are not JSON.** A diff is kept as text with its media type. A redirect to a signed URL is kept until that URL expires.
 - **A dashboard, on by default.** Traffic, cache contents, rate budget, deliveries, principals, and the passthrough brief. It mints its own token and logs the URL that opens it.
 - **A consistency check.** Every other view reports what this process has seen. This re-asks the upstream about each stored key of one kind and names what disagrees. This is the only way a delivery that never arrived surfaces. It reports on a GET and rewrites the drifted rows on a POST.
 

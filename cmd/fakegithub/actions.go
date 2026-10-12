@@ -26,14 +26,14 @@ func workflowRun(owner, name string, id int) doc {
 		"head_sha": "ffff000000000000000000000000000000000006", "path": ".github/workflows/ci.yml",
 		"display_title": "Fix the thing", "run_number": 12, "event": "push", "status": "completed",
 		"conclusion": "success", "workflow_id": 3, "check_suite_id": 40, "run_attempt": 1,
-		"pull_requests":  []doc{{"number": 7, "id": 107, "head": doc{"ref": "feature", "sha": "aaaa000000000000000000000000000000000001"}}},
-		"created_at":     "2026-08-25T09:00:00Z", "updated_at": "2026-08-25T09:05:00Z",
-		"actor":          user("octocat"), "repository": repo(owner, name), "head_repository": repo(owner, name),
-		"head_commit":    doc{"id": "ffff000000000000000000000000000000000006", "message": "Fix the thing", "timestamp": "2026-08-25T09:00:00Z"},
-		"url":            api + "/repos/" + full + "/actions/runs/" + strconv.Itoa(id),
-		"jobs_url":       api + "/repos/" + full + "/actions/runs/" + strconv.Itoa(id) + "/jobs",
-		"logs_url":       api + "/repos/" + full + "/actions/runs/" + strconv.Itoa(id) + "/logs",
-		"html_url":       "https://github.com/" + full + "/actions/runs/" + strconv.Itoa(id),
+		"pull_requests": []doc{{"number": 7, "id": 107, "head": doc{"ref": "feature", "sha": "aaaa000000000000000000000000000000000001"}}},
+		"created_at":    "2026-08-25T09:00:00Z", "updated_at": "2026-08-25T09:05:00Z",
+		"actor": user("octocat"), "repository": repo(owner, name), "head_repository": repo(owner, name),
+		"head_commit":          doc{"id": "ffff000000000000000000000000000000000006", "message": "Fix the thing", "timestamp": "2026-08-25T09:00:00Z"},
+		"url":                  api + "/repos/" + full + "/actions/runs/" + strconv.Itoa(id),
+		"jobs_url":             api + "/repos/" + full + "/actions/runs/" + strconv.Itoa(id) + "/jobs",
+		"logs_url":             api + "/repos/" + full + "/actions/runs/" + strconv.Itoa(id) + "/logs",
+		"html_url":             "https://github.com/" + full + "/actions/runs/" + strconv.Itoa(id),
 		"referenced_workflows": []doc{},
 	}
 }
@@ -114,7 +114,7 @@ func commitAnswer(path string) (any, bool) {
 			return doc{
 				"type": "submodule", "name": "sub", "path": "sub", "sha": "2222000000000000000000000000000000000002", "size": 0,
 				"submodule_git_url": "https://github.com/acme/sub.git", "download_url": nil,
-				"url":   api + "/repos/" + full + "/contents/sub",
+				"url":    api + "/repos/" + full + "/contents/sub",
 				"_links": doc{"self": api + "/repos/" + full + "/contents/sub", "git": api + "/repos/acme/sub/git/trees/2222", "html": "https://github.com/acme/sub/tree/2222"},
 			}, true
 		}
