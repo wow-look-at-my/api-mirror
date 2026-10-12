@@ -8,8 +8,10 @@ type Spec struct {
 	// HeaderPrefix starts the headers the engine sets on an answer.
 	HeaderPrefix string
 	// MaxRows caps every resource table. Zero turns the cap off.
-	MaxRows   int
-	Vars      []Var
+	MaxRows int
+	Vars    []Var
+	// Accept lists media types that name the default representation. Every route that answers JSON also answers these.
+	Accept    []string
 	Upstream  Upstream
 	Resources []*Resource
 	Routes    []*Route
@@ -271,6 +273,11 @@ const (
 	// StoreDocument keeps the response document itself, minus the declared
 	StoreDocument StoreMode = "document"
 )
+
+// answersJSON reports whether a resource's answer is a JSON document.
+func (m StoreMode) answersJSON() bool {
+	return m == StoreColumns || m == StoreDocument
+}
 
 // Resource is kind of stored fact: derived SQLite table, row per key.
 type Resource struct {

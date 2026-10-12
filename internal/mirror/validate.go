@@ -68,6 +68,11 @@ func (s *Spec) validate() error {
 	if strings.TrimSpace(s.Upstream.Base) == "" {
 		return fmt.Errorf("<upstream> needs a base URL")
 	}
+	for _, a := range s.Accept {
+		if !strings.Contains(a, "/") {
+			return fmt.Errorf("<mirror><accept>: %q is not a media type", a)
+		}
+	}
 	byName := make(map[string]*Resource, len(s.Resources))
 	for _, r := range s.Resources {
 		if err := r.validate(); err != nil {

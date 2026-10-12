@@ -58,6 +58,8 @@
 		<xs:complexType>
 			<xs:choice minOccurs="0" maxOccurs="unbounded">
 				<xs:element name="description" type="xs:string"/>
+				<!-- A media type every JSON route answers as its default representation. -->
+				<xs:element name="accept" type="xs:string"/>
 				<xs:element name="vars" type="vars"/>
 				<xs:element name="upstream" type="upstream"/>
 				<xs:element name="resource" type="resource"/>

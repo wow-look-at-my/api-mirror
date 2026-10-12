@@ -53,6 +53,12 @@ func buildSpec(n *node) (*Spec, error) {
 		switch child.Name() {
 		case "description":
 			// Prose for a human reading the file. It is not used at run time.
+		case "accept":
+			media, err := buildAccept(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Accept = append(spec.Accept, media)
 		case "vars":
 			vars, err := buildVars(child)
 			if err != nil {
@@ -431,14 +437,11 @@ func addRouteChild(rt *Route, child *node) error {
 		}
 		rt.Query = append(rt.Query, p)
 	case "accept":
-		if err := checkAttrs(child); err != nil {
-			return err
-		}
-		media, err := textOf(child)
+		media, err := buildAccept(child)
 		if err != nil {
 			return err
 		}
-		rt.Accept = append(rt.Accept, strings.TrimSpace(media))
+		rt.Accept = append(rt.Accept, media)
 	case "absorb":
 		if err := checkAttrs(child, "status"); err != nil {
 			return err
@@ -466,6 +469,18 @@ func addRouteChild(rt *Route, child *node) error {
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}
 	return nil
+}
+
+// buildAccept reads one media type.
+func buildAccept(n *node) (string, error) {
+	if err := checkAttrs(n); err != nil {
+		return "", err
+	}
+	media, err := textOf(n)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(media), nil
 }
 
 func buildRewrite(n *node) (*Rewrite, error) {

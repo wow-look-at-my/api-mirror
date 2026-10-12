@@ -23,6 +23,21 @@
 
 	<description>Caching mirror of the GitHub REST API. Storage is global -- one row per fact, no actor column -- and a read is gated by proof that the caller could have read the same thing from GitHub directly. Set GITHUB_API_URL to target a GitHub Enterprise Server instance.</description>
 
+	<!--
+		Every spelling a client uses for GitHub's default JSON. gh sends the two
+		retired previews on every request: nebula-preview added the repository
+		visibility field, and merge-info-preview added merge state to GraphQL.
+		Both are in the default answer now, so a route that answers JSON
+		answers them too, and a route that answers something else names its
+		own media types.
+	-->
+	<accept>application/json</accept>
+	<accept>application/vnd.github+json</accept>
+	<accept>application/vnd.github.v3+json</accept>
+	<accept>application/vnd.github.merge-info-preview+json</accept>
+	<accept>application/vnd.github.nebula-preview</accept>
+	<accept>application/vnd.github.nebula-preview+json</accept>
+
 	<vars>
 		<var name="base"><value name="env.GITHUB_API_URL" default="https://api.github.com"/></var>
 	</vars>
@@ -521,29 +536,21 @@
 	</resource>
 
 	<route method="GET" path="/repos/{owner}/{name}" resource="repo">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<!-- GitHub's 404 for a repository is an answer worth remembering. -->
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/pulls" resource="pull" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="state" type="text" default="open"/>
 		<param name="per_page" type="int" default="30" min="1" max="100"/>
 		<param name="page" type="int" default="1" min="1" max="100"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref}" resource="branch">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -554,8 +561,6 @@
 		omits something that was deleted. There is nothing here to delete.
 	-->
 	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}/statuses" resource="status_post" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100"/>
 		<param name="page" type="int" default="1" min="1" max="100"/>
 	</route>
@@ -567,157 +572,111 @@
 		a delivery that moves those rows moves the answer to both.
 	-->
 	<route method="GET" path="/repos/{owner}/{repo}/statuses/{sha}" resource="status_post" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100"/>
 		<param name="page" type="int" default="1" min="1" max="100"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/contents/{path}" resource="contents">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/readme" resource="readme">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir}" resource="readme_dir">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/workflows" resource="workflows_list">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/workflows/{id}" resource="workflow">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/commits/{sha}" resource="git_commit">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/trees/{sha}" resource="git_tree">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="recursive" type="text" default="" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/ref/{ref}" resource="git_ref">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/matching-refs/heads/{prefix}" resource="matching_refs">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/commits" resource="commits_list" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="sha" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/compare/{basehead}" resource="compare">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/commits/{ref}/status" resource="commit_status_rollup">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/commits/{ref}/check-runs" resource="commit_check_runs">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/check-runs/{check_run_id}" resource="check_run">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/runs" resource="workflow_runs" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="head_sha" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/runs/{run_id}/jobs" resource="workflow_run_jobs" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/jobs/{job_id}" resource="workflow_job">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/labels/{name}" resource="label">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/branches" resource="branches_list" list="true" complete="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/files" resource="pull_files" list="true" complete="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}/commits" resource="pull_commits" list="true" complete="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1263,8 +1222,6 @@
 	</resource>
 
 	<route method="GET" path="/repos/{owner}/{repo}/installation" resource="repo_installation">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -1281,15 +1238,11 @@
 		like an org from answering the other question.
 	-->
 	<route method="GET" path="/orgs/{owner}/installation" resource="owner_installation">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="kind" type="text" default="org" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/users/{owner}/installation" resource="owner_installation">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="kind" type="text" default="user" key="true"/>
 		<absorb status="404"/>
 	</route>
@@ -1299,8 +1252,6 @@
 	</resource>
 
 	<route method="GET" path="/user" resource="identity">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="user_orgs" store="document">
@@ -1311,8 +1262,6 @@
 	</resource>
 
 	<route method="GET" path="/user/orgs" resource="user_orgs">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1330,8 +1279,6 @@
 		repo truth. The reveal layer then serves those repos without a probe.
 	-->
 	<route method="GET" path="/user/repos" resource="user_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<spread resource="repo"/>
@@ -1343,8 +1290,6 @@
 	</resource>
 
 	<route method="GET" path="/rate_limit" resource="rate_limit">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="org_runners" store="document">
@@ -1356,8 +1301,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{org}/actions/runners" resource="org_runners">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1372,8 +1315,6 @@
 	</resource>
 
 	<route method="GET" path="/repos/{owner}/{repo}/hooks" resource="repo_hooks">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1387,8 +1328,6 @@
 	</resource>
 
 	<route method="GET" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hook">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -1401,8 +1340,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{org}/hooks" resource="org_hooks">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1415,8 +1352,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -1489,7 +1424,6 @@
 		repo document, so it earns a grant and is not stored as truth.
 	-->
 	<route method="POST" path="/graphql" resource="graphql" body-key="query">
-		<accept>application/json</accept>
 		<spread resource="repo" items="data.organization.repositories.nodes" absorb="false">
 			<key field="owner">owner.login</key>
 			<key field="name">name</key>
@@ -1529,8 +1463,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{owner}/repos" resource="org_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="sort" type="text" default="" key="true"/>
 		<param name="direction" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -1540,8 +1472,6 @@
 	</route>
 
 	<route method="GET" path="/users/{owner}/repos" resource="owner_user_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="sort" type="text" default="" key="true"/>
 		<param name="direction" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -1559,8 +1489,6 @@
 	</resource>
 
 	<route method="GET" path="/search/issues" resource="search_issues">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="q" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
@@ -1577,8 +1505,6 @@
 	</resource>
 
 	<route method="GET" path="/app" resource="app_identity">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="app_installations" store="document">
@@ -1589,8 +1515,6 @@
 	</resource>
 
 	<route method="GET" path="/app/installations" resource="app_installations">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1603,8 +1527,6 @@
 	</resource>
 
 	<route method="GET" path="/installation/repositories" resource="installation_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<spread resource="repo" items="repositories"/>
