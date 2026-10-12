@@ -385,9 +385,9 @@ func (id *Identifier) Resolve(ctx context.Context, r *http.Request) (string, err
 // declared, and by the credential's fingerprint otherwise.
 //
 // A credential the upstream will not name, such as an installation token
-// that cannot call the endpoint, keeps its fingerprint, and that answer is
-// cached like any other. A transient failure keeps the fingerprint for
-// this request only.
+// that cannot call the endpoint, keeps its fingerprint. The upstream will
+// not also name that answer is cached like any other. A transient failure
+// keeps the fingerprint for this request only.
 func (id *Identifier) owner(ctx context.Context, r *http.Request) string {
 	fallback := tokenPrincipal(r)
 	if id.whoami == nil || fallback == "" {

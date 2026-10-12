@@ -201,8 +201,8 @@ func (a *Admin) keepToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authorized checks the token in constant time. carriers: a human opens a
-// URL, the page fetches with a header, a script uses what it already has, and
+// authorized checks the token in constant time. carriers. A human opens a
+// URL. The page fetches with a header. A script uses what it already has, and
 // the browser sends back the cookie for a subresource it fetches itself.
 func (a *Admin) authorized(r *http.Request) bool {
 	presented := r.URL.Query().Get("token")

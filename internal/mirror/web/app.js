@@ -95,8 +95,8 @@ function table(headers, rows) {
 
 // pill is a scratch-badge in the variant that matches the verdict.
 //
-// The design language's LED reports a STATE, so a colour-only chip is what
-// labels an outcome: signal for what worked, accent for what needs a look,
+// The design language's LED reports a STATE. A colour-only chip is what
+// labels an outcome. Signal for what worked, accent for what needs a look,
 // off for what is inactive, and the neutral key chip for everything else.
 const PILL_VARIANT = {
 	hit: 'signal', applied: 'signal', ok: 'signal', fresh: 'signal',
@@ -497,9 +497,9 @@ const checkResults = new Map();
 
 // checkSection drives the consistency check.
 //
-// Every other view here reports what this process has SEEN. This is the only a
-// single that asks the upstream whether the stored answers are still right,
-// which is the only way a delivery that never arrived ever surfaces.
+// Every other view here reports what this process has SEEN. This is the only
+// one that asks the upstream whether the stored answers are still right. This
+// is the only way a delivery that never arrived ever surfaces.
 function checkSection(kind) {
 	// The page re-reads on a timer, which rebuilds this whole panel. A check
 	// takes a single upstream call per key, so its result has to outlive that:
@@ -515,6 +515,9 @@ function checkSection(kind) {
 		results.replaceChildren(el('div', { class: 'empty' }, 'Asking the upstream...'));
 		status.textContent = '';
 		try {
+			// The stream is read as it arrives rather than awaited whole: a check
+			// is one upstream call per key. A large kind takes minutes and a
+			// buffered read cannot be told apart from a wedged one.
 			await readNDJSON(`api/check?kind=${encodeURIComponent(kind)}${repair ? '&apply=true' : ''}&stream=1`,
 				repair ? 'POST' : 'GET',
 				(line) => {

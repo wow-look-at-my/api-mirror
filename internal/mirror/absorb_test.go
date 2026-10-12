@@ -217,7 +217,7 @@ func TestRebuild_RefusesADocumentResource(t *testing.T) {
 		"a document resource has no columns to rebuild from, and guessing one would invent an answer")
 }
 
-// A URL in a stored document is a way around the mirror: a consumer follows it,
+// A URL in a stored document is a way around the mirror. A consumer follows it,
 // and that request is the mirror did not cache, did not gate and cannot see.
 func TestTrim_DropsBySuffixAndByExactName(t *testing.T) {
 	res := &Resource{
@@ -273,7 +273,7 @@ func TestDropped_MatchesTheTwoDeclaredPatternForms(t *testing.T) {
 }
 
 // marshaller writes every document the mirror stores, so bytes written by a
-// fetch, rewritten by a delivery, and served on a hit are the same bytes.
+// fetch, rewritten by a delivery. It served on a hit are the same bytes.
 func TestMarshalJSON_DoesNotEscapeHTMLAndDropsTheTrailingNewline(t *testing.T) {
 	b, err := marshalJSON(map[string]any{"name": "tom & jerry <b>"})
 	require.NoError(t, err)

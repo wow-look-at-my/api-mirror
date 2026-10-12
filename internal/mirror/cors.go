@@ -8,8 +8,8 @@ import (
 
 // CORS: what a browser is allowed to do with this mirror.
 //
-// Allowing any origin is safe here in a way it usually is not, and the reason
-// is the reveal layer: what a caller may see is decided by proving THEIR access
+// Allowing any origin is safe here in a way it usually is not. The reason is
+// the reveal layer. What a caller may see is decided by proving THEIR access
 // upstream, not by where the page asking came from. An origin list would gate a
 // door that is not the door.
 
@@ -39,7 +39,7 @@ func (e *Engine) answerPreflight(w *recorder, r *http.Request) bool {
 // setCORS puts the allow headers on an answer.
 //
 // Expose-Headers is the half that is easy to forget and impossible to work
-// around: without it a browser hides every X-Mirror-* header, so a page cannot
+// around: without it a browser hides every X-Mirror-* header. A page cannot
 // tell a hit from a passthrough and cannot read the budget it is spending. A
 // rebuilt answer has no upstream list to inherit from either.
 func (e *Engine) setCORS(w http.ResponseWriter, r *http.Request) {

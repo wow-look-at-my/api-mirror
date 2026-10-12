@@ -15,7 +15,7 @@ import (
 // writeJSON renders admin answer.
 //
 // It marshals. A JSON literal built with string concatenation guesses about
-// every value it interpolates, and a path or a subject carries whatever the
+// every value it interpolates. And a path or a subject carries whatever the
 // upstream put in it.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	body, err := marshalJSON(v)
@@ -313,6 +313,8 @@ type EventView struct {
 	Sets      int    `json:"sets"`
 	// Invalidate is the escape hatch's stated reason; empty means it applies.
 	Invalidate string `json:"invalidate,omitempty"`
+	// Document is the payload path a delivery writes as the whole answer.
+	Document string `json:"document,omitempty"`
 }
 
 func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +346,7 @@ func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
 			Actions:   strings.Join(ev.Actions, ","),
 			When:      ev.When,
 			Sets:      len(ev.Sets),
+			Document:  ev.Document,
 		}
 		if ev.Invalidate != nil {
 			e.Invalidate = ev.Invalidate.Reason

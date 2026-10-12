@@ -100,6 +100,12 @@ func (e *Engine) checkOne(ctx context.Context, kind string, f Freshness, repair 
 		return out
 	}
 
+	if !plan.res.Store.answersJSON() {
+		out.Verdict = CheckUnsupported
+		out.Detail = "a redirect or a text body is held whole, and a fresh fetch signs a new URL, so there is no field to compare"
+		return out
+	}
+
 	stored, err := e.store.Get(ctx, plan.res, plan.key)
 	if err != nil {
 		out.Verdict = CheckUnreachable

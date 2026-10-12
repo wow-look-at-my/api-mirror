@@ -5,7 +5,7 @@
 # upstream requests.
 #
 # The docker sandbox falls back for us (no bwrap on the CI runner) and runs
-# as the host's own uid, so the setup step below can't apt-get its own curl.
+# as the host's own uid. The setup step below can't apt-get its own curl.
 # Pin an image that already ships curl + bash instead of a bare debian slim.
 sandbox:
 	image: buildpack-deps:bookworm-curl
@@ -17,7 +17,7 @@ shared:
 		mirror-spec.xml: ../samples/github/github.xml
 
 # A TLS-intercepting environment points CURL_CA_BUNDLE and its siblings at a
-# bundle under the developer's own home, and the sandbox mounts standard system
+# bundle under the developer's own home. The sandbox mounts standard system
 # paths only. curl then dies on the missing file rather than on a bad
 # certificate. Dropping the overrides falls back to the system trust store,
 # which the sandbox does mount, and which is all a plain runner ever had.

@@ -60,7 +60,6 @@ func (rec *recorder) Flush() {
 	}
 }
 
-// Unwrap is how ResponseController reaches deadlines and hijacking underneath.
 func (rec *recorder) Unwrap() http.ResponseWriter { return rec.ResponseWriter }
 
 // note records what this request was, from the handler that knows.

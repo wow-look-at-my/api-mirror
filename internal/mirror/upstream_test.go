@@ -58,7 +58,7 @@ func newUpstreamer(t *testing.T, h http.HandlerFunc) (*Upstreamer, *httptest.Ser
 }
 
 // rateAwareUpstreamer is an upstreamer whose spec names the budget headers.
-// Which header says "wait" and which says "you may not" is the upstream's
+// Which header says "wait". And which says "you may not" is the upstream's
 // vocabulary, so telling those apart is a property of a configured upstreamer
 // rather than of a bare answer.
 func rateAwareUpstreamer(t *testing.T) *Upstreamer {
@@ -196,8 +196,8 @@ func TestUpstreamCall_RejectsAnUnusableMethod(t *testing.T) {
 }
 
 // A body past the cap is relayed and not stored. The mirror declines to hold
-// what it cannot hold, out loud, rather than storing a truncated document that
-// reads to every later consumer as a complete.
+// what it cannot hold, out loud. The mirror is not storing a truncated
+// document that reads to every later consumer as a complete.
 func TestUpstreamCall_BodyPastTheCapIsFlaggedAsOverflow(t *testing.T) {
 	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(strings.Repeat("x", maxBodyBytes+64)))

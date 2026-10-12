@@ -42,9 +42,9 @@ func NewDebouncer(window time.Duration) *Debouncer {
 // consumers asking the same unmodelled question at should cost the budget
 // answer rather than.
 //
-// Only a safe method with no credential of its own qualifies:
-// callers holding different credentials ask different questions even at
-// the same URL, and answering with the other's data is the reveal layer
+// Only a safe method with no credential of its own qualifies: callers
+// holding different credentials ask different questions even at the
+// same URL. Answering with the other's data is the reveal layer
 // defeated by a cache key.
 func (d *Debouncer) Share(w *recorder, r *http.Request, forward func(http.ResponseWriter, *http.Request)) {
 	if d == nil || !shareable(r) {

@@ -8,7 +8,7 @@ import (
 
 // The consistency check's HTTP surface.
 //
-// GET reports; POST with apply=true repairs. The split is the point: a read
+// GET reports; POST with apply=true repairs. The split is the point. A read
 // that could rewrite rows depending on a query parameter is a read nobody can
 // run without reading the code.
 

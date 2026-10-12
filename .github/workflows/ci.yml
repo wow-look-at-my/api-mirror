@@ -4,6 +4,10 @@ on:
   push:
     branches: ['**']
 
+concurrency:
+  group: gha_${{ github.repository }}_${{ github.workflow }}_${{ github.ref != 'refs/heads/master' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 permissions:
   id-token: write
   contents: write
@@ -14,7 +18,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     # Dependencies here ship their generated files; running their generators needs stringer and yy.
     env:
       GOGENERATEDEPS: 'off'
@@ -23,10 +27,9 @@ jobs:
       - uses: wow-look-at-my/go-toolchain@master
 
   validate-xml:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
-      # The schema is an XML 1.1 document too, and a pattern covers a file added later.
       - uses: wow-look-at-my/xml-validator@master
         with:
           files: '**/*.xml **/*.xsd'

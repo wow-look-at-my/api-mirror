@@ -12,7 +12,7 @@ import (
 
 // Load reads a mirror spec from disk.
 //
-// Parsing and validation are separate steps on purpose: a builder checks the
+// Parsing and validation are separate steps on purpose. A builder checks the
 // SHAPE of the file (an unknown element, a missing attribute), and validate
 // checks what the shape MEANS (a route pointing at nothing, a resource nobody
 func Load(path string) (*Spec, error) {
@@ -55,6 +55,12 @@ func buildSpec(n *node) (*Spec, error) {
 		switch child.Name() {
 		case "description":
 			// Prose for a human reading the file. It is not used at run time.
+		case "accept":
+			media, err := buildAccept(child)
+			if err != nil {
+				return nil, err
+			}
+			spec.Accept = append(spec.Accept, media)
 		case "vars":
 			vars, err := buildVars(child)
 			if err != nil {
@@ -345,6 +351,12 @@ func addResourceChild(r *Resource, child *node) error {
 			return fmt.Errorf("resource %q: %w", r.Name, err)
 		}
 		r.Contradiction = c
+	case "redirect":
+		rd, err := buildRedirect(child)
+		if err != nil {
+			return fmt.Errorf("resource %q: %w", r.Name, err)
+		}
+		r.Redirect = rd
 	default:
 		return fmt.Errorf("<resource name=%q>: unexpected child element <%s>", r.Name, child.Name())
 	}
@@ -475,14 +487,11 @@ func addRouteChild(rt *Route, child *node) error {
 		}
 		rt.Query = append(rt.Query, p)
 	case "accept":
-		if err := checkAttrs(child); err != nil {
-			return err
-		}
-		media, err := textOf(child)
+		media, err := buildAccept(child)
 		if err != nil {
 			return err
 		}
-		rt.Accept = append(rt.Accept, strings.TrimSpace(media))
+		rt.Accept = append(rt.Accept, media)
 	case "absorb":
 		if err := checkAttrs(child, "status"); err != nil {
 			return err
@@ -506,10 +515,31 @@ func addRouteChild(rt *Route, child *node) error {
 			return fmt.Errorf("route %s: %w", rt.Path, err)
 		}
 		rt.Spreads = append(rt.Spreads, sp)
+	case "match":
+		if err := checkAttrs(child, "param", "pattern"); err != nil {
+			return err
+		}
+		re, err := regexp.Compile(child.Attr("pattern"))
+		if err != nil {
+			return fmt.Errorf("route %s: <match param=%q>: %w", rt.Path, child.Attr("param"), err)
+		}
+		rt.Match = append(rt.Match, ParamMatch{Param: child.Attr("param"), Pattern: re})
 	default:
 		return fmt.Errorf("<route path=%q>: unexpected child element <%s>", rt.Path, child.Name())
 	}
 	return nil
+}
+
+// buildAccept reads one media type.
+func buildAccept(n *node) (string, error) {
+	if err := checkAttrs(n); err != nil {
+		return "", err
+	}
+	media, err := textOf(n)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(media), nil
 }
 
 func buildRewrite(n *node) (*Rewrite, error) {
@@ -554,7 +584,7 @@ func buildPurge(n *node) (*Purge, error) {
 }
 
 func buildQueryParam(n *node) (QueryParam, error) {
-	if err := checkAttrs(n, "name", "type", "default", "min", "max", "key"); err != nil {
+	if err := checkAttrs(n, "name", "type", "default", "min", "max", "key", "empties"); err != nil {
 		return QueryParam{}, err
 	}
 	p := QueryParam{
@@ -562,6 +592,7 @@ func buildQueryParam(n *node) (QueryParam, error) {
 		Type:    FieldType(n.Attr("type")),
 		Default: n.Attr("default"),
 		Key:     n.Attr("key") == "true",
+		Empties: n.Attr("empties"),
 	}
 	if p.Type == "" {
 		p.Type = FieldText

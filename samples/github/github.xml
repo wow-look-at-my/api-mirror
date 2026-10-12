@@ -23,6 +23,21 @@
 
 	<description>Caching mirror of the GitHub REST API. Storage is global -- one row per fact, no actor column -- and a read is gated by proof that the caller could have read the same thing from GitHub directly. Set GITHUB_API_URL to target a GitHub Enterprise Server instance.</description>
 
+	<!--
+		Every spelling a client uses for GitHub's default JSON. gh sends the two
+		retired previews on every request: nebula-preview added the repository
+		visibility field, and merge-info-preview added merge state to GraphQL.
+		Both are in the default answer now, so a route that answers JSON
+		answers them too, and a route that answers something else names its
+		own media types.
+	-->
+	<accept>application/json</accept>
+	<accept>application/vnd.github+json</accept>
+	<accept>application/vnd.github.v3+json</accept>
+	<accept>application/vnd.github.merge-info-preview+json</accept>
+	<accept>application/vnd.github.nebula-preview</accept>
+	<accept>application/vnd.github.nebula-preview+json</accept>
+
 	<vars>
 		<var name="base"><value name="env.GITHUB_API_URL" default="https://api.github.com"/></var>
 	</vars>
@@ -384,6 +399,7 @@
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="sha"/>
+		<key name="path"/>
 		<key name="per_page"/>
 		<key name="page"/>
 		<reveal>
@@ -461,6 +477,7 @@
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
 		<key name="run_id"/>
+		<key name="filter"/>
 		<key name="per_page"/>
 		<key name="page"/>
 		<reveal>
@@ -579,9 +596,220 @@
 		</reveal>
 	</resource>
 
+	<!--
+		One workflow run. A workflow_run delivery carries the whole run
+		document, so the delivery is the new answer and nothing is fetched.
+
+		Reading Actions needs Actions access, which a token with metadata
+		access alone does not have. The probe therefore asks a small Actions
+		path with the caller's credential: proof of the repository is not
+		proof of its runs.
+	-->
+	<resource name="workflow_run" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="run_id"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}/actions/workflows?per_page=1"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		The repository's tags. A tag moves only by a push to refs/tags, a
+		create or a delete, and none of those states the page it sits on.
+	-->
+	<resource name="tags_list" store="document" ttl="1h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- The branches whose tip is this commit. Any push can move a tip onto or off it. -->
+	<resource name="branches_where_head" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="sha" fold="true"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		One commit with its files and stats. A full sha names content that
+		never changes, so it keeps for a month and no delivery moves it. Any
+		other spelling, such as a branch, a tag or a short sha, names whatever
+		the ref points at now, so it is a resource of its own that a push drops.
+	-->
+	<resource name="commit" store="document" ttl="720h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="sha" fold="true"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="commit_ref" store="document" ttl="10m">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		A check run's annotations. A check run reports them while it runs,
+		and each report is a check_run delivery naming the run.
+	-->
+	<resource name="check_run_annotations" store="document" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="check_run_id"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		Logs and archives answer 302 to a short-lived signed URL. The mirror
+		keeps the Location until the URL's own expiry, less a margin. GitHub
+		signs log URLs in either of two schemes, and each states its expiry
+		in a query parameter: se on a storage blob, urlExpires on a pipeline
+		host. An S3 URL states its signing time and a lifetime.
+
+		An archive Location for a public repository is a plain codeload path
+		with no query: no signature, nothing to expire. A private one carries
+		a token whose expiry it does not state, so the fallback keeps it for
+		less time than the shortest token GitHub mints.
+	-->
+	<resource name="run_logs" store="redirect" ttl="1h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="run_id"/>
+		<redirect margin="15s">
+			<expires param="se"/>
+			<expires param="urlExpires"/>
+			<expires param="X-Amz-Expires" format="seconds" since="X-Amz-Date"/>
+		</redirect>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}/actions/workflows?per_page=1"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="job_logs" store="redirect" ttl="1h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="job_id"/>
+		<redirect margin="15s">
+			<expires param="se"/>
+			<expires param="urlExpires"/>
+			<expires param="X-Amz-Expires" format="seconds" since="X-Amz-Date"/>
+		</redirect>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}/actions/workflows?per_page=1"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="tarball" store="redirect" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<redirect margin="15s" unsigned="24h" fallback="1m">
+			<expires param="se"/>
+			<expires param="X-Amz-Expires" format="seconds" since="X-Amz-Date"/>
+		</redirect>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<resource name="zipball" store="redirect" ttl="24h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="ref"/>
+		<redirect margin="15s" unsigned="24h" fallback="1m">
+			<expires param="se"/>
+			<expires param="X-Amz-Expires" format="seconds" since="X-Amz-Date"/>
+		</redirect>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		A pull request's diff. It is text, not JSON, so it is kept whole with
+		its media type. It moves when the head or the base moves, and both
+		of those arrive as a pull_request delivery.
+	-->
+	<resource name="pull_diff" store="text" ttl="1h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="number"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!-- A full sha's diff never changes, like the commit it belongs to. -->
+	<resource name="commit_diff" store="text" ttl="720h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="sha" fold="true"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
+	<!--
+		The rules that apply to a branch: every ruleset of the repository
+		and of its organization whose conditions name it. A repository_ruleset
+		delivery is the only thing that changes them.
+	-->
+	<resource name="branch_rules" store="document" ttl="1h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="branch"/>
+		<key name="per_page"/>
+		<key name="page"/>
+		<reveal>
+			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+
 	<route method="GET" path="/repos/{owner}/{name}" resource="repo">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<!-- GitHub's 404 for a repository is an answer worth remembering. -->
 		<absorb status="404"/>
 	</route>
@@ -599,11 +827,10 @@
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
+	<!-- The same path asked for its diff. The JSON route above refuses a diff, so the search reaches this one. -->
 	<route method="GET" path="/repos/{owner}/{repo}/pulls/{number}" resource="pull_diff">
 		<accept>application/vnd.github.diff</accept>
 		<accept>application/vnd.github.v3.diff</accept>
@@ -611,9 +838,43 @@
 		<absorb status="406"/>
 	</route>
 
+	<!-- A branch name may hold a slash, so the name binds the rest of the path. -->
 	<route method="GET" path="/repos/{owner}/{repo}/git/ref/heads/{ref*}" resource="branch">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<!--
+		A Location is not JSON, so these routes name their own media types.
+		application/json is left out on purpose: GitHub answers it 415 on a
+		log path, and a caller asking that way gets GitHub's own answer.
+		410 is a log that expired, which no later read brings back.
+	-->
+	<route method="GET" path="/repos/{owner}/{repo}/actions/runs/{run_id}/logs" resource="run_logs">
+		<accept>application/vnd.github+json</accept>
+		<accept>application/vnd.github.v3+json</accept>
+		<absorb status="404"/>
+		<absorb status="410"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/actions/jobs/{job_id}/logs" resource="job_logs">
+		<accept>application/vnd.github+json</accept>
+		<accept>application/vnd.github.v3+json</accept>
+		<absorb status="404"/>
+		<absorb status="410"/>
+	</route>
+
+	<!-- A ref may hold slashes, as cmd/v1.28.0 does, so the ref binds the rest of the path. -->
+	<route method="GET" path="/repos/{owner}/{repo}/tarball/{ref...}" resource="tarball">
+		<accept>application/vnd.github+json</accept>
+		<accept>application/vnd.github.v3+json</accept>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/zipball/{ref...}" resource="zipball">
+		<accept>application/vnd.github+json</accept>
+		<accept>application/vnd.github.v3+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -643,6 +904,11 @@
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
+	<!--
+		A file below the root has slashes in its path. A submodule answers its
+		own shape (type "submodule", submodule_git_url), and the document
+		store keeps it whole like any other.
+	-->
 	<route method="GET" path="/repos/{owner}/{repo}/contents/{path*}" resource="contents">
 		<accept>application/json</accept>
 		<accept>application/vnd.github+json</accept>
@@ -650,11 +916,14 @@
 		<absorb status="404"/>
 	</route>
 
+	<!--
+		451 is GitHub blocking the whole repository for legal reasons. It is
+		the same answer for every caller, and its document names the block.
+	-->
 	<route method="GET" path="/repos/{owner}/{repo}/readme" resource="readme">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
 		<absorb status="404"/>
+		<absorb status="451"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/readme/{dir*}" resource="readme_dir">
@@ -662,29 +931,22 @@
 		<accept>application/vnd.github+json</accept>
 		<param name="ref" type="text" default="" key="true"/>
 		<absorb status="404"/>
+		<absorb status="451"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/workflows" resource="workflows_list">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/workflows/{id}" resource="workflow">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/commits/{sha}" resource="git_commit">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/git/trees/{sha}" resource="git_tree">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="recursive" type="text" default="" key="true"/>
 		<absorb status="404"/>
 	</route>
@@ -702,10 +964,56 @@
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
+	<!--
+		A sha that names no branch or commit is a 404 for every caller, and a
+		push that creates it drops the verdict with the rest of the history.
+	-->
 	<route method="GET" path="/repos/{owner}/{repo}/commits" resource="commits_list" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="sha" type="text" default="" key="true"/>
+		<param name="path" type="text" default="" key="true"/>
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/tags" resource="tags_list" list="true">
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<!-- 422 is GitHub saying the sha names no commit, which a push can change. -->
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}/branches-where-head" resource="branches_where_head">
+		<absorb status="404"/>
+		<absorb status="422"/>
+	</route>
+
+	<!--
+		A full sha that names no commit YET is not a fact worth a month, so the
+		immutable spelling absorbs no refusal: it is the caller's, relayed.
+	-->
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}" resource="commit">
+		<match param="sha" pattern="^[0-9a-fA-F]{40}$"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{sha}" resource="commit_diff">
+		<match param="sha" pattern="^[0-9a-fA-F]{40}$"/>
+		<accept>application/vnd.github.diff</accept>
+		<accept>application/vnd.github.v3.diff</accept>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/commits/{ref}" resource="commit_ref">
+		<absorb status="404"/>
+		<absorb status="422"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/check-runs/{check_run_id}/annotations" resource="check_run_annotations" list="true">
+		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/rules/branches/{branch...}" resource="branch_rules" list="true">
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -717,57 +1025,49 @@
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/commits/{ref}/status" resource="commit_status_rollup">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/commits/{ref}/check-runs" resource="commit_check_runs">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/check-runs/{check_run_id}" resource="check_run">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/runs" resource="workflow_runs" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="head_sha" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
 
+	<!-- filter is latest (the default) or all, and the two answer different job sets. -->
 	<route method="GET" path="/repos/{owner}/{repo}/actions/runs/{run_id}/jobs" resource="workflow_run_jobs" list="true">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
+		<param name="filter" type="text" default="latest" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+		<absorb status="404"/>
+	</route>
+
+	<route method="GET" path="/repos/{owner}/{repo}/actions/runs/{run_id}" resource="workflow_run">
+		<param name="exclude_pull_requests" type="bool" default="false" empties="pull_requests"/>
+		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/actions/jobs/{job_id}" resource="workflow_job">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/code-quality/setup" resource="code_quality_setup">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
 	<route method="GET" path="/repos/{owner}/{repo}/labels/{name}" resource="label">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -1164,8 +1464,14 @@
 			row and the next reader pays for it. A delivery must never make the
 			mirror go and ask.
 		-->
-		<event type="check_run" resource="commit_check_runs" clock="check_run.completed_at">
-			<subject>checks:<value name="payload.repository.full_name"/>:<value name="payload.check_run.head_sha"/></subject>
+		<!--
+			started_at is the clock because a run that has not finished states
+			no completed_at, and a delivery with no clock fails. The subject is
+			the run: two runs of one commit are separate views, and each one
+			drops the set.
+		-->
+		<event type="check_run" resource="commit_check_runs" clock="check_run.started_at">
+			<subject>checks:<value name="payload.repository.full_name"/>:<value name="payload.check_run.id"/></subject>
 			<key field="owner">repository.owner.login</key>
 			<key field="repo">repository.name</key>
 			<key field="ref">check_run.head_sha</key>
@@ -1526,6 +1832,171 @@
 			<invalidate reason="team membership decides which repositories a credential can see, and the payload names no repository"/>
 		</event>
 
+		<!--
+			A workflow_run delivery carries the whole run document, which is
+			exactly what GET .../actions/runs/{run_id} answers. The delivery IS
+			the new answer: nothing is dropped and nothing is fetched. The run's
+			own updated_at orders a requested, an in_progress and a completed
+			view of one run.
+		-->
+		<event type="workflow_run" resource="workflow_run" clock="workflow_run.updated_at">
+			<subject>run:<value name="payload.repository.full_name"/>:<value name="payload.workflow_run.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="run_id">workflow_run.id</key>
+			<document>workflow_run</document>
+		</event>
+
+		<!--
+			The same holds one level down: a check_run delivery carries the
+			check run, a workflow_job delivery the job. Only the completed view
+			writes. Neither payload has an update time, and the views before
+			completion share one start time, so a late view could not be told
+			from an early one. The completed view is the last, and it is final.
+		-->
+		<event type="check_run" resource="check_run" clock="check_run.completed_at"
+			when='{{ eq .payload.action "completed" }}'>
+			<subject>checkrun:<value name="payload.repository.full_name"/>:<value name="payload.check_run.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="check_run_id">check_run.id</key>
+			<document>check_run</document>
+		</event>
+
+		<event type="workflow_job" resource="workflow_job" clock="workflow_job.completed_at"
+			when='{{ eq .payload.action "completed" }}'>
+			<subject>jobdoc:<value name="payload.repository.full_name"/>:<value name="payload.workflow_job.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="job_id">workflow_job.id</key>
+			<document>workflow_job</document>
+		</event>
+
+		<!--
+			A check run reports its annotations as it goes. The payload states
+			their count, never the annotations, and the answer is pages of them.
+		-->
+		<event type="check_run" resource="check_run_annotations" clock="check_run.started_at">
+			<subject>annotations:<value name="payload.repository.full_name"/>:<value name="payload.check_run.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="check_run_id">check_run.id</key>
+			<invalidate reason="the payload states how many annotations the run has, never the annotations on a page"/>
+		</event>
+
+		<!--
+			A re-run writes new logs for the run and its jobs. The payload names
+			the run or the job and never a signed log URL.
+		-->
+		<event type="workflow_run" resource="run_logs" clock="workflow_run.updated_at">
+			<subject>runlogs:<value name="payload.repository.full_name"/>:<value name="payload.workflow_run.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="run_id">workflow_run.id</key>
+			<invalidate reason="the payload names the run, and the logs are a signed URL only a fetch is handed"/>
+		</event>
+
+		<event type="workflow_job" resource="job_logs" clock="workflow_job.started_at">
+			<subject>joblogs:<value name="payload.repository.full_name"/>:<value name="payload.workflow_job.id"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="job_id">workflow_job.id</key>
+			<invalidate reason="the payload names the job, and the logs are a signed URL only a fetch is handed"/>
+		</event>
+
+		<!--
+			A pull request's diff moves with its head and its base. The payload
+			states both shas and never the diff text. An archive Location needs
+			no event: it names the ref, and the archive host resolves it when
+			it is opened.
+		-->
+		<event type="pull_request" resource="pull_diff" clock="pull_request.updated_at">
+			<subject>prdiff:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<key field="number">number</key>
+			<invalidate reason="the payload states the head and base shas, never the diff between them"/>
+		</event>
+
+		<!-- Tags move by a push to refs/tags, a create or a delete. None of them states the page a tag sits on. -->
+		<event type="push" resource="tags_list" clock="repository.pushed_at"
+			when='{{ hasPrefix "refs/tags/" .payload.ref }}'>
+			<subject>tags:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the listing is pages of tags in the upstream's order, and the push names one tag"/>
+		</event>
+
+		<event type="create" resource="tags_list" clock="repository.pushed_at"
+			when='{{ eq .payload.ref_type "tag" }}'>
+			<subject>tags-create:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the listing is pages of tags in the upstream's order, and the payload names one tag and no sha"/>
+		</event>
+
+		<event type="delete" resource="tags_list" clock="repository.pushed_at"
+			when='{{ eq .payload.ref_type "tag" }}'>
+			<subject>tags-delete:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a deleted tag leaves every later page one entry short, and the payload names only the tag"/>
+		</event>
+
+		<!--
+			A push moves one tip from before to after, and each of those
+			commits now heads a different set of branches. The stored answers
+			are keyed by commit, and the payload states the sets for neither.
+		-->
+		<event type="push" resource="branches_where_head" clock="repository.pushed_at">
+			<subject>heads:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the answer for a commit is every branch at it, and the push restates one branch"/>
+		</event>
+
+		<event type="create" resource="branches_where_head" clock="repository.pushed_at">
+			<subject>heads-create:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a new branch heads a commit the payload does not name"/>
+		</event>
+
+		<event type="delete" resource="branches_where_head" clock="repository.pushed_at">
+			<subject>heads-delete:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="a deleted branch stops heading a commit the payload does not name"/>
+		</event>
+
+		<!-- A commit read by ref names whatever the ref points at now. -->
+		<event type="push" resource="commit_ref" clock="repository.pushed_at">
+			<subject>commit-ref:<value name="payload.repository.full_name"/>:<value name="payload.ref"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the key is any spelling of a ref, and the payload cannot say which spellings now name another commit"/>
+		</event>
+
+		<!--
+			A ruleset created, edited or deleted. A repository ruleset names its
+			repository. An organization ruleset names none, and it can reach
+			every repository of the organization.
+		-->
+		<event type="repository_ruleset" resource="branch_rules" clock="repository_ruleset.updated_at"
+			when='{{ hasKey .payload "repository" }}'>
+			<subject>rules:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the payload states one ruleset, and the answer is every rule of every ruleset whose conditions name the branch"/>
+		</event>
+
+		<event type="repository_ruleset" resource="branch_rules" clock="repository_ruleset.updated_at"
+			when='{{ not (hasKey .payload "repository") }}'>
+			<subject>rules-org:<value name="payload.organization.login"/></subject>
+			<key field="owner">organization.login</key>
+			<invalidate reason="an organization ruleset can apply to any repository of the organization, and its conditions are matched by GitHub"/>
+		</event>
+
 	</events>
 
 	<!--
@@ -1620,8 +2091,6 @@
 	</resource>
 
 	<route method="GET" path="/user" resource="identity">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 	</route>
 
 	<resource name="user_orgs" store="document">
@@ -1632,8 +2101,6 @@
 	</resource>
 
 	<route method="GET" path="/user/orgs" resource="user_orgs">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1651,12 +2118,11 @@
 		repo truth. The reveal layer then serves those repos without a probe.
 	-->
 	<route method="GET" path="/user/repos" resource="user_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<spread resource="repo"/>
 	</route>
+
 
 	<resource name="org_runners" store="document">
 		<key name="token_fp" credential="true"/>
@@ -1667,8 +2133,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{org}/actions/runners" resource="org_runners">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1683,8 +2147,6 @@
 	</resource>
 
 	<route method="GET" path="/repos/{owner}/{repo}/hooks" resource="repo_hooks">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1698,8 +2160,6 @@
 	</resource>
 
 	<route method="GET" path="/repos/{owner}/{repo}/hooks/{hook_id}" resource="repo_hook">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -1712,8 +2172,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{org}/hooks" resource="org_hooks">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 	</route>
@@ -1726,8 +2184,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{org}/hooks/{hook_id}" resource="org_hook">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<absorb status="404"/>
 	</route>
 
@@ -1844,8 +2300,6 @@
 	</resource>
 
 	<route method="GET" path="/orgs/{owner}/repos" resource="org_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="sort" type="text" default="" key="true"/>
 		<param name="direction" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -1855,8 +2309,6 @@
 	</route>
 
 	<route method="GET" path="/users/{owner}/repos" resource="owner_user_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="sort" type="text" default="" key="true"/>
 		<param name="direction" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
@@ -1874,8 +2326,6 @@
 	</resource>
 
 	<route method="GET" path="/search/issues" resource="search_issues">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="q" type="text" default="" key="true"/>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
@@ -1919,8 +2369,6 @@
 	</resource>
 
 	<route method="GET" path="/installation/repositories" resource="installation_repos">
-		<accept>application/json</accept>
-		<accept>application/vnd.github+json</accept>
 		<param name="per_page" type="int" default="30" min="1" max="100" key="true"/>
 		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
 		<spread resource="repo" items="repositories"/>

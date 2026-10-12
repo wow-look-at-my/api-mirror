@@ -102,8 +102,8 @@ func (a *Admin) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 
 // checkCallbackURL refuses a destination the mirror must not be made to post to.
 //
-// A registration names where this server will send a signed request, which
-// makes an unchecked a request forgery with the mirror's own network
+// A registration names where this server will send a signed request. This is
+// which makes an unchecked a request forgery with the mirror's own network
 // position behind it. The scheme check is the part that matters: file: and
 // gopher: are not endpoints, they are ways to make a client do something else.
 func checkCallbackURL(raw string) error {

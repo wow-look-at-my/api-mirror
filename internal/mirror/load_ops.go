@@ -11,7 +11,7 @@ import (
 // policy, the background jobs and the subscriber fan-out.
 //
 // They check SHAPE only -- an unknown attribute, a missing name. What a
-// declaration MEANS is validate.go's job, so a rule that is well-formed and
+// declaration MEANS is validate.go's job. A rule that is well-formed and
 // wrong still fails at load rather than at in the morning.
 
 func buildDashboard(n *node) (Dashboard, error) {

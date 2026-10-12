@@ -35,7 +35,7 @@ type Store struct {
 //
 // A database recording a different fingerprint is DELETED and recreated. That
 // is safe because this is a cache: every row in it is a copy of something the
-// upstream still has, and the cost of being wrong about that is a refetch. The
+// upstream still has. The cost of being wrong about that is a refetch. The
 // alternative -- migrations for a cache -- is a maintenance burden paid forever
 // to preserve data that is disposable by definition.
 func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
@@ -107,9 +107,9 @@ func removeDB(path string) error {
 // readFingerprint reports what schema the file on disk was built from, or ""
 // when it was never built at all.
 //
-// The sqlite_master probe stays hand-written because a fresh file has no
-// mirror_meta yet, and a generated query against a table that does not exist
-// fails rather than answering "no".
+// The sqlite_master probe stays hand-written. This is because a fresh file
+// has no mirror_meta yet. A generated query against a table that does not
+// exist fails rather than answering "no".
 func readFingerprint(ctx context.Context, db *sql.DB) (string, error) {
 	var name string
 	err := db.QueryRowContext(ctx,

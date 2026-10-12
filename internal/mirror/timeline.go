@@ -138,7 +138,7 @@ type TimelineStats struct {
 
 // Stats reports the ring's own state, including what it dropped.
 //
-// Dropped is on the page rather than in a log: a chart that silently loses its
+// Dropped is on the page rather than in a log. A chart that silently loses its
 // oldest frames reads as a quiet period that never happened.
 func (t *Timeline) Stats() TimelineStats {
 	if t == nil {

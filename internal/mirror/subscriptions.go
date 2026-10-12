@@ -14,10 +14,10 @@ import (
 )
 
 // The subscription store, in a SEPARATE database file from the cache. That
-// separation is why this file exists instead of more tables in schema.sql:
-// the cache is nuked whenever a resource changes, which is safe only because
-// every row in it is a copy of something upstream still has. A registration is
-// a copy of nothing, and nuking stops telling somebody who asked, silently.
+// separation is why this file exists instead of more tables in schema.sql: the
+// cache is nuked whenever a resource changes. This is safe only because every
+// row in it is a copy of something upstream still has. A registration is a
+// copy of nothing, and nuking stops telling somebody who asked, silently.
 
 // subscriptionSchema has no fingerprint and nothing nukes it: a change here has
 // to be an existing file survives.
@@ -351,7 +351,7 @@ func (s *Subscriptions) All(ctx context.Context) ([]Subscription, error) {
 
 // Matching lists the live subscriptions that asked for this event type.
 //
-// An empty events list means every type: a subscriber who named nothing asked
+// An empty events list means every type. A subscriber who named nothing asked
 // for everything, which is the reading that cannot silently drop a delivery
 // somebody wanted.
 func (s *Subscriptions) Matching(ctx context.Context, eventType string) ([]Subscription, error) {

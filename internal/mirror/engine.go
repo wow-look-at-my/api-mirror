@@ -56,9 +56,10 @@ func forwardFrom(ctx context.Context) http.Header {
 
 // NewEngine wires a spec into a server.
 //
-// Telemetry is built here rather than passed in when the caller has none: an
+// Telemetry is built here rather than passed in when the caller has none. An
 // operator who has to discover and enable the only view of what the mirror is
-// doing has, in practice, no view of what the mirror is doing.
+// doing has. That operator is in practice, no view of what the mirror is
+// doing.
 func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 	vars, err := resolveVars(spec)
 	if err != nil {
@@ -177,7 +178,7 @@ func answerKey(res *Resource, rt *Route, key, query map[string]string) string {
 		k[name] = v
 	}
 	for _, q := range rt.Query {
-		if !q.Key {
+		if !q.Key && q.Empties == "" {
 			k[queryExtra+q.Name] = query[q.Name]
 		}
 	}
@@ -461,7 +462,17 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		e.relayAnswer(w, relayed.Answer)
 		return
 	}
+	if err == nil && outcome == OutcomeHit && e.rowDropped(ctx, m, res, kind, key) {
+		// A delivery dropped the row after it was fetched, so this reader refetches.
+		outcome, err = e.fresh.Refresh(ctx, kind, key)
+	}
 	if err != nil {
+		// Ahead of the stale path: a refused caller must not get the stored row.
+		var mine *UnstoredAnswer
+		if errors.As(err, &mine) {
+			e.relayUnstored(ctx, w, m, res, principal, mine)
+			return
+		}
 		if e.serveStale(ctx, w, m, res, kind, key, err) {
 			return
 		}
@@ -470,7 +481,7 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		return
 	}
 	w.note(dispositionOf(outcome), "", "", "")
-	refusal := e.rememberedRefusal(ctx, kind, key)
+	refusal, refusalDoc := e.rememberedRefusal(ctx, kind, key)
 	if outcome == OutcomeMiss && refusal == 0 {
 		// The fetch went out with this caller's own credential and the upstream
 		e.reveal.RenewOn2xx(ctx, principal, res, m.key, http.StatusOK)
@@ -479,10 +490,22 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 		// The upstream stated this refusal and the route declared it worth
 		w.note(DispRefusal, "", "", "absorbed")
 		w.Header().Set(e.hdr.Cache, string(outcome))
-		http.Error(w, http.StatusText(status), status)
+		if refusalDoc == "" {
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if _, err := w.Write([]byte(refusalDoc)); err != nil {
+			logf("write refusal: %v", err)
+		}
 		return
 	}
 
+	if !res.Store.answersJSON() {
+		e.serveHeld(ctx, w, m, res, outcome)
+		return
+	}
 	doc, err := e.read(ctx, m, res)
 	if err != nil {
 		w.note(DispError, "", "", "read-cache")
@@ -521,28 +544,57 @@ func dispositionOf(o Outcome) Disposition {
 	}
 }
 
-// rememberedRefusal reports the stored non-success status for a key, or.
+// rememberedRefusal reports the stored non-success status for a key, and the
+// refusal document stored with it.
 //
 // A read error here reports no refusal: the freshness row is bookkeeping, and
 // failing to read it must not turn a servable answer into.
-func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) int {
+func (e *Engine) rememberedRefusal(ctx context.Context, kind, key string) (int, string) {
 	meta, err := e.store.Freshness(ctx, kind, key)
 	if err != nil {
 		logf("read freshness %s/%s: %v", kind, key, err)
-		return 0
+		return 0, ""
 	}
 	if meta == nil || meta.Status < 400 {
-		return 0
+		return 0, ""
 	}
-	return meta.Status
+	body, err := e.store.RefusalBody(ctx, kind, key)
+	if err != nil {
+		// The status alone still answers.
+		logf("%v", err)
+	}
+	return meta.Status, body
+}
+
+// rowDropped reports whether a fresh answer lost its row: a delivery deleted
+// it after the fetch. A stored refusal has no row by design. A column list
+// answers from its members, so it has no one row to lose.
+func (e *Engine) rowDropped(ctx context.Context, m *match, res *Resource, kind, key string) bool {
+	if m.route.List && res.Store == StoreColumns {
+		return false
+	}
+	if status, _ := e.rememberedRefusal(ctx, kind, key); status != 0 {
+		return false
+	}
+	row, err := e.store.Get(ctx, res, m.key)
+	if err != nil {
+		logf("read %s %s: %v", res.Name, key, err)
+		return false
+	}
+	return row == nil
 }
 
 // read rebuilds the answer for request from what is stored.
-//
-// Hit and miss both come through here, so a route's shape cannot change with
-// cache state. A consumer that works against a warm cache and breaks against a
-// cold is the bug this shape prevents.
 func (e *Engine) read(ctx context.Context, m *match, res *Resource) (any, error) {
+	doc, err := e.readStored(ctx, m, res)
+	if err != nil || doc == nil {
+		return doc, err
+	}
+	return project(m.route, m.query, doc), nil
+}
+
+// readStored rebuilds the full stored answer, before a caller's flags.
+func (e *Engine) readStored(ctx context.Context, m *match, res *Resource) (any, error) {
 	// A document list stored the upstream's whole array as one row, so it
 	// replays like any other document.
 	if m.route.List && res.Store == StoreColumns {

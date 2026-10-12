@@ -2,7 +2,7 @@
 
 One XML spec in, one caching mirror of an API out. The engine holds every mechanism. The spec holds only the vocabulary of the API being mirrored. `README.md` is the human front page, `docs/design.md` is the grammar and the engine/spec split.
 
-The sibling project `api-cli` turns the same kind of file into a CLI. The spec language itself lives in `wow-look-at-my/api-dsl` and is shared by both — never fork it locally.
+The sibling project `api-cli` turns the same kind of file into a CLI. The spec language itself lives in `wow-look-at-my/api-dsl` and is shared by both. Never fork it locally.
 
 ## File map
 
@@ -17,14 +17,21 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `store.go` / `store_resources.go` — engine tables via sqlc, resource tables built at run time from `columnsOf`. `mirror_list_member` (a list answer's rows, in order) is plain SQL in `schema.go`, because a push may not add a generated file.
 - `internal/database/` — `schema.sql`, `queries/*.sql`, and sqlc's generated `dbgen/`.
 - `freshness.go` — the TTL state machine, detached fetches, per-key singleflight, the shutdown drain.
-- `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary.
+- `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary. `<accept>` under `<mirror>` names the default representation for every JSON route.
+- `unstored.go` — an upstream answer the route does not keep: relayed to the caller whose credential earned it, a 403 or 404 recorded as their denial.
+- `invalidate.go` — an invalidation drops the freshness under its key too. A stored refusal goes with the rows.
+- `store_refusal.go` — the refusal document kept with a stored refusal, and prefix deletes, in plain SQL.
+- `redirect.go` — `store="redirect"` (a Location kept until its signed URL expires) and `store="text"` (a non-JSON body with its media type).
+- `events_document.go` — an event's `<document>`: the payload object written whole as a document resource's answer.
+- `project.go` — `<param empties=>`: a bool flag that serves one answer path as an empty array, off one stored answer.
+- `validate_paths.go` — `{name...}` rest parameters and `<match>` shape constraints on path parameters.
 - `<rewrite>` — a client's own spelling of a path, canonicalised in `dispatch` before any gate sees it. `gh` needs one, because it puts REST under `/api/v3` on a non-github.com host. It grants nothing.
 - `relay.go` — `<relay>`: an uncached forward to a fixed URL off the upstream base, for login endpoints on another host that send no CORS headers. It forwards no bearer, because the body is the credential there.
-- `body-key` on a `<route>` — the resource key the REQUEST body fills, for a query language that posts every question to one path. Naming it also makes the body travel: the fetch replays it upstream. Nearly always credential-keyed, because such an API filters by the caller's token.
+- `body-key` on a `<route>` — the resource key the REQUEST body fills, for a query language that posts every question to one path. Naming it also makes the body travel: the fetch replays it upstream. Almost always credential-keyed, because such an API filters by the caller's token.
 - `engine.go` / `fetch.go` — serving a declared route: reveal, ensure fresh, read, rebuild. And the fetch that absorbs.
 - `absorb.go` — document to columns and back, the drop patterns, the JSON marshaller.
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe. `AllowStored` is the probe-free half, for a decision with no caller credential.
-- `identity.go` — who is asking: `<identity>` (a verified assertion header, as `prefix:id`), `<whoami>` (a credential's owner), else the credential fingerprint. A refused assertion is a 401, never a fallback.
+- `identity.go` — who asks: `<identity>` (a verified assertion header, as `prefix:id`), `<whoami>` (a credential's owner), else the credential fingerprint. A refused assertion is a 401, not a fallback.
 - `spread.go` — `<spread>` on a route: each item of a fetched listing is a grant for its caller, and optionally truth.
 - `notify_api.go` — the public subscription API at `<notify path=>`, under the caller's own principal, and `<notify>` validation.
 - `gsm_import.go` — `<notify import=>`: adopts a github-state-mirror subscription file once per row, translating each owner to the principal it resolves to here.
@@ -37,7 +44,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `upstream.go` — the outbound client, reporting every request.
 - `load_ops.go` / the ops half of `validate.go` — `<dashboard>`, `<cors>`, `<notify>`, `<refresh>`, `<replay>`, `<health>`, `<ratelimit>`.
 - `observe.go` — `Lane`, `Exchange`, `Observer`, and the transport every outbound client is built through.
-- `telemetry.go` / `timeline.go` / `requestlog.go` / `ratemeter.go` — the four in-memory stores behind the page. Bounded, lazily swept, reset on restart.
+- `telemetry.go` / `timeline.go` / `requestlog.go` / `ratemeter.go` — the four in-memory stores behind the page. Bounded, lazily swept, reset on start.
 - `recorder.go` — the inbound wrapper that records what the caller actually received.
 - `shapes.go` — a path to a route shape, and the `<route>` sketch that will stop it leaking.
 - `admin.go` / `admin_api.go` / `admin_subs.go` / `admin_check.go` / `web.go` + `web/` — the operator surface and its embedded page. The page loads scratch_ui from the org's master deploy, dark only.
@@ -48,7 +55,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 
 ## Invariants
 
-- **A delivery type reaches every resource it moves.** A push states a branch tip. It also makes the repo's file-derived answers wrong. The type is therefore declared per resource. The engine runs every handler of it. Each handler carries its own subject, so they order apart. On a shared subject the watermark refuses all but the earliest. The answer is the worst of their outcomes. A failed handler is thus never hidden behind a sibling that applied. The same type against the SAME resource stays refused, because the later declaration silently decides the row.
+- **A delivery type reaches every resource it moves.** A push states a branch tip. It also makes the repo's file-derived answers incorrect. The type is therefore declared per resource. The engine runs every handler of it. Each handler carries its own subject, so they order apart. On a shared subject the watermark refuses all but the earliest. The answer is the worst of their outcomes. A failed handler is thus never hidden behind a sibling that applied. The same type against the SAME resource stays refused, because the later declaration silently decides the row.
 
 - **A background credential never answers for a caller.** A request-time upstream call drops every forwarded header the caller did not send, so the static header serves only work with no caller. A `credential=` header is not rendered for a caller at all. A failed exchange fails the call rather than going out anonymous.
 - **A delivery notifies once, after its last handler applies**, and only a subscriber with stored proof for the row `<notify><reveal>` names. A failed handler anywhere means no notification.
@@ -57,17 +64,20 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **A write touches only the fields its event names.** A payload that does not carry a field cannot blank it. `null="allow"` is the explicit opt-in where absent and empty differ.
 - **Order before you write.** Every event declares a subject and a clock, or declares itself unordered out loud. A watermark refuses a view older than one applied. Equal times apply.
 - **An event says where the DELIVERY carries its key.** A resource's `from=` names a path in the upstream document, and a delivery wraps that document in an envelope. As a result, the two are not the same path. `<key field=>` states it, a `<set>` that writes a key column counts, and `validate` refuses an event that names neither. A write needs the whole key. An invalidate may name a prefix and deletes everything beneath it, because a payload names a commit rather than one page of a paginated answer.
-- **A held delivery is counted by its outcome.** With a reorder window the response goes out before the apply. As a result, the tally comes from the applier, never from that answer. Counting the answer reports every failure as accepted.
+- **A held delivery is counted by its outcome.** With a reorder window the response goes out before the apply. As a result, the tally comes from the applier, not from that answer. Counting the answer reports every failure as accepted.
 - **A list only deletes when it says it is complete.** `complete="true"` replace-syncs the set under the parent key. Without it an item that vanished upstream keeps being served, because one page of a paginated list is not the set.
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
+- **An answer the route does not store belongs to the caller.** It is relayed to them and earns no backoff that another caller reads.
+- **A fresh answer with no row is refetched.** A delivery dropped it, and serving it as absent will invent a 404.
+- **A push may not change a generated file.** A new engine table is plain SQL in Go, beside `mirror_list_member`.
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
 - **A rebuilt answer is a subset of the upstream's.** Each field, and each key with `from=`, returns to its source path with its upstream type. A folded key serves its as-sent spelling. One source path is declared once. `dats/upstream-shape.dats` checks the answers against the upstream with `api-mirror-delta`.
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
-- **The fingerprint is derived, never declared.** It hashes the schema the spec produces, so a resource change always nukes and nothing has to be kept in step by hand.
+- **The fingerprint is derived, not declared.** It hashes the schema the spec produces. A resource change therefore always nukes, and nothing is kept in step by hand.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
-- **Every request this service sends is on the chart.** The reporting is in the TRANSPORT (`observedClient`), never at a call site: a call site only covers what somebody remembered to instrument. The passthrough proxy is exactly what gets forgotten. A new outbound client is built through `observedClient` or it is a hole.
-- **The operator surface exists whether or not a spec declares one.** A spec chooses where it lives and what gates it. With no `<token>` the engine mints one per process and logs the URL carrying it: on by default, never open by default.
+- **Every request this service sends is on the chart.** The reporting is in the TRANSPORT (`observedClient`), not at a call site: a call site only covers what somebody remembered to instrument. The passthrough proxy is exactly what gets forgotten. A new outbound client is built through `observedClient` or it is a hole.
+- **The operator surface exists whether or not a spec declares one.** A spec chooses where it lives and what gates it. With no `<token>` the engine mints one per process and logs the URL carrying it: on by default, not open by default.
 - **A background job with a missing precondition does not run.** `<replay requires=>` names a value the failure log cannot be read without. Empty means the job declines to start and logs which value will start it. A cycle that can only fail, forever, on a timer is a job that looks busy and recovers nothing.
 - **Telemetry is memory-only and bounded.** A live view, not an audit log: a table will put sub-day-ephemeral rows behind a cache-nuking schema. Every store sweeps lazily and reports what it dropped rather than truncating quietly.
 - **A browser fetches the page's subresources itself.** No header, no query string — which is why the dashboard's own assets are gated by a strict same-site cookie the shell sets. Test an operator surface the way a browser drives it, not the way the page does.

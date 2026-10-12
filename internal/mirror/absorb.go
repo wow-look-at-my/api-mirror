@@ -13,8 +13,8 @@ import (
 //
 // A field the spec does not declare is a field the mirror does not keep, and so
 // a field it never serves. That is the whole point of rebuilding rather than
-// replaying: the answer's shape is the spec's, and it cannot drift with
-// whatever the upstream added this week.
+// replaying: the answer's shape is the spec's. It cannot drift with whatever
+// the upstream added this week.
 func absorb(r *Resource, doc any) (Row, error) {
 	row := make(Row, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
@@ -142,8 +142,8 @@ func toInt(v any) (any, error) {
 	}
 }
 
-// toUnix reads a time as a Unix. Both encodings an API plausibly uses
-// are accepted -- an RFC string and a numeric epoch -- because upstream
+// toUnix reads a time as a Unix. Both encodings an API plausibly uses are
+// accepted -- an RFC string and a numeric epoch. This is because upstream
 // uses both, sometimes for the same field, and a reader that handles only
 // silently loses every value in the other shape.
 func toUnix(v any) (any, error) {
@@ -355,7 +355,7 @@ func dropped(key string, drop []string) bool {
 }
 
 // marshalJSON renders a document the way every writer here renders it, so bytes
-// stored by a fetch, bytes rewritten by a delivery, and bytes served on a hit
+// stored by a fetch, bytes rewritten by a delivery. It bytes served on a hit
 func marshalJSON(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

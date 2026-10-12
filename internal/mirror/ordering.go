@@ -49,11 +49,10 @@ func (g *deliveryGroup) finish(d DeliveryDisposition) (DeliveryDisposition, bool
 
 // orderOf resolves a delivery's subject and clock from its event declaration.
 //
-// The clock must be a field the PROVIDER sets and that describes the SUBJECT.
-// A user-settable timestamp fails both ways: it survives a rebase and it can be
-// in the future, so a payload carrying orders itself ahead of the truth.
-// The spec chooses the field; the engine only refuses to guess when it is
-// missing.
+// The clock must be a field the PROVIDER sets and that describes the SUBJECT. A
+// user-settable timestamp fails both ways: it survives a rebase. It can be in
+// the future, so a payload carrying orders itself ahead of the truth. The spec
+// chooses the field; the engine only refuses to guess when it is missing.
 func orderOf(ev *Event, payload any) (string, time.Time, error) {
 	subject, err := renderString(ev.Subject, map[string]any{"payload": payload})
 	if err != nil {

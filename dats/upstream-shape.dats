@@ -44,14 +44,25 @@ tests:
 				/repos/Octo/Demo/statuses/abc123 \
 				/repos/Octo/Demo/git/commits/abc123 \
 				/repos/Octo/Demo/commits \
-				/repos/Octo/Demo/branches
+				/repos/Octo/Demo/branches \
+				/repos/Octo/Demo/actions/runs/5 \
+				/repos/Octo/Demo/actions/runs/5/jobs \
+				/repos/Octo/Demo/actions/workflows/3 \
+				/repos/Octo/Demo/tags \
+				/repos/Octo/Demo/commits/ffff000000000000000000000000000000000006/branches-where-head \
+				/repos/Octo/Demo/commits/ffff000000000000000000000000000000000006 \
+				/repos/Octo/Demo/commits/main \
+				/repos/Octo/Demo/check-runs/8/annotations \
+				/repos/Octo/Demo/rules/branches/claude/topic \
+				/repos/Octo/Demo/contents/docs/guide.md \
+				/repos/Octo/Demo/contents/sub
 			echo "exit=$?"
 		done
 	  outputs:
 		stdout:
 			- "=== miss ==="
 			- "=== hit ==="
-			- "exchanges 9  matched 9  differing 0  errors 0"
+			- "exchanges 20  matched 20  differing 0  errors 0"
 		!stdout:
 			- "exit=1"
 			- "exit=2"

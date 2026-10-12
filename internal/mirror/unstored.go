@@ -1,0 +1,53 @@
+package mirror
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+)
+
+// UnstoredAnswer is an upstream answer that the route does not keep.
+type UnstoredAnswer struct {
+	Path   string
+	Answer *Answer
+}
+
+func (u *UnstoredAnswer) Error() string {
+	return fmt.Sprintf("upstream %s answered %d, which this route does not store", u.Path, u.Answer.Status)
+}
+
+// Unstored tells freshness that this is one caller's answer and not an upstream fault.
+func (u *UnstoredAnswer) Unstored() bool { return true }
+
+// refusesAccess reports whether a status says "this caller may not read
+// this". Only these statuses become a denial.
+func refusesAccess(status int) bool {
+	return status == http.StatusForbidden || status == http.StatusNotFound
+}
+
+// relayUnstored answers a caller with the upstream's own answer to the fetch
+// their credential made.
+//
+// An access refusal is remembered as this principal's denial, exactly as a
+// refused probe is, so the caller does not re-ask on every request. Any other
+// status is reported as an answer the route does not model.
+func (e *Engine) relayUnstored(ctx context.Context, w *recorder, m *match, res *Resource, principal string, u *UnstoredAnswer) {
+	a := u.Answer
+	if refusesAccess(a.Status) && !res.Reveal.Credential && res.Reveal.DenyTTL > 0 {
+		e.reveal.remember(ctx, principal, res, keyString(res, m.key), a.Status, e.reveal.now().Add(res.Reveal.DenyTTL))
+		w.note(DispDenied, "", "", "fetch-refused")
+	} else {
+		w.note(DispPassthrough, "", "", string(PassResponse))
+		w.Header().Set(e.hdr.Reason, string(PassResponse))
+	}
+	for _, h := range []string{"Content-Type", "Location"} {
+		if v := a.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	w.Header().Set(e.hdr.Cache, "passthrough")
+	w.WriteHeader(a.Status)
+	if _, err := w.Write(a.Body); err != nil {
+		logf("relay %s: %v", u.Path, err)
+	}
+}

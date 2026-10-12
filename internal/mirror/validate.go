@@ -59,7 +59,7 @@ func loadTimeValue(what, s string) (string, error) {
 }
 
 // validate rejects a spec the engine cannot serve honestly. Every check here
-// exists because its absence is a silent failure at runtime: a resource nobody
+// exists because its absence is a silent failure at runtime. A resource nobody
 // gated, a route pointing at nothing, an invalidation with no stated reason.
 func (s *Spec) validate() error {
 	if strings.TrimSpace(s.Name) == "" {
@@ -67,6 +67,11 @@ func (s *Spec) validate() error {
 	}
 	if strings.TrimSpace(s.Upstream.Base) == "" {
 		return fmt.Errorf("<upstream> needs a base URL")
+	}
+	for _, a := range s.Accept {
+		if !strings.Contains(a, "/") {
+			return fmt.Errorf("<mirror><accept>: %q is not a media type", a)
+		}
 	}
 	byName := make(map[string]*Resource, len(s.Resources))
 	for _, r := range s.Resources {
@@ -117,7 +122,7 @@ func (s *Spec) validate() error {
 // validateOps checks the operational half.
 //
 // Each rule here is an operator would otherwise discover from behaviour: a
-// window that adds latency to everything, a sweep that names a kind no route
+// window that adds latency to everything. A sweep that names a kind no route
 // serves, a replayer that lists failures and cannot ask for any of them back.
 func (s *Spec) validateOps(byName map[string]*Resource) error {
 	if s.Upstream.Debounce > maxDebounceWindow {
@@ -230,12 +235,15 @@ func (r *Resource) validate() error {
 		if len(r.Fields) == 0 {
 			return fmt.Errorf("resource %q stores columns but declares no <field>: it would serve an empty answer", r.Name)
 		}
-	case StoreDocument, StoreRaw:
+	case StoreDocument, StoreRaw, StoreRedirect, StoreText:
 		if len(r.Fields) > 0 {
-			return fmt.Errorf("resource %q stores a document, so its <field> declarations would never be read", r.Name)
+			return fmt.Errorf("resource %q stores a %s, so its <field> declarations would never be read", r.Name, r.Store)
 		}
 	default:
 		return fmt.Errorf("resource %q: unknown store mode %q", r.Name, r.Store)
+	}
+	if err := r.validateRedirect(); err != nil {
+		return err
 	}
 	for _, f := range r.Fields {
 		if f.Name == "" {
@@ -404,6 +412,15 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 		supplied.Add(name)
 	}
 	supplied.AddRange(rt.queryKeys()...)
+	if err := rt.validatePath(params); err != nil {
+		return err
+	}
+	if err := rt.validateEmpties(); err != nil {
+		return err
+	}
+	if err := rt.validateHeld(res); err != nil {
+		return err
+	}
 	if rt.Complete && !rt.List {
 		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
 	}
@@ -490,9 +507,9 @@ func (rt *Route) validateQuery() error {
 	return nil
 }
 
-// validate checks a <rewrite>. The prefix has to be a path, and it has to
-// change something: a rule mapping a prefix to itself reads as configuration
-// and does nothing.
+// validate checks a <rewrite>. The prefix has to be a path. It has to change
+// something: a rule mapping a prefix to itself reads as configuration and
+// does nothing.
 func (rw *Rewrite) validate() error {
 	if rw.From == "" || !strings.HasPrefix(rw.From, "/") {
 		return fmt.Errorf("<rewrite> needs an absolute from, got %q", rw.From)
@@ -598,8 +615,8 @@ func anyCredentialKey(res *Resource) bool {
 func pathParams(path string) []string {
 	var out []string
 	for _, seg := range strings.Split(path, "/") {
-		if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
-			out = append(out, strings.TrimSuffix(seg[1:len(seg)-1], "*"))
+		if name, param, _ := pathParam(seg); param {
+			out = append(out, name)
 		}
 	}
 	return out
@@ -642,8 +659,11 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		if ev.Clock != "" && ev.Unordered {
 			return fmt.Errorf("event %q declares both a clock and unordered", ev.Type)
 		}
-		if len(ev.Sets) == 0 && ev.Invalidate == nil {
-			return fmt.Errorf("event %q does nothing: give it <set> fields, or an <invalidate> with a reason", ev.Type)
+		if len(ev.Sets) == 0 && ev.Invalidate == nil && ev.Document == "" {
+			return fmt.Errorf("event %q does nothing: give it <set> fields, a <document>, or an <invalidate> with a reason", ev.Type)
+		}
+		if err := validateEventDocument(ev, res); err != nil {
+			return err
 		}
 		if len(ev.Sets) > 0 && ev.Invalidate != nil {
 			return fmt.Errorf("event %q both writes and invalidates; the write already replaced the row", ev.Type)
@@ -704,7 +724,7 @@ func oneOutputPerInput(what string, outs []Set) error {
 // validateEventKeys refuses an event that cannot address the row it is about.
 //
 // A resource's from= names a path in the UPSTREAM document, and a delivery
-// wraps that document in an envelope, so the same path finds nothing at the
+// wraps that document in an envelope. The same path finds nothing at the
 // payload root. The event has to say where the delivery carries each key
 // column. Left to run time it is error per delivery, forever, on a mirror
 // whose dashboard reports every of them accepted.

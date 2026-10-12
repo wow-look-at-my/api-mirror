@@ -160,7 +160,7 @@ func TestValidateRoute_CredentialKeyNeedsNoParam(t *testing.T) {
 
 // TestPurge_SuccessfulWriteDropsTheCachedRow proves a write is forwarded
 // verbatim to the upstream, and that only a confirmed 2xx clears the row it
-// changed -- a rejected write must not blow away a still-correct cache entry.
+// changed. A rejected write must not blow away a still-correct cache entry.
 func TestPurge_SuccessfulWriteDropsTheCachedRow(t *testing.T) {
 	var method atomic.Value
 	nextStatus := atomic.Int32{}
@@ -207,7 +207,7 @@ func TestPurge_SuccessfulWriteDropsTheCachedRow(t *testing.T) {
 // TestPurge_OneWriteDropsEveryAnswerItChanged proves a write matching several
 // <purge> declarations clears all of them. A hook write changes the hook's own
 // row and the listing it appears in, and matching only the earliest left the
-// listing replaying a hook the write had already removed.
+// listing replaying a hook. The write had already removed.
 func TestPurge_OneWriteDropsEveryAnswerItChanged(t *testing.T) {
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -318,9 +318,9 @@ func TestValidatePurge(t *testing.T) {
 	})
 }
 
-// TestCredentialResource_PostMintIsCached proves a POST route is only ever
-// legal on a credential-gated resource, and that a mint replays its cached
-// answer instead of re-minting on every call.
+// TestCredentialResource_PostMintIsCached proves a POST route is only
+// ever. Legal on a credential-gated resource, and that a mint replays its
+// cached answer instead of re-minting on every call.
 func TestCredentialResource_PostMintIsCached(t *testing.T) {
 	var calls atomic.Int32
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -131,7 +131,7 @@ func parseMaxRows(v string) (int, error) {
 }
 
 // enforce trims a table back to the cap, oldest writes first, at most once
-// per interval. What it drops is logged at error level with the count: a
+// per interval. What it drops is logged at error level with the count. A
 // cap that bites is a table outgrowing its design, and nobody learns that
 // from a quiet trim.
 func (s *Store) enforceCap(ctx context.Context, r *Resource) {
