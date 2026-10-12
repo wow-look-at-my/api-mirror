@@ -64,6 +64,16 @@ func TestAFetchRefusalIsTheCallersDenial(t *testing.T) {
 		"one caller's refusal is not a backoff another caller reads")
 }
 
+func TestABadCredentialIsTold401(t *testing.T) {
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Bad credentials"))
+	}), probedWidgets)
+
+	rec := getAs(t, e, "/widgets/7", "token expired")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code, "a bad credential is the caller's problem, not a gateway failure")
+}
+
 func TestAnUnmodelledAnswerIsRelayedAndNotStored(t *testing.T) {
 	var fetches atomic.Int32
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

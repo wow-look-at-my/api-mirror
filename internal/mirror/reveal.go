@@ -198,6 +198,10 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 		rv.remember(ctx, principal, res, k, ans.Status, now.Add(rule.DenyTTL))
 		return Verdict{Status: ans.Status, Reason: DenyProbe}, nil
 
+	case ans.Status == http.StatusUnauthorized:
+		// The credential itself is bad, which says nothing about this resource, so nothing is remembered.
+		return Verdict{Status: ans.Status, Reason: DenyProbe}, nil
+
 	default:
 		return refuse(http.StatusBadGateway),
 			fmt.Errorf("reveal probe %s: upstream answered %d, which states nothing about access", res.Name, ans.Status)

@@ -53,7 +53,7 @@ tests:
 			- "x-gsm-cache: hit"
 			- "content-type: application/vnd.github.diff; charset=utf-8"
 			- "diff --git a/README.md b/README.md"
-			- "HTTP/1.1 451"
+			- "http/1.1 451"
 			- "Repository access blocked"
 			- "x-gsm-cache: miss"
 			- "\"pull_requests\":[]"
