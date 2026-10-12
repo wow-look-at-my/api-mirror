@@ -41,7 +41,7 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 	pathKnown, refused := false, false
 	for _, rt := range e.spec.Routes {
 		params, ok := matchPath(rt.Path, r.URL.EscapedPath())
-		if !ok {
+		if !ok || !rt.admits(params) {
 			continue
 		}
 		pathKnown = true
@@ -119,22 +119,42 @@ func foldFor(res *Resource, name, value string) string {
 	return value
 }
 
+// pathParam reads one pattern segment. {name} binds one segment. {name...}
+// binds the rest of the path, slashes included, and only ends a pattern.
+func pathParam(seg string) (name string, param, rest bool) {
+	if len(seg) < 3 || seg[0] != '{' || seg[len(seg)-1] != '}' {
+		return "", false, false
+	}
+	name = seg[1 : len(seg)-1]
+	if trimmed, ok := strings.CutSuffix(name, "..."); ok {
+		return trimmed, true, true
+	}
+	return name, true, false
+}
+
 // matchPath matches a request path against a route pattern, returning the
 // {name} bindings.
 func matchPath(pattern, path string) (map[string]string, bool) {
 	pseg := strings.Split(strings.Trim(pattern, "/"), "/")
 	rseg := strings.Split(strings.Trim(path, "/"), "/")
-	if len(pseg) != len(rseg) {
+	_, _, rest := pathParam(pseg[len(pseg)-1])
+	if len(pseg) != len(rseg) && !(rest && len(rseg) > len(pseg)) {
 		return nil, false
 	}
 	out := make(map[string]string, len(pseg))
 	for i, p := range pseg {
-		if len(p) > 2 && p[0] == '{' && p[len(p)-1] == '}' {
+		if name, param, tail := pathParam(p); param {
 			v := rseg[i]
+			if tail {
+				if slices.Contains(rseg[i:], "") {
+					return nil, false
+				}
+				v = strings.Join(rseg[i:], "/")
+			}
 			if v == "" {
 				return nil, false
 			}
-			out[p[1:len(p)-1]] = v
+			out[name] = v
 			continue
 		}
 		if p != rseg[i] {

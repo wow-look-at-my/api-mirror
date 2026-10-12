@@ -17,7 +17,10 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `store.go` / `store_resources.go` — engine tables via sqlc, resource tables built at run time from `columnsOf`. `mirror_list_member` (a list answer's rows, in order) is plain SQL in `schema.go`, because a push may not add a generated file.
 - `internal/database/` — `schema.sql`, `queries/*.sql`, and sqlc's generated `dbgen/`.
 - `freshness.go` — the TTL state machine, detached fetches, per-key singleflight, the shutdown drain.
-- `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary.
+- `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary. `<accept>` under `<mirror>` names the default representation for every JSON route.
+- `unstored.go` — an upstream answer the route does not keep: relayed to the caller whose credential earned it, a 403 or 404 recorded as their denial.
+- `invalidate.go` — an invalidation drops the freshness under its key too. A stored refusal goes with the rows.
+- `store_refusal.go` — the refusal document kept with a stored refusal, and prefix deletes, in plain SQL.
 - `<rewrite>` — a client's own spelling of a path, canonicalised in `dispatch` before any gate sees it. `gh` needs one, because it puts REST under `/api/v3` on a non-github.com host. It grants nothing.
 - `relay.go` — `<relay>`: an uncached forward to a fixed URL off the upstream base, for login endpoints on another host that send no CORS headers. It forwards no bearer, because the body is the credential there.
 - `body-key` on a `<route>` — the resource key the REQUEST body fills, for a query language that posts every question to one path. Naming it also makes the body travel: the fetch replays it upstream. Nearly always credential-keyed, because such an API filters by the caller's token.
@@ -60,6 +63,9 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **A held delivery is counted by its outcome.** With a reorder window the response goes out before the apply. As a result, the tally comes from the applier, never from that answer. Counting the answer reports every failure as accepted.
 - **A list only deletes when it says it is complete.** `complete="true"` replace-syncs the set under the parent key. Without it an item that vanished upstream keeps being served, because one page of a paginated list is not the set.
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
+- **An answer the route does not store belongs to the caller.** It is relayed to them and earns no backoff that another caller reads.
+- **A fresh answer with no row is refetched.** A delivery dropped it, and serving it as absent will invent a 404.
+- **A push may not change a generated file.** A new engine table is plain SQL in Go, beside `mirror_list_member`.
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
 - **A rebuilt answer is a subset of the upstream's.** Each field, and each key with `from=`, returns to its source path with its upstream type. A folded key serves its as-sent spelling. One source path is declared once. `dats/upstream-shape.dats` checks the answers against the upstream with `api-mirror-delta`.
