@@ -77,6 +77,12 @@ A route binds an HTTP path pattern to a resource. Path parameters (`{owner}`) be
 
 A route the spec does not declare is a passthrough: forwarded verbatim, uncached, and reported as uncached. There is no third state.
 
+A path parameter binds one segment. `{name...}` as the last segment binds the rest of the path, slashes included, so a file path. A branch with a slash and a tag like `cmd/v1.28.0` each key one row. `<match param="sha" pattern="^[0-9a-f]{40}$"/>` gives a parameter a required shape. A request without that shape tries the next route on the same path. One path can feed resources with different lifetimes: a full commit sha never changes.
+
+A branch name moves on every push.
+
+`<param name="exclude_pull_requests" type="bool" default="false" empties="pull_requests"/>` is a flag that serves one answer path as an empty array. The stored answer is the full one. The flag never goes upstream, and it never keys the row. One stored answer then serves both spellings, and a delivery that writes it keeps both current.
+
 ### `body-key` — when the question is in the body
 
 A query language posts every question to one path. Nothing in the URL tells answers apart, so a path parameter cannot key the row. There is nothing to model as a query parameter either.
@@ -130,6 +136,7 @@ An event declares how one webhook payload becomes stored rows:
 - `<clock>` — the payload field stating WHEN that view is from.
 - `<key field="...">payload path</key>` — where THIS delivery carries a key column.
 - `<apply>` — `<set field="...">payload path</set>`, one per column.
+- `<document>payload path</document>` — for a document resource, the object at that path IS the new answer, and it is written whole. A workflow run delivery carries the run, a check run delivery carries the check run. A payload with no object there fails the delivery.
 - `<invalidate reason="...">` — the escape hatch. The `reason` is required.
 
 The engine sorts deliveries for one subject inside a short reorder window, refuses a view older than one already applied, and applies unconditionally. There is no "does anyone have this cached?" gate to write.
