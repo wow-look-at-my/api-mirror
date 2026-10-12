@@ -13,7 +13,7 @@ import (
 // leaving", which is the only form of that fact anybody can act on.
 
 // generalize reduces a path to a shape using nothing but the path: a number or
-// a long hex string is an identity, everything else is vocabulary. It is the
+// a long hex string is an identity. Everything else is vocabulary. It is the
 // fallback for a spec that declares no routes yet.
 func generalize(path string) string {
 	segs := strings.Split(strings.Trim(path, "/"), "/")
@@ -136,7 +136,7 @@ func (e *Engine) Brief() []BriefItem {
 }
 
 // sketchTemplate is the declaration an author starts from. It is a template
-// because it is a DOCUMENT: assembling XML with successive writes is how an
+// because it is a DOCUMENT. Assembling XML with successive writes is how an
 // unescaped value ends up reshaping the element it was meant to sit inside.
 var sketchTemplate = template.Must(template.New("sketch").Parse(
 	`<resource name="TODO" ttl="1h">

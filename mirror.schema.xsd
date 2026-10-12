@@ -58,6 +58,8 @@
 		<xs:complexType>
 			<xs:choice minOccurs="0" maxOccurs="unbounded">
 				<xs:element name="description" type="xs:string"/>
+				<!-- A media type every JSON route answers as its default representation. -->
+				<xs:element name="accept" type="xs:string"/>
 				<xs:element name="vars" type="vars"/>
 				<xs:element name="upstream" type="upstream"/>
 				<xs:element name="resource" type="resource"/>
@@ -164,9 +166,27 @@
 				</xs:complexType>
 			</xs:element>
 			<xs:element name="reveal" type="reveal"/>
+			<!-- How long a store="redirect" Location lives: its signed expiry, less a margin. -->
+			<xs:element name="redirect">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="expires" minOccurs="0" maxOccurs="unbounded">
+							<xs:complexType>
+								<xs:attribute name="param" type="xs:string" use="required"/>
+								<xs:attribute name="format" type="xs:string"/>
+								<xs:attribute name="since" type="xs:string"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="margin" type="xs:string"/>
+					<xs:attribute name="unsigned" type="xs:string"/>
+					<xs:attribute name="fallback" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
 		</xs:choice>
 		<xs:attribute name="name" type="xs:string" use="required"/>
 		<xs:attribute name="ttl" type="xs:string"/>
+		<!-- columns (default), document, redirect, or text. -->
 		<xs:attribute name="store" type="xs:string"/>
 	</xs:complexType>
 
@@ -201,6 +221,15 @@
 					<xs:attribute name="min" type="xs:integer"/>
 					<xs:attribute name="max" type="xs:integer"/>
 					<xs:attribute name="key" type="xs:boolean"/>
+					<!-- A bool flag that serves this answer path as an empty array. -->
+					<xs:attribute name="empties" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
+			<!-- A path parameter's required shape; a request without it tries the next route. -->
+			<xs:element name="match">
+				<xs:complexType>
+					<xs:attribute name="param" type="xs:string" use="required"/>
+					<xs:attribute name="pattern" type="xs:string" use="required"/>
 				</xs:complexType>
 			</xs:element>
 			<xs:element name="absorb">
@@ -308,6 +337,8 @@
 					<xs:attribute name="expr" type="xs:string"/>
 				</xs:complexType>
 			</xs:element>
+			<!-- The payload path whose object becomes a document resource's answer. -->
+			<xs:element name="document" type="xs:string"/>
 			<xs:element name="invalidate">
 				<xs:complexType>
 					<xs:attribute name="reason" type="xs:string" use="required"/>

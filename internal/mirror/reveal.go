@@ -52,10 +52,10 @@ func NewRevealer(store *Store, up *Upstreamer, vars map[string]any) *Revealer {
 // Allow decides whether this principal may be shown this resource key.
 //
 // The ladder is public, then grant, then cached denial, then probe, and each
-// rung is a different mechanism rather than a shortcut for the below it. A
-// failure anywhere refuses: a store error, a template that cannot render and a
-// row that is not there all mean the engine has no proof, and no proof is a
-// refusal.
+// rung is a different mechanism rather than a shortcut. This holds for the
+// below it. A failure anywhere refuses. A store error. A template that cannot
+// render and a row that is not there all mean the engine has no proof, and no
+// proof is a refusal.
 func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, key map[string]string, forward http.Header) (Verdict, error) {
 	if res.Reveal == nil {
 		// Load-time validation rejects this.
@@ -121,8 +121,8 @@ func (rv *Revealer) AllowStored(ctx context.Context, principal string, res *Reso
 // public evaluates the resource's public predicate against the stored row.
 //
 // Every way of not knowing reads as private. A row that is absent proves
-// nothing, an unset column renders empty and an empty string is not truthy, so
-// the fast path opens only on a predicate that positively said yes.
+// nothing, an unset column renders empty and an empty string is not truthy.
+// The fast path opens only on a predicate that positively said yes.
 func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]string) (bool, error) {
 	if res.Reveal.Public == "" {
 		return false, nil
@@ -148,11 +148,11 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 // probe asks the upstream, with the CALLER's own forwarded credential, whether
 // this caller may read this key.
 //
-// The answer is sorted into kinds, and the kind decides what is
-// remembered. A 2xx earns a grant. An authoritative refusal is cached for the
-// deny window. Everything else -- a server failure, a rate-limit refusal, a
-// transport error, a status that says nothing about access -- is remembered
-// nowhere, because a bad minute upstream must not lock a caller out of their
+// The answer is sorted into kinds, and the kind decides what is remembered. A
+// 2xx earns a grant. An authoritative refusal is cached for the deny window.
+// Everything else -- a server failure, a rate-limit refusal, a transport
+// error, a status that says nothing about access -- is remembered nowhere.
+// This is because a bad minute upstream must not lock a caller out of their
 // own data for the whole deny window.
 func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, key map[string]string, k string, forward http.Header) (Verdict, error) {
 	rule := res.Reveal
@@ -196,6 +196,10 @@ func (rv *Revealer) probe(ctx context.Context, principal string, res *Resource, 
 
 	case ans.Status == http.StatusNotFound, ans.Status == http.StatusForbidden:
 		rv.remember(ctx, principal, res, k, ans.Status, now.Add(rule.DenyTTL))
+		return Verdict{Status: ans.Status, Reason: DenyProbe}, nil
+
+	case ans.Status == http.StatusUnauthorized:
+		// The credential itself is bad, which says nothing about this resource, so nothing is remembered.
 		return Verdict{Status: ans.Status, Reason: DenyProbe}, nil
 
 	default:
@@ -259,7 +263,7 @@ func (rv *Revealer) RenewOn2xx(ctx context.Context, principal string, res *Resou
 //
 // Both spellings a spec plausibly uses work: the {name} placeholders route
 // paths already use, and a template over.key.<name> and.var.<name>. A
-// placeholder left over after both means a key nothing supplied, which is an
+// placeholder left over after both means a key nothing supplied. This is an
 // error rather than a request to a path with a brace in it.
 func (rv *Revealer) probePath(res *Resource, key map[string]string) (string, error) {
 	path := res.Reveal.Probe.Path

@@ -12,7 +12,7 @@ import (
 
 // wholeSpec exercises every element and attribute the loader understands, in
 // file. A parse test per element would pass while the elements refused to
-// sit beside each other, which is the only way an author ever writes them.
+// sit beside each other. This is the only way an author ever writes them.
 //
 // The XML declaration is omitted the way the shipped files are not: the loader
 // strips it, so an inline snippet does not need. Indentation is TABS.
@@ -316,8 +316,8 @@ func TestLoad_ParseErrorAndValidationErrorAreToldApart(t *testing.T) {
 }
 
 // Every rejection below is a typo an author makes. The loader's job is to name
-// it at load, where the author is standing, instead of ignoring it silently and
-// serving a mirror that does not do what the file says.
+// it at load. This happens where the author is standing, instead of ignoring it
+// silently and serving a mirror that does not do what the file says.
 func TestParseSpec_Rejects(t *testing.T) {
 	cases := []struct {
 		name string

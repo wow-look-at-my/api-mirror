@@ -14,6 +14,10 @@ const OutcomeStale Outcome = "stale"
 // row is theirs to see. The stale header and the fetch time say plainly
 // what the answer is. A key with nothing stored still gets the error.
 func (e *Engine) serveStale(ctx context.Context, w *recorder, m *match, res *Resource, kind, key string, cause error) bool {
+	if !res.Store.answersJSON() {
+		// A stale signed URL no longer opens, and nothing here marks a stale diff.
+		return false
+	}
 	doc, err := e.read(ctx, m, res)
 	if err != nil || doc == nil {
 		return false

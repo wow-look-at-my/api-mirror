@@ -12,7 +12,7 @@ import (
 )
 
 // The operational half of the grammar. Each of these declarations turns a
-// mechanism on, and each rejection here is a mistake that would otherwise be
+// mechanism on. Each rejection here is a mistake that would otherwise be
 // discovered from behaviour rather than from a load failure.
 
 // opsSpec wraps ops declarations around a minimal working mirror.

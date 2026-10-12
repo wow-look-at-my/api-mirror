@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -37,28 +38,30 @@ type match struct {
 // with a method no route declares. Both are reported, because a route that
 // still forwards is unfinished work rather than a settled state.
 func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
-	pathKnown := false
+	pathKnown, refused := false, false
 	for _, rt := range e.spec.Routes {
 		params, ok := matchPath(rt.Path, r.URL.EscapedPath())
-		if !ok {
+		if !ok || !rt.admits(params) {
 			continue
 		}
 		pathKnown = true
 		if rt.Method != r.Method {
 			continue
 		}
-		if !acceptable(rt, r.Header.Get("Accept")) {
-			return nil, PassAccept, nil
+		res, ok := e.store.Resource(rt.Resource)
+		if !ok {
+			return nil, PassUnrouted, fmt.Errorf("route %s names unknown resource %q", rt.Path, rt.Resource)
+		}
+		// A later route on the same path may answer another media type.
+		if !acceptable(e.mediaFor(rt, res), r.Header.Get("Accept")) {
+			refused = true
+			continue
 		}
 		query, err := modelQuery(rt, r)
 		if err != nil {
 			return nil, PassQuery, err
 		}
 		key := make(map[string]string, len(params))
-		res, ok := e.store.Resource(rt.Resource)
-		if !ok {
-			return nil, PassUnrouted, fmt.Errorf("route %s names unknown resource %q", rt.Path, rt.Resource)
-		}
 		for param, value := range params {
 			name := rt.column(param)
 			key[name] = foldFor(res, name, value)
@@ -96,6 +99,9 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 		}
 		return &match{route: rt, key: key, query: query, body: body}, "", nil
 	}
+	if refused {
+		return nil, PassAccept, nil
+	}
 	if pathKnown {
 		return nil, PassMethod, nil
 	}
@@ -113,22 +119,42 @@ func foldFor(res *Resource, name, value string) string {
 	return value
 }
 
+// pathParam reads one pattern segment. {name} binds one segment. {name...}
+// binds the rest of the path, slashes included, and only ends a pattern.
+func pathParam(seg string) (name string, param, rest bool) {
+	if len(seg) < 3 || seg[0] != '{' || seg[len(seg)-1] != '}' {
+		return "", false, false
+	}
+	name = seg[1 : len(seg)-1]
+	if trimmed, ok := strings.CutSuffix(name, "..."); ok {
+		return trimmed, true, true
+	}
+	return name, true, false
+}
+
 // matchPath matches a request path against a route pattern, returning the
 // {name} bindings.
 func matchPath(pattern, path string) (map[string]string, bool) {
 	pseg := strings.Split(strings.Trim(pattern, "/"), "/")
 	rseg := strings.Split(strings.Trim(path, "/"), "/")
-	if len(pseg) != len(rseg) {
+	_, _, rest := pathParam(pseg[len(pseg)-1])
+	if len(pseg) != len(rseg) && !(rest && len(rseg) > len(pseg)) {
 		return nil, false
 	}
 	out := make(map[string]string, len(pseg))
 	for i, p := range pseg {
-		if len(p) > 2 && p[0] == '{' && p[len(p)-1] == '}' {
+		if name, param, tail := pathParam(p); param {
 			v := rseg[i]
+			if tail {
+				if slices.Contains(rseg[i:], "") {
+					return nil, false
+				}
+				v = strings.Join(rseg[i:], "/")
+			}
 			if v == "" {
 				return nil, false
 			}
-			out[p[1:len(p)-1]] = v
+			out[name] = v
 			continue
 		}
 		if p != rseg[i] {
@@ -138,13 +164,22 @@ func matchPath(pattern, path string) (map[string]string, bool) {
 	return out, true
 }
 
-// acceptable reports whether this route can answer what the caller asked for.
+// mediaFor lists the media types a route answers. A JSON route also answers
+// every type the spec names as the default representation.
+func (e *Engine) mediaFor(rt *Route, res *Resource) []string {
+	if !res.Store.answersJSON() {
+		return rt.Accept
+	}
+	return slices.Concat(rt.Accept, e.spec.Accept)
+}
+
+// acceptable reports whether a route that answers these media types can
+// answer what the caller asked for. An empty list answers anything.
 //
-// A route rebuilds JSON from stored columns. A caller asking for a diff, a
-// patch or HTML is asking for something the mirror cannot rebuild, so it is
-// forwarded rather than answered with the wrong media type.
-func acceptable(rt *Route, accept string) bool {
-	if len(rt.Accept) == 0 || strings.TrimSpace(accept) == "" {
+// A caller asking for a media type the route cannot rebuild is forwarded
+// rather than answered with the wrong one.
+func acceptable(allowed []string, accept string) bool {
+	if len(allowed) == 0 || strings.TrimSpace(accept) == "" {
 		return true
 	}
 	for _, part := range strings.Split(accept, ",") {
@@ -155,14 +190,7 @@ func acceptable(rt *Route, accept string) bool {
 		if media == "*/*" || media == "application/*" {
 			continue
 		}
-		found := false
-		for _, allowed := range rt.Accept {
-			if strings.EqualFold(media, allowed) {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.ContainsFunc(allowed, func(a string) bool { return strings.EqualFold(media, a) }) {
 			return false
 		}
 	}

@@ -12,7 +12,7 @@ import (
 
 // The rule these tests hold: everything the mirror exchanges is visible. A
 // request nobody can see is a request nobody can account for -- it spends the
-// budget, it can be slow, it can fail, and none of that reaches the operator.
+// budget. It can be slow. It can fail, and none of that reaches the operator.
 
 func TestObservedClient_ReportsFromTheTransportSoNoCallSiteCanSkipIt(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

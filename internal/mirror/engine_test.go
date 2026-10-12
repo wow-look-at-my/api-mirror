@@ -237,11 +237,11 @@ func TestQueryValueOutsideItsRangePassesThrough(t *testing.T) {
 }
 
 func TestAcceptOutsideTheModelPassesThrough(t *testing.T) {
-	rt := &Route{Path: "/x", Accept: []string{"application/json"}}
-	assert.True(t, acceptable(rt, ""), "no Accept means the caller takes anything")
-	assert.True(t, acceptable(rt, "*/*"))
-	assert.True(t, acceptable(rt, "application/json"))
-	assert.False(t, acceptable(rt, "application/vnd.github.diff"),
+	allowed := []string{"application/json"}
+	assert.True(t, acceptable(allowed, ""), "no Accept means the caller takes anything")
+	assert.True(t, acceptable(allowed, "*/*"))
+	assert.True(t, acceptable(allowed, "application/json"))
+	assert.False(t, acceptable(allowed, "application/vnd.github.diff"),
 		"a mirror rebuilds JSON; it cannot rebuild a diff")
 }
 

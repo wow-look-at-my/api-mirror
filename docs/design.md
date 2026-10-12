@@ -2,7 +2,7 @@
 
 ## What this is
 
-`api-cli` turns one XML file into a CLI for an API. `api-mirror` turns one XML file into a **caching mirror** of an API. An HTTP server that answers a consumer's requests from SQLite, keeps that SQLite current from the upstream API and from the upstream's webhooks. The HTTP server reveals each cached fact only to a caller who can have read it upstream.
+`api-cli` turns one XML file into a CLI for an API. `api-mirror` turns one XML file into a **caching mirror** of an API. An HTTP server that answers a consumer's requests from SQLite, keeps that SQLite current from the upstream API and from the upstream's webhooks. The HTTP server reveals each cached fact only to a caller who can read it upstream.
 
 The reference implementation of a hand-written mirror is `github-state-mirror`: about 34,000 lines of Go for ONE API. Every mechanism in it is generic except the vocabulary of the API it mirrors. This project moves the mechanism into an engine and leaves the vocabulary in a file.
 
@@ -12,9 +12,9 @@ A mirror has things to get right, and each has a failure mode that is silent:
 
 1. **Store the fact once.** There is one true state upstream, so there is one row here. A cache keyed by "who asked" answers the same question multiple ways.
 2. **Apply what you are told.** A webhook carries the new value. Throwing it away and re-fetching is a bug that looks like caution.
-3. **Reveal by proof.** Storage is global. A read needs proof that this caller can read this resource upstream.
+3. **Show by proof.** Storage is global. A read needs proof that this caller can read this resource upstream.
 
-The engine enforces all three by construction. A spec cannot express a per-caller store, cannot express an invalidate-without-reason, and cannot serve a resource with no reveal rule.
+The engine enforces all three by construction. A spec cannot express a per-caller store, cannot express an invalidate-without-reason, and cannot serve a resource with no show rule.
 
 ## The grammar
 
@@ -53,6 +53,20 @@ A key reads the document field of its own name. `from=` says otherwise, and `fol
 
 `<field>` declares a stored column with a name and a SQL-ish `type`. Its body is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
 
+Store modes hold an answer that is not JSON at all, and neither is rebuilt, because there is nothing in it to parse.
+
+- `store="text"` keeps a body such as a diff, with its media type. Its route lists the media types it answers in `<accept>`, and the fetch asks the upstream for the first. A JSON route and a text route can share one path.
+- `store="redirect"` keeps the `Location` of a 3xx answer. The fetch does not follow it. A signed URL has a short life, so `<redirect>` says how long a row lives:
+
+```xml
+<redirect margin="15s" unsigned="24h" fallback="1m">
+	<expires param="se"/>
+	<expires param="X-Amz-Expires" format="seconds" since="X-Amz-Date"/>
+</redirect>
+```
+
+The first `<expires>` whose parameter parses gives the URL's expiry. The row lives until then, less the margin. `format` is `time` (RFC 3339, the default), `unix`, or `seconds` counted from the `since` parameter. A `Location` with no query string carries no signature and lives `unsigned`. Nobody relays one the rule cannot date lives `fallback`, or. A URL already inside its margin is relayed and not kept.
+
 The rebuilt answer is a subset of the upstream document. A client of the upstream must read the mirror unchanged.
 
 - Each field, and each key with `from=`, goes back to the path it was read from. The value and the JSON type stay the upstream's. `type="int"` on a key serves its stored text as a number.
@@ -67,17 +81,25 @@ One fact is declared once. Validation refuses declarations that read one source 
 
 A route binds an HTTP path pattern to a resource. Path parameters (`{owner}`) become the key. A cached route serves stored state. On a miss or a stale row it fetches upstream, absorbs, and REBUILDS the answer from what it stored. A route never replays bytes it did not parse.
 
-`<param>` declares the query shape: a name, a type, a default, and a range. Some requests become a passthrough: a parameter the route does not declare, a repeated one, or a value outside its range. The mirror never keys an answer on a shape the spec did not describe. `<accept>` does the same for media types. `<absorb status="404"/>` names an upstream refusal worth remembering, and a status named nowhere relays without being stored.
+`<param>` declares the query shape: a name, a type, a default, and a range. Some requests become a passthrough: a parameter the route does not declare, a repeated one, or a value outside its range. The mirror never keys an answer on a shape the spec did not describe. `<accept>` does the same for media types. An `<accept>` directly under `<mirror>` names a spelling of the default representation once, and every JSON route answers it too. A route that cannot answer the caller's media type does not end the search: a later route on the same path may answer it.
 
-`list="true"` marks a route whose answer is an array of the resource's rows. The answer is the page the upstream returned: the rows it named, in its order, and nothing another route stored under the same parent key. Each list answer records its members, keyed by the request together with every query value the route models, so page 2 is its own answer. A row a delivery deletes drops out of every page that named it. A document list stores the upstream's array whole and replays it.
+`<absorb status="404"/>` names an upstream refusal worth remembering. The refusal document is kept with the status and served with it. A 451 still names its block. A status named nowhere is that caller's answer: the fetch went out with their credential. It is relayed to them and nothing is stored, so no backoff reaches another caller. A 403 or 404 also becomes that principal's cached denial, exactly as a refused probe does.
+
+`list="true"` marks a route whose answer is an array of the resource's rows. The answer is the page the upstream returned: the rows it named, in its order, and nothing another route stored under the same parent key. Each list answer records its members, keyed by the request together with every query value the route models. A later page is its own answer. A row a delivery deletes drops out of every page that named it. A document list stores the upstream's array whole and replays it.
 
 `complete="true"` adds that the answer is the WHOLE set under its parent key. An item missing from it is deleted upstream, so its row goes too. It is declared rather than inferred, because only the author knows whether a page is the whole set. Replace-syncing one page of a paginated list will throw away the others. A list without it only ever adds rows, and an item that vanished upstream keeps its row until it is evicted some other way.
 
 A route the spec does not declare is a passthrough: forwarded verbatim, uncached, and reported as uncached. There is no third state.
 
+A path parameter binds one segment. `{name...}` as the last segment binds the rest of the path, slashes included, so a file path. A branch with a slash and a tag like `cmd/v1.28.0` each key one row. `<match param="sha" pattern="^[0-9a-f]{40}$"/>` gives a parameter a required shape. A request without that shape tries the next route on the same path. One path can feed resources with different lifetimes: a full commit sha never changes.
+
+A branch name moves on every push.
+
+`<param name="exclude_pull_requests" type="bool" default="false" empties="pull_requests"/>` is a flag that serves one answer path as an empty array. The stored answer is the full one. The flag never goes upstream, and it never keys the row. One stored answer then serves both spellings, and a delivery that writes it keeps both current.
+
 ### `body-key` — when the question is in the body
 
-A query language posts every question to one path. Nothing in the URL tells answers apart, so a path parameter cannot key the row. There is nothing to model as a query parameter either.
+A query language posts every question to one path. Nothing in the URL tells answers apart. A path parameter cannot key the row. There is nothing to model as a query parameter either.
 
 ```xml
 <resource name="graphql" store="document" ttl="1m">
@@ -91,7 +113,7 @@ A query language posts every question to one path. Nothing in the URL tells answ
 
 `body-key` names the resource key the request body fills, as a digest. Naming it also makes the body TRAVEL: the fetch replays it to the upstream. This is the only way the upstream can answer the question at all. Declare the body's content type in `<upstream><forward>` so it arrives typed.
 
-Such a resource is almost always credential-keyed, because a query language filters what it returns by the caller's own token. Callers asking the identical question are entitled to different answers, and must never share a row.
+Such a resource is almost always credential-keyed, because a query language filters what it returns by the caller's own token. Callers asking the same question are entitled to different answers, and must never share a row.
 
 ### `<rewrite>` — the client's spelling of the same path
 
@@ -104,7 +126,7 @@ A client can insist on a path shape the upstream's own docs do not use, and then
 
 `from` is a prefix and `to` is what it becomes, with an empty `to` stripping it. The rewrite happens before anything else looks at the path, so one route table serves both spellings and the cache is shared between them.
 
-It grants nothing. The rewritten path meets the same auth and reveal gates the bare path meets, so `/api/v3/repos/o/r` is exactly as guarded as `/repos/o/r`. A prefix matches at a segment boundary only, and rules never chain: a rewritten path is the answer, not an input to the next rule.
+It grants nothing. The rewritten path meets the same auth and show gates the bare path meets, so `/api/v3/repos/o/r` is exactly as guarded as `/repos/o/r`. A prefix matches at a segment boundary only, and rules never chain: a rewritten path is the answer, not an input to the next rule.
 
 ### `<relay>` — a path that is not on the upstream host
 
@@ -128,13 +150,16 @@ An event declares how one webhook payload becomes stored rows:
 - `<clock>` — the payload field stating WHEN that view is from.
 - `<key field="...">payload path</key>` — where THIS delivery carries a key column.
 - `<apply>` — `<set field="...">payload path</set>`, one per column.
+- `<document>payload path</document>` — for a document resource, the object at that path IS the new answer, and it is written whole. A workflow run delivery carries the run, a check run delivery carries the check run. A payload with no object there fails the delivery.
 - `<invalidate reason="...">` — the escape hatch. The `reason` is required.
 
 The engine sorts deliveries for one subject inside a short reorder window, refuses a view older than one already applied, and applies unconditionally. There is no "does anyone have this cached?" gate to write.
 
-`<key>` exists because a resource's `from=` names a path in the upstream DOCUMENT. A delivery wraps that document in an envelope — the repository under `repository`, the action beside it. So the same path finds nothing at the payload root. A `<set>` that writes a key column answers this too, which is why most events need no `<key>` at all. `<invalidate>` events, which write nothing, always do. `validate` refuses an event that names neither. This is because at run time this is one failed delivery per delivery, forever, on a mirror that looks like it is working.
+`<key>` exists because a resource's `from=` names a path in the upstream DOCUMENT. A delivery wraps that document in an envelope — the repository under `repository`, the action beside it. So the same path finds nothing at the payload root. A `<set>` that writes a key column answers this too, which is why most events need no `<key>` at all. `<invalidate>` events, which write nothing, always do. `validate` refuses an event that names neither.
 
-A write needs the whole key. An invalidate may name part of it and deletes every row that matches. A payload names a commit, not one page of a paginated answer, so a page-keyed document set can only be dropped wholesale.
+This is because at run time this is one failed delivery per delivery, forever, on a mirror that looks like it is working.
+
+A write needs the whole key. An invalidate may name part of it and deletes every row that matches. A payload names a commit, not one page of a paginated answer, so a page-keyed document set can only be dropped wholesale. An invalidate also drops the freshness of what it deleted. A stored refusal goes with it. The next reader refetches: a fresh answer whose row is gone is never served as absent.
 
 Narrower forms:
 
@@ -163,7 +188,9 @@ A route's `<spread resource="repo" items="...">` earns grants in bulk. Each item
 
 ### Who is asking
 
-A principal is the credential's fingerprint unless the spec names something more stable. The fingerprint is `token:` and the hex SHA-256 of the bare credential. A `Bearer` or `token` scheme word is not part of it, so one token is one caller. `<identity header= path= id= prefix=>` accepts an assertion in a request header, verifies it with one upstream call, and names the caller `prefix:id`. A refused assertion is a 401 and never falls back. `<whoami path= id= prefix=>` asks the upstream who owns the caller's own credential. Both keep a caller's grants across a rotated credential.
+A principal is the credential's fingerprint unless the spec names something more stable. The fingerprint is `token:` and the hex SHA-256 of the bare credential. A `Bearer` or `token` scheme word is not part of it, so one token is one caller. `<identity header= path= id= prefix=>` accepts an assertion in a request header, verifies it with one upstream call, and names the caller `prefix:id`. A refused assertion is a 401 and never falls back. `<whoami path= id= prefix=>` asks the upstream who owns the caller's own credential.
+
+Both keep a caller's grants across a rotated credential.
 
 A static upstream header never answers for a caller. A request-time call drops every forwarded header the caller did not send, and never renders a `<credential>` header at all.
 
@@ -179,7 +206,7 @@ Everything above decides what an answer IS. What follows decides whether anybody
 </dashboard>
 ```
 
-The surface exists whether or not a spec declares one. This decides where it lives and what gates it. An absent `<token>` mints one per process and logs the URL that carries it — on by default, never open by default. Everything admin hangs off the prefix, so a deployment gates the whole thing in one rule.
+The surface exists whether or not a spec declares one. This decides where it lives and what gates it. An absent `<token>` mints one per process and logs the URL that carries it — on by default, not open by default. Everything admin hangs off the prefix, so a deployment gates the whole thing in one rule.
 
 The page reports traffic by lane, cache contents by kind, the rate budget per identity, deliveries by type, and principals with their standing. The tab that matters most shows **what is still leaving**. A passthrough is unfinished work. As a result, the page groups each leaking family by route shape and counts it. It gives each family real sample paths and the `<resource>` and `<route>` that will stop it.
 
@@ -199,7 +226,7 @@ This is an invariant, not a feature. A request nobody can see spends budget, can
 </replay>
 ```
 
-`<refresh>` sweeps stored keys, which matters most for the key nobody is reading: with no reader there is no refetch. A missed delivery goes unnoticed for the whole TTL. The sweep holds no caller's credential, so a credential-keyed row is skipped rather than refetched under the wrong identity.
+`<refresh>` sweeps stored keys, which matters most for the key nobody reads: with no reader there is no refetch. A missed delivery goes unnoticed for the whole TTL. The sweep holds no caller's credential, so a credential-keyed row is skipped rather than refetched under the incorrect identity.
 
 `<replay>` reads the upstream's own failure log and asks for what never arrived, once per delivery id. `requires=` names a value the log cannot be read without. Empty means the job declines to start and logs which value will start it, rather than calling an authenticated endpoint on a timer forever. Its `<header>` children replace the static headers on its own calls. The `jwt` template function signs the RS256 assertion an App-level endpoint needs.
 
@@ -207,7 +234,7 @@ A duration attribute and a `<cors><origin>` may be template source over `.env`, 
 
 ### `<credential>` — a token the mirror obtains itself
 
-A request with no caller needs a credential of its own. A static header cannot hold one that expires within the hour, such as a GitHub App installation token. A `<credential>` declares how to obtain the token. An upstream header sends it.
+A request with no caller needs a credential of its own. A static header cannot hold one that expires within the hour, such as a token of the GitHub App installation. A `<credential>` declares how to get the token. An upstream header sends it.
 
 ```xml
 <upstream base="...">
@@ -233,11 +260,13 @@ A failed lookup or exchange fails the request with an error that names the step 
 
 ### `<notify>` — telling consumers, so they stop racing us
 
-A consumer can also receive the upstream's webhooks. It then reads the mirror before the mirror has ingested the delivery. It gets the state that delivery was about to replace. `<notify>` lets them register an endpoint and sends an HMAC-signed notification AFTER the write lands. Registrations live in a separate database file, because the cache nuke is safe only for rows the upstream still has a copy of.
+A consumer can also receive the upstream's webhooks. It then reads the mirror before the mirror ingested the delivery. It gets the state that delivery was about to replace. `<notify>` lets them register an endpoint and sends an HMAC-signed notification AFTER the write lands. Registrations live in a separate database file, because the cache nuke is safe only for rows the upstream still has a copy of.
 
 A caller manages its own registrations at `<notify path=>`, under its resolved principal. A delivery notifies once, after its last handler applies. It reaches a subscriber only when `<scope>` matches the subscriber's filter and the subscriber holds stored proof for the row `<reveal>` names. A filter entry matches its scope or any scope beneath it at a `/`, so `acme` admits `acme/widget`. `<field>` adds payload values to the body.
 
-`<notify import=>` names a github-state-mirror subscription file, as template source over `.env`. At startup the engine adopts each row it has not adopted before. The row keeps its id, secret, filters, counters, timestamps (to the second) and owner. A ledger records each source id, so a registration deleted here stays deleted. The owner is translated into the principal the same caller resolves to here. A row that no caller here can own is not imported. It is logged by id and counted on the dashboard, and the next start tries it again. A named file that is missing or not that format stops startup. A value that renders empty imports nothing and logs that once. The format belongs to that service. As a result, the importer is its own file, `gsm_import.go`.
+`<notify import=>` names a github-state-mirror subscription file, as template source over `.env`. At startup the engine adopts each row it has not adopted before. The row keeps its id, secret, filters, counters, timestamps (to the second) and owner. A ledger records each source id, so a registration deleted here stays deleted. The owner is translated into the principal the same caller resolves to here. A row that no caller here can own is not imported.
+
+Id and counted on the dashboard logs it, and the next start tries it again. A named file that is missing or not that format stops startup. A value that renders empty imports nothing and logs that once. The format belongs to that service. As a result, the importer is its own file, `gsm_import.go`.
 
 ### `<login>` — operators sign in upstream
 
@@ -249,7 +278,7 @@ A caller manages its own registrations at `<notify path=>`, under its resolved p
 
 `<health>` registers the paths an orchestrator polls. An unrouted path falls through to the proxy rather than answering 404. A checker that reads any non-404 as "implemented" then calls a healthy container unhealthy forever.
 
-`<upstream debounce=>` shares one upstream call between identical concurrent passthrough reads. It never shares one across credentials.
+`<upstream debounce=>` shares one upstream call between same concurrent passthrough reads. It never shares one across credentials.
 
 ## What the engine owns
 

@@ -57,7 +57,7 @@ func NewRateMeter(headers RateHeaders) *RateMeter {
 // Observe reads answer's budget headers.
 //
 // Nothing here ever asks the upstream for a budget: it reads the headers of
-// answers the mirror was already getting, so the meter costs nothing and
+// answers the mirror was already getting. The meter costs nothing and
 // cannot itself spend what it reports.
 func (m *RateMeter) Observe(principal string, h http.Header) {
 	if m == nil || h == nil || !m.headers.declared() {

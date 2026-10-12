@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,10 @@ type FetchResult struct {
 	Changed bool
 	// Status is the upstream answer the route declared worth keeping.
 	Status int
+	// Body is the refusal document kept with a refusal status.
+	Body string
+	// TTL overrides the kind's TTL for this answer. Zero keeps the kind's.
+	TTL time.Duration
 }
 
 // Fetcher performs refresh. The engine supplies it; this file knows nothing
@@ -86,7 +91,7 @@ func (f *Fresh) Drain(timeout time.Duration) bool {
 // Ensure brings key up to date and reports what it took.
 //
 // A fresh row returns immediately. A row inside its error backoff returns the
-// STORED error rather than re-fetching: an upstream that is failing does not
+// STORED error rather than re-fetching. An upstream that is failing does not
 // need every request to prove it again.
 func (f *Fresh) Ensure(ctx context.Context, kind, key string) (Outcome, error) {
 	meta, err := f.store.Freshness(ctx, kind, key)
@@ -175,6 +180,12 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 
 	res, err := f.fetch(fetchCtx, kind, key, etag)
 	now := f.now()
+	var mine interface{ Unstored() bool }
+	if errors.As(err, &mine) && mine.Unstored() {
+		// One caller's answer: other callers must not read it as a backoff.
+		f.restore(detached, kind, key, meta)
+		return OutcomeError, err
+	}
 	if err != nil {
 		retryAfter := now.Add(defaultErrorRetry)
 		if werr := f.store.MarkError(detached, kind, key, err.Error(), retryAfter); werr != nil {
@@ -183,12 +194,16 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 		return OutcomeError, err
 	}
 
+	ttl := f.ttl(kind)
+	if res.TTL > 0 {
+		ttl = res.TTL
+	}
 	record := Freshness{
 		Kind:      kind,
 		Key:       key,
 		FetchedAt: now,
 		ETag:      res.ETag,
-		ExpiresAt: now.Add(f.ttl(kind)),
+		ExpiresAt: now.Add(ttl),
 		State:     string(StateFresh),
 		Status:    res.Status,
 	}
@@ -197,10 +212,32 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 	} else if meta != nil {
 		record.ChangedAt = meta.ChangedAt
 	}
+	if res.Status >= 400 {
+		if err := f.store.SetRefusalBody(detached, kind, key, res.Body); err != nil {
+			return OutcomeError, err
+		}
+	}
 	if err := f.store.RecordFetched(detached, record); err != nil {
 		return OutcomeError, err
 	}
 	return OutcomeMiss, nil
+}
+
+// restore puts back the bookkeeping a fetch found, after a fetch whose answer
+// was not the key's to keep.
+func (f *Fresh) restore(ctx context.Context, kind, key string, meta *Freshness) {
+	var err error
+	switch {
+	case meta == nil:
+		_, err = f.store.DeleteFreshness(ctx, kind, key)
+	case FetchState(meta.State) == StateError:
+		err = f.store.MarkError(ctx, kind, key, meta.Error, meta.RetryAfter)
+	default:
+		err = f.store.RecordFetched(ctx, *meta)
+	}
+	if err != nil {
+		logf("restore freshness %s/%s: %v", kind, key, err)
+	}
 }
 
 // lockFor returns the mutex guarding key, creating it.

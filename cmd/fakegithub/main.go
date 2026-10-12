@@ -27,6 +27,16 @@ var (
 	gitCommitPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits/([^/]+)$`)
 	commitsPath   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/commits$`)
 	branchesPath  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/branches$`)
+	runPath       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/runs/([0-9]+)$`)
+	runJobsPath   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/runs/([0-9]+)/jobs$`)
+	workflowsPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/workflows$`)
+	workflowPath  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/workflows/([^/]+)$`)
+	tagsPath      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/tags$`)
+	whereHeadPath = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/commits/([^/]+)/branches-where-head$`)
+	commitPath    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/commits/([^/]+)$`)
+	annotatePath  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/check-runs/([0-9]+)/annotations$`)
+	rulesPath     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/rules/branches/(.+)$`)
+	contentsPath  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/contents/(.+)$`)
 )
 
 type doc = map[string]any
@@ -131,6 +141,12 @@ func answer(path string) (any, bool) {
 			"url": api + "/repos/" + full + "/commits/abc123", "html_url": "https://github.com/" + full + "/commit/abc123",
 		}}, true
 	}
+	if v, ok := actionsAnswer(path); ok {
+		return v, true
+	}
+	if v, ok := commitAnswer(path); ok {
+		return v, true
+	}
 	if m := branchesPath.FindStringSubmatch(path); m != nil {
 		return []doc{
 			{"name": "feature", "protected": false, "commit": doc{"sha": "aaaa000000000000000000000000000000000001", "url": api + "/repos/" + m[1] + "/" + m[2] + "/commits/aaaa"}},
@@ -180,6 +196,9 @@ func main() {
 			repoAuth.Store(r.Header.Get("Authorization"))
 		}
 		if app != nil && app.answer(w, r) {
+			return
+		}
+		if raw(w, r) {
 			return
 		}
 		if v, ok := answer(r.URL.Path); ok {

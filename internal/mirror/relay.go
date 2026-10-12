@@ -22,10 +22,6 @@ func (e *Engine) matchRelay(r *http.Request) (*Relay, bool) {
 // relay forwards a body to a fixed foreign URL and answers with what comes
 // back. Nothing is stored and nothing is keyed, so this is a passthrough that
 // happens to leave the upstream's host.
-//
-// The mirror's own CORS headers are already on the answer, and the foreign
-// host's are dropped: corsMiddleware is the authority, and a duplicate
-// allow-origin makes a browser refuse the response outright.
 func (e *Engine) relay(w *recorder, r *http.Request, rl *Relay) {
 	w.note(DispPassthrough, rl.Path, "", string(PassRelay))
 	w.Header().Set(e.hdr.Cache, "passthrough")

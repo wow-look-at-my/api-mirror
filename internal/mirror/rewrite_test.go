@@ -11,9 +11,9 @@ import (
 )
 
 // A client can insist on its own spelling of the same API. gh reads a host
-// that is not github.com as GitHub Enterprise Server and puts every REST call
+// that is not github.com as GitHub Enterprise Server. It puts every REST call
 // under /api/v3, so without <rewrite> a mirror pointed at by GH_HOST answers
-// nothing from cache and forwards the whole session.
+// nothing from cache. It forwards the whole session.
 func TestRewrite_APrefixedPathReachesTheSameRoute(t *testing.T) {
 	var calls atomic.Int32
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
