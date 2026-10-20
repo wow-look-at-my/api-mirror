@@ -157,13 +157,7 @@ func TestAbsorbAndRebuild_ProjectOnlyTheDeclaredFields(t *testing.T) {
 			{Name: "slug", Type: FieldText, Expr: "{{ .owner.login }}/{{ .name }}"},
 		},
 	}
-	doc := jsonValue(t, `{
-		"owner": {"login": "WowLookAtMy"},
-		"name": "api-mirror",
-		"stargazers_count": 5,
-		"archived": false,
-		"secret_field": "never declared"
-	}`)
+	doc := jsonValue(t, absorbProjectDocJSON)
 
 	row, err := absorb(res, doc)
 	require.NoError(t, err)
@@ -224,15 +218,7 @@ func TestTrim_DropsBySuffixAndByExactName(t *testing.T) {
 		Drop: []string{"*url", "node_id"},
 		Keep: []Keep{{Name: "html_url", Reason: "the viewer links a reader back to the page"}},
 	}
-	doc := jsonValue(t, `{
-		"name": "api-mirror",
-		"url": "https://upstream/repos/1",
-		"html_url": "https://upstream/wow/api-mirror",
-		"AVATAR_URL": "https://upstream/a.png",
-		"node_id": "MDEw",
-		"owner": {"login": "wow", "url": "https://upstream/users/wow"},
-		"tags": [{"name": "v1", "commit_url": "https://upstream/c/1"}]
-	}`)
+	doc := jsonValue(t, absorbTrimDocJSON)
 
 	got, ok := trim(res, doc).(map[string]any)
 	require.True(t, ok)

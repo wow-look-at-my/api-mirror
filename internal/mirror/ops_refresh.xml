@@ -1,0 +1,3 @@
+	<refresh interval="6h">
+		<kind>thing</kind>
+	</refresh>

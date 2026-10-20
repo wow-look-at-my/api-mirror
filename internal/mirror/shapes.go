@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	_ "embed"
 	"html/template"
 	"sort"
 	"strconv"
@@ -140,22 +141,11 @@ func (e *Engine) Brief() []BriefItem {
 	return out
 }
 
-// sketchTemplate is the declaration an author starts from. It is a template
-// because it is a DOCUMENT. Assembling XML with successive writes is how an
-// unescaped value ends up reshaping the element it was meant to sit inside.
-var sketchTemplate = template.Must(template.New("sketch").Parse(
-	`<resource name="TODO" ttl="1h">
-{{- range .Keys }}
-	<key name="{{ . }}" from="TODO"/>
-{{- end }}
-	<field name="TODO" type="text">TODO</field>
-	<reveal>
-		<probe path="TODO"/>
-		<grant ttl="24h"/>
-		<deny ttl="5m"/>
-	</reveal>
-</resource>
-<route method="{{ .Method }}" path="{{ .Path }}" resource="TODO"/>`))
+// sketchTemplate is the declaration an author starts from. It is a template because it is a DOCUMENT.
+var sketchTemplate = template.Must(template.New("sketch").Parse(sketchTemplateDoc))
+
+//go:embed sketch_template.xml
+var sketchTemplateDoc string
 
 // sketchRoute writes the declaration an author would start from.
 func sketchRoute(method, shape string) string {

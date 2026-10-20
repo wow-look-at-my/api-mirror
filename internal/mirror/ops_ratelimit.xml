@@ -1,0 +1,12 @@
+<mirror name="ops">
+	<upstream base="https://api.example.com" debounce="5s" retry-after="Retry-After">
+		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
+			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"/>
+	</upstream>
+	<resource name="thing" ttl="1h">
+		<key name="id" from="id"/>
+		<field name="title" type="text">title</field>
+		<reveal><public>true</public></reveal>
+	</resource>
+	<route method="GET" path="/things/{id}" resource="thing"/>
+</mirror>

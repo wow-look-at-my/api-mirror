@@ -1,0 +1,12 @@
+
+<mirror name="m">
+	<resource name="r">
+		<key name="id"/>
+		<field name="a" type="text">a</field>
+		<reveal>
+			<probe path="/things/{{ .key.id }}"/>
+			<grant ttl="1h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+</mirror>

@@ -1,0 +1,10 @@
+
+<mirror name="m">
+	<upstream base="https://api.example.com"/>
+	<resource name="thing">
+		<key name="id"/>
+		<field name="title" type="text">title</field>
+		<reveal><public>true</public></reveal>
+	</resource>
+	<route method="GET" path="/things" resource="thing" list="true"/>
+</mirror>

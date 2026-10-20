@@ -1,0 +1,9 @@
+	<notify path="/_mirror/subs" db="subs.db" retries="2"/>
+	<events path="/hook" signature-header="X-Hub-Signature-256" type-header="X-Event">
+		<secret>shh</secret>
+		<event type="thing.changed" resource="thing" clock="updated_at">
+			<subject>thing:<value name="payload.id"/></subject>
+			<key field="id">id</key>
+			<apply><set field="title">title</set></apply>
+		</event>
+	</events>

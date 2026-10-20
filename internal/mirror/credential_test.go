@@ -356,15 +356,7 @@ func TestValidate_PostRouteNeedsCredentialGate(t *testing.T) {
 }
 
 func TestLoad_CredentialXML(t *testing.T) {
-	xml := `<mirror name="cred-test">
-	<upstream base="https://api.example.com"/>
-	<resource name="identity">
-		<key name="token_fp" credential="true"/>
-		<field name="login">login</field>
-		<reveal><credential/></reveal>
-	</resource>
-	<route method="GET" path="/user" resource="identity"/>
-</mirror>`
+	xml := credentialTestSpecXML
 	spec, err := ParseSpec([]byte(xml))
 	require.NoError(t, err)
 	require.NoError(t, spec.validate())

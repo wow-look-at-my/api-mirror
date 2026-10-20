@@ -1,0 +1,22 @@
+
+<mirror name="runnable">
+	<upstream base="https://api.example.com"/>
+	<resource name="thing" ttl="1h">
+		<key name="id"/>
+		<field name="title" type="text">title</field>
+		<reveal>
+			<public>true</public>
+		</reveal>
+	</resource>
+	<route method="GET" path="/things/{id}" resource="thing"/>
+	<events path="/webhook" signature-header="X-Signature" type-header="X-Event">
+		<secret>a-test-secret</secret>
+		<event type="thing" resource="thing" clock="thing.updated_at">
+			<subject>thing:<value name="payload.thing.id"/></subject>
+			<key field="id">thing.id</key>
+			<apply>
+				<set field="title">thing.title</set>
+			</apply>
+		</event>
+	</events>
+</mirror>

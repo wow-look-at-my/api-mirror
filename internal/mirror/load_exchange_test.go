@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	_ "embed"
 	"testing"
 	"time"
 
@@ -8,18 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const credentialSpec = `<mirror name="m">
-	<upstream base="https://api.example.com">
-		<header name="Authorization">token <value name="env.PAT"/></header>
-		<header name="Authorization" credential="app">token <value name="credential"/></header>
-		<forward name="Authorization"/>
-	</upstream>
-	<credential name="app" requires="env.APP_ID" for="{{ .key.owner }}" margin="2m">
-		<header name="Authorization">Bearer app-jwt</header>
-		<lookup path="/users/{{ .for }}/installation" field="id" ttl="30m"/>
-		<exchange path="/app/installations/{{ .lookup }}/access_tokens" token="token" expires="expires_at"/>
-	</credential>
-</mirror>`
+//go:embed exchange_spec.xml
+var credentialSpec string
 
 func TestLoadReadsACredential(t *testing.T) {
 	spec, err := ParseSpec([]byte(credentialSpec))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,36 +14,10 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 )
 
-// The subscription store, in a SEPARATE database file from the cache. That
-// separation is why this file exists instead of more tables in schema.sql: the
-// cache is nuked whenever a resource changes. This is safe only because every
-// row in it is a copy of something upstream still has. A registration is a
-// copy of nothing, and nuking stops telling somebody who asked, silently.
+// The subscription store, in a SEPARATE database file from the cache.
 
-// subscriptionSchema has no fingerprint and nothing nukes it: a change here has
-// to be an existing file survives.
-const subscriptionSchema = `
-CREATE TABLE IF NOT EXISTS subscription (
-	id           TEXT PRIMARY KEY,
-	principal    TEXT NOT NULL,
-	url          TEXT NOT NULL,
-	secret       TEXT NOT NULL,
-	events       TEXT NOT NULL DEFAULT '',
-	created_at   INTEGER NOT NULL,
-	last_ok      INTEGER,
-	failures     INTEGER NOT NULL DEFAULT 0,
-	disabled     INTEGER NOT NULL DEFAULT 0,
-	last_error   TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS subscription_principal ON subscription (principal);
-CREATE TABLE IF NOT EXISTS subscription_import (
-	source          TEXT NOT NULL,
-	source_id       TEXT NOT NULL,
-	subscription_id TEXT NOT NULL,
-	imported_at     INTEGER NOT NULL,
-	PRIMARY KEY (source, source_id)
-);
-`
+//go:embed subscription_schema.sql
+var subscriptionSchema string
 
 // subscriptionColumns are added to a file an older build created. Each
 // is additive with a default, so every existing registration survives.
@@ -240,9 +215,7 @@ func (s *Subscriptions) adopt(ctx context.Context, source, sourceID string, sub 
 		return adoptIDTaken, nil
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO subscription (id, principal, url, secret, events, scopes, created_at, updated_at,
-			last_ok, last_failure, failures, disabled, last_error, disabled_reason)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		adoptSubscriptionSQL,
 		sub.ID, sub.Principal, sub.URL, sub.Secret, strings.Join(sub.Events, ","), strings.Join(sub.Scopes, ","),
 		sub.CreatedAt.Unix(), sub.UpdatedAt.Unix(), unixOrNull(sub.LastOK), unixOrNull(sub.LastFailure),
 		sub.Failures, boolInt(sub.Disabled), sub.LastError, sub.DisabledReason); err != nil {
@@ -392,10 +365,7 @@ func (s *Subscriptions) MarkDelivered(ctx context.Context, id string) error {
 // MarkFailed counts failure and parks the subscription at the limit.
 func (s *Subscriptions) MarkFailed(ctx context.Context, id, cause string, limit int) (int, error) {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE subscription SET failures = failures + 1, last_error = ?, last_failure = ?,
-		 disabled_reason = CASE WHEN failures + 1 >= ? AND disabled = 0
-			THEN 'disabled after ' || (failures + 1) || ' consecutive delivery failures' ELSE disabled_reason END,
-		 disabled = CASE WHEN failures + 1 >= ? THEN 1 ELSE disabled END WHERE id = ?`,
+		markFailedSQL,
 		cause, time.Now().Unix(), limit, limit, id)
 	if err != nil {
 		return 0, err

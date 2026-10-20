@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,6 +31,9 @@ func versionColumn(r *Resource) string {
 	return ""
 }
 
+//go:embed upsert_row.sql
+var upsertRowSQL string
+
 // upsertStmt writes a row unless the stored a single carries a later
 // version. A write or a stored row with no version is not ordered, so it
 // applies; equal versions apply, because both describe the same moment.
@@ -40,9 +44,7 @@ func upsertStmt(r *Resource, version string) string {
 	for _, c := range append(cols, "mirror_written_at") {
 		sets = append(sets, fmt.Sprintf("%s = excluded.%s", c, c))
 	}
-	return fmt.Sprintf(`INSERT INTO %s (%s, mirror_written_at) VALUES (%s)
-ON CONFLICT (%s) DO UPDATE SET %s
-WHERE excluded.%s IS NULL OR %s.%s IS NULL OR excluded.%s >= %s.%s`,
+	return fmt.Sprintf(upsertRowSQL,
 		table, strings.Join(cols, ", "), placeholders(len(cols)+1),
 		strings.Join(keyNames(r), ", "), strings.Join(sets, ", "),
 		version, table, version, version, table, version)

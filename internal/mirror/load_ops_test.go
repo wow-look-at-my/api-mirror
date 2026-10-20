@@ -12,21 +12,12 @@ import (
 )
 
 // The operational half of the grammar. Each of these declarations turns a
-// mechanism on. Each rejection here is a mistake that would otherwise be
-// discovered from behaviour rather than from a load failure.
+// mechanism on.
 
 // opsSpec wraps ops declarations around a minimal working mirror.
 func opsSpec(t *testing.T, body string) *Spec {
 	t.Helper()
-	src := `<mirror name="ops">
-	<upstream base="https://api.example.com"/>
-	<resource name="thing" ttl="1h">
-		<key name="id" from="id"/>
-		<field name="title" type="text">title</field>
-		<reveal><public>true</public></reveal>
-	</resource>
-	<route method="GET" path="/things/{id}" resource="thing"/>
-` + body + `
+	src := opsSpecHeadXML + body + `
 </mirror>`
 	spec, err := ParseSpec([]byte(src))
 	require.NoError(t, err)
@@ -35,9 +26,7 @@ func opsSpec(t *testing.T, body string) *Spec {
 
 func TestLoadDashboardAndItsToken(t *testing.T) {
 	t.Setenv("MIRROR_TOKEN", "from-the-environment")
-	spec := opsSpec(t, `	<dashboard path="/_ops" title="Ops">
-		<token><value name="env.MIRROR_TOKEN"/></token>
-	</dashboard>`)
+	spec := opsSpec(t, opsDashboardXML)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, "/_ops", spec.Dashboard.Path)
 	assert.Equal(t, "Ops", spec.Dashboard.Title)
@@ -50,18 +39,7 @@ func TestLoadDashboardAndItsToken(t *testing.T) {
 }
 
 func TestLoadRateLimitHeadersAndDebounce(t *testing.T) {
-	src := `<mirror name="ops">
-	<upstream base="https://api.example.com" debounce="5s" retry-after="Retry-After">
-		<ratelimit limit="X-RateLimit-Limit" remaining="X-RateLimit-Remaining"
-			used="X-RateLimit-Used" reset="X-RateLimit-Reset" resource="X-RateLimit-Resource"/>
-	</upstream>
-	<resource name="thing" ttl="1h">
-		<key name="id" from="id"/>
-		<field name="title" type="text">title</field>
-		<reveal><public>true</public></reveal>
-	</resource>
-	<route method="GET" path="/things/{id}" resource="thing"/>
-</mirror>`
+	src := opsRateLimitXML
 	spec, err := ParseSpec([]byte(src))
 	require.NoError(t, err)
 	require.NoError(t, spec.validate())
@@ -72,15 +50,7 @@ func TestLoadRateLimitHeadersAndDebounce(t *testing.T) {
 }
 
 func TestDebounceLongerThanTheCapFailsAtLoad(t *testing.T) {
-	src := strings.Replace(`<mirror name="ops">
-	<upstream base="https://api.example.com" debounce="5m"/>
-	<resource name="thing" ttl="1h">
-		<key name="id" from="id"/>
-		<field name="title" type="text">title</field>
-		<reveal><public>true</public></reveal>
-	</resource>
-	<route method="GET" path="/things/{id}" resource="thing"/>
-</mirror>`, "\n", "\n", 1)
+	src := strings.Replace(opsDebounceXML, "\n", "\n", 1)
 	spec, err := ParseSpec([]byte(src))
 	require.NoError(t, err)
 	err = spec.validate()
@@ -89,10 +59,7 @@ func TestDebounceLongerThanTheCapFailsAtLoad(t *testing.T) {
 }
 
 func TestLoadCORS(t *testing.T) {
-	spec := opsSpec(t, `	<cors max-age="10m">
-		<origin>https://viewer.example</origin>
-		<expose>X-Total-Count</expose>
-	</cors>`)
+	spec := opsSpec(t, opsCORSXML)
 	require.NoError(t, spec.validate())
 	require.NotNil(t, spec.CORS)
 	assert.Equal(t, []string{"https://viewer.example"}, spec.CORS.Origins)
@@ -109,30 +76,21 @@ func TestCORSWithNoOriginIsRejected(t *testing.T) {
 }
 
 func TestLoadRefreshAndItsKinds(t *testing.T) {
-	spec := opsSpec(t, `	<refresh interval="6h">
-		<kind>thing</kind>
-	</refresh>`)
+	spec := opsSpec(t, opsRefreshXML)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, 6*time.Hour, spec.Refresh.Interval)
 	assert.Equal(t, []string{"thing"}, spec.Refresh.Kinds)
 }
 
 func TestRefreshNamingAKindNoRouteServesIsRejected(t *testing.T) {
-	spec := opsSpec(t, `	<refresh interval="6h">
-		<kind>nothing-serves-this</kind>
-	</refresh>`)
+	spec := opsSpec(t, opsRefreshUnknownKindXML)
 	err := spec.validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nothing-serves-this")
 }
 
 func TestLoadReplay(t *testing.T) {
-	spec := opsSpec(t, `	<replay interval="5m" method="POST" lookback="24h" max="25">
-		<list>/app/hook/deliveries?status=failure</list>
-		<redeliver>/app/hook/deliveries/<value name="delivery.id"/>/attempts</redeliver>
-		<id>id</id>
-		<at>delivered_at</at>
-	</replay>`)
+	spec := opsSpec(t, opsReplayXML)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, 5*time.Minute, spec.Replay.Interval)
 	assert.Equal(t, 25, spec.Replay.Max)
@@ -141,20 +99,14 @@ func TestLoadReplay(t *testing.T) {
 }
 
 func TestReplayWithNothingToAskBackIsRejected(t *testing.T) {
-	spec := opsSpec(t, `	<replay interval="5m">
-		<list>/deliveries</list>
-		<id>id</id>
-	</replay>`)
+	spec := opsSpec(t, opsReplayNoRedeliverXML)
 	err := spec.validate()
 	require.Error(t, err, "listing failures it cannot ask back is not recovery")
 	assert.Contains(t, err.Error(), "redeliver")
 }
 
 func TestReplayWithNoIdIsRejected(t *testing.T) {
-	spec := opsSpec(t, `	<replay interval="5m">
-		<list>/deliveries</list>
-		<redeliver>/deliveries/x</redeliver>
-	</replay>`)
+	spec := opsSpec(t, opsReplayNoIDXML)
 	err := spec.validate()
 	require.Error(t, err, "without an id, every cycle asks for all of them again")
 	assert.Contains(t, err.Error(), "<id>")
@@ -168,15 +120,7 @@ func TestLoadNotifyNeedsEventsToAnnounce(t *testing.T) {
 }
 
 func TestLoadNotifyAlongsideEvents(t *testing.T) {
-	spec := opsSpec(t, `	<notify path="/_mirror/subs" db="subs.db" retries="2"/>
-	<events path="/hook" signature-header="X-Hub-Signature-256" type-header="X-Event">
-		<secret>shh</secret>
-		<event type="thing.changed" resource="thing" clock="updated_at">
-			<subject>thing:<value name="payload.id"/></subject>
-			<key field="id">id</key>
-			<apply><set field="title">title</set></apply>
-		</event>
-	</events>`)
+	spec := opsSpec(t, opsNotifyEventsXML)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, "subs.db", spec.Notify.DB)
 	assert.Equal(t, 2, spec.Notify.Retries)
