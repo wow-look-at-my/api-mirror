@@ -112,7 +112,6 @@ func NewEngine(spec *Spec, store *Store, tel *Telemetry) (*Engine, error) {
 		if err != nil {
 			return nil, err
 		}
-		e.notify.gate = e.visibleTo
 		e.notify.store, e.notify.reveal = store, e.reveal
 	}
 	e.refresh = NewRefresher(e)

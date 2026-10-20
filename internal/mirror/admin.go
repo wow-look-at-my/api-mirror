@@ -145,9 +145,15 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		s, ok := a.sessionFrom(r)
 		if !ok {
-			if a.signIn != nil && r.Method == http.MethodGet && (path == a.prefix || path == a.prefix+"/") {
-				http.Redirect(w, r, a.prefix+"/auth/login", http.StatusFound)
-				return
+			if r.Method == http.MethodGet && (path == a.prefix || path == a.prefix+"/") {
+				if a.login != nil {
+					http.Redirect(w, r, a.prefix+"/login", http.StatusFound)
+					return
+				}
+				if a.signIn != nil {
+					http.Redirect(w, r, a.prefix+"/auth/login", http.StatusFound)
+					return
+				}
 			}
 			// A mistyped token gets the same answer as a probe for the prefix.
 			http.Error(w, "unauthorized", http.StatusUnauthorized)

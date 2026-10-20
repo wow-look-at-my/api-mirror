@@ -44,7 +44,7 @@ func TestSelfService_ACallerManagesOnlyTheirOwnSubscriptions(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, asCaller(t, e, http.MethodDelete, path+"/"+sub.ID, "token bob", "").Code,
 		"another caller's id reads as absent")
-	assert.Equal(t, http.StatusNoContent, asCaller(t, e, http.MethodPatch, path+"/"+sub.ID, "token alice", `{"active":true}`).Code)
+	assert.Equal(t, http.StatusOK, asCaller(t, e, http.MethodPatch, path+"/"+sub.ID, "token alice", `{"active":true}`).Code)
 	assert.Equal(t, http.StatusNoContent, asCaller(t, e, http.MethodDelete, path+"/"+sub.ID, "token alice", "").Code)
 
 	assert.Equal(t, http.StatusUnauthorized, asCaller(t, e, http.MethodGet, path, "", "").Code,

@@ -29,8 +29,6 @@ type Notifier struct {
 	subs   *Subscriptions
 	client *http.Client
 	tel    *Telemetry
-	// gate decides whether a subscriber's principal may hear about a delivery.
-	gate func(ctx context.Context, principal string, d *Delivery) bool
 	// store and reveal gate each notification on the subscriber's access.
 	store  *Store
 	reveal *Revealer
@@ -140,16 +138,7 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 		logf("notify: list subscriptions: %v", err)
 		return
 	}
-	subs := matching[:0]
-	for _, s := range matching {
-		if s.Principal == operatorPrincipal || (n.gate != nil && n.gate(ctx, s.Principal, d)) {
-			subs = append(subs, s)
-			continue
-		}
-		n.mu.Lock()
-		n.gated++
-		n.mu.Unlock()
-	}
+	subs := matching
 	if len(subs) == 0 {
 		return
 	}
@@ -170,6 +159,9 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 			continue
 		}
 		if !n.visible(ctx, s.Principal, d) {
+			n.mu.Lock()
+			n.gated++
+			n.mu.Unlock()
 			continue
 		}
 		n.wg.Add(1)

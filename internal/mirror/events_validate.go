@@ -22,6 +22,31 @@ func (e *Events) validate(resources map[string]*Resource) error {
 	if e.TypeHeader == "" {
 		return fmt.Errorf("<events> needs a type header")
 	}
+	// A type declared more than once for one resource has to be told apart by
+	// its when=, or the later declaration silently decides the row.
+	type repeat struct {
+		typ, res     string
+		declarations int
+		bare         int
+	}
+	repeats := map[string]*repeat{}
+	for _, ev := range e.List {
+		pair := ev.Type + "\x00" + ev.Resource
+		r := repeats[pair]
+		if r == nil {
+			r = &repeat{typ: ev.Type, res: ev.Resource}
+			repeats[pair] = r
+		}
+		r.declarations++
+		if ev.When == "" {
+			r.bare++
+		}
+	}
+	for _, r := range repeats {
+		if r.declarations > 1 && r.bare > 0 {
+			return fmt.Errorf("event %q is declared %d times for resource %q, which needs when= on every declaration", r.typ, r.declarations, r.res)
+		}
+	}
 	// A type is declared per resource it moves.
 	seen := set.New[string]()
 	for _, ev := range e.List {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 // UnstoredAnswer is an upstream answer that the route does not keep.
@@ -34,20 +35,16 @@ func refusesAccess(status int) bool {
 func (e *Engine) relayUnstored(ctx context.Context, w *recorder, m *match, res *Resource, principal string, u *UnstoredAnswer) {
 	a := u.Answer
 	if refusesAccess(a.Status) && !res.Reveal.Credential && res.Reveal.DenyTTL > 0 {
-		e.reveal.remember(ctx, principal, res.Name, keyString(res, m.key), a.Status, e.reveal.now().Add(res.Reveal.DenyTTL))
+		// The denial is remembered under the proof the reveal ladder asks for.
+		scope, k, err := e.reveal.proofOf(res, m.key)
+		if err != nil {
+			logf("relay %s: %v", u.Path, err)
+		} else {
+			e.reveal.remember(ctx, principal, scope, k, a.Status, e.reveal.now().Add(res.Reveal.DenyTTL))
+		}
 		w.note(DispDenied, "", "", "fetch-refused")
 	} else {
-		w.note(DispPassthrough, "", "", string(PassResponse))
-		w.Header().Set(e.hdr.Reason, string(PassResponse))
+		w.note(DispRelayed, "", "", strconv.Itoa(a.Status))
 	}
-	for _, h := range []string{"Content-Type", "Location"} {
-		if v := a.Header.Get(h); v != "" {
-			w.Header().Set(h, v)
-		}
-	}
-	w.Header().Set(e.hdr.Cache, "passthrough")
-	w.WriteHeader(a.Status)
-	if _, err := w.Write(a.Body); err != nil {
-		logf("relay %s: %v", u.Path, err)
-	}
+	e.relayAnswer(w, a)
 }

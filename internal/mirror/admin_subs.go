@@ -11,6 +11,9 @@ import (
 // maxSubscriptionBody caps a registration. Nothing legitimate here is large.
 const maxSubscriptionBody = 64 << 10
 
+// operatorPrincipal owns the subscriptions made through the dashboard.
+const operatorPrincipal = "operator"
+
 // subscriptionRequest is what a consumer posts to register.
 type subscriptionRequest struct {
 	URL    string   `json:"url"`

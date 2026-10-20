@@ -7,7 +7,7 @@ import "net/http"
 // retry headers to learn when it may ask again.
 func (e *Engine) relayedHeaders() []string {
 	rate := e.spec.Upstream.Rate
-	names := []string{"Content-Type", e.spec.Upstream.RetryAfter, "Retry-After",
+	names := []string{"Content-Type", "Location", e.spec.Upstream.RetryAfter, "Retry-After",
 		rate.Limit, rate.Remaining, rate.Used, rate.Reset, rate.Resource}
 	out := names[:0]
 	for _, n := range names {

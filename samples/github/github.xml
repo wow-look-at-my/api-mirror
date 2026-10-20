@@ -137,8 +137,6 @@
 		<key name="owner" from="owner.login" fold="true"/>
 		<key name="name" from="name" fold="true"/>
 		<!-- The keys fold for lookup; these answer the spelling GitHub states. -->
-		<field name="owner_login" type="text">owner.login</field>
-		<field name="name_given" type="text">name</field>
 		<field name="repo_id" type="int">id</field>
 		<field name="full_name" type="text">full_name</field>
 		<field name="visibility" type="text">visibility</field>
@@ -160,8 +158,6 @@
 		<key name="owner" from="base.repo.owner.login" fold="true"/>
 		<key name="repo" from="base.repo.name" fold="true"/>
 		<!-- The keys fold for lookup; these answer the spelling GitHub states. -->
-		<field name="owner_login" type="text">base.repo.owner.login</field>
-		<field name="repo_given" type="text">base.repo.name</field>
 		<key name="number" from="number" type="int"/>
 		<field name="title" type="text">title</field>
 		<field name="state" type="text">state</field>
@@ -1151,11 +1147,8 @@
 			<apply>
 				<set field="owner">repository.owner.login</set>
 				<set field="name">repository.name</set>
-				<set field="owner_login">repository.owner.login</set>
-				<set field="name_given">repository.name</set>
 				<set field="full_name">repository.full_name</set>
 				<set field="repo_id">repository.id</set>
-				<set field="full_name">repository.full_name</set>
 				<set field="visibility">repository.visibility</set>
 				<set field="private">repository.private</set>
 				<set field="default_branch">repository.default_branch</set>
@@ -1358,8 +1351,6 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">number</set>
-				<set field="owner_login">repository.owner.login</set>
-				<set field="repo_given">repository.name</set>
 				<set field="title">pull_request.title</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
@@ -1445,8 +1436,6 @@
 				<set field="owner">repository.owner.login</set>
 				<set field="repo">repository.name</set>
 				<set field="number">pull_request.number</set>
-				<set field="owner_login">repository.owner.login</set>
-				<set field="repo_given">repository.name</set>
 				<set field="state">pull_request.state</set>
 				<set field="draft">pull_request.draft</set>
 				<set field="head_sha">pull_request.head.sha</set>
