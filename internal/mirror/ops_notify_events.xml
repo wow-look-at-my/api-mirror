@@ -1,3 +1,11 @@
+<mirror name="ops">
+	<upstream base="https://api.example.com"/>
+	<resource name="thing" ttl="1h">
+		<key name="id" from="id"/>
+		<field name="title" type="text">title</field>
+		<reveal><public>true</public></reveal>
+	</resource>
+	<route method="GET" path="/things/{id}" resource="thing"/>
 	<notify path="/_mirror/subs" db="subs.db" retries="2"/>
 	<events path="/hook" signature-header="X-Hub-Signature-256" type-header="X-Event">
 		<secret>shh</secret>
@@ -7,3 +15,4 @@
 			<apply><set field="title">title</set></apply>
 		</event>
 	</events>
+</mirror>

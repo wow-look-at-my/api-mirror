@@ -16,8 +16,8 @@ var credentialTestSpecXML string
 //go:embed gsm_insert.sql
 var gsmInsertSQL string
 
-//go:embed ops_spec_head.xml
-var opsSpecHeadXML string
+//go:embed ops_spec.xml
+var opsSpecDoc string
 
 //go:embed ops_dashboard.xml
 var opsDashboardXML string

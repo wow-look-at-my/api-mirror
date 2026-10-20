@@ -17,8 +17,7 @@ import (
 // opsSpec wraps ops declarations around a minimal working mirror.
 func opsSpec(t *testing.T, body string) *Spec {
 	t.Helper()
-	src := opsSpecHeadXML + body + `
-</mirror>`
+	src := strings.Replace(opsSpecDoc, "<!--BODY-->", body, 1)
 	spec, err := ParseSpec([]byte(src))
 	require.NoError(t, err)
 	return spec
@@ -120,7 +119,8 @@ func TestLoadNotifyNeedsEventsToAnnounce(t *testing.T) {
 }
 
 func TestLoadNotifyAlongsideEvents(t *testing.T) {
-	spec := opsSpec(t, opsNotifyEventsXML)
+	spec, err := ParseSpec([]byte(opsNotifyEventsXML))
+	require.NoError(t, err)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, "subs.db", spec.Notify.DB)
 	assert.Equal(t, 2, spec.Notify.Retries)

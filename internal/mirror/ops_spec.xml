@@ -6,3 +6,5 @@
 		<reveal><public>true</public></reveal>
 	</resource>
 	<route method="GET" path="/things/{id}" resource="thing"/>
+<!--BODY-->
+</mirror>
