@@ -2,7 +2,6 @@ package mirror
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,15 +26,6 @@ func withDiff(s *Spec) {
 		Method: "GET", Path: "/widgets/{id}", Resource: "widget_diff",
 		Accept: []string{diffMedia}, Absorb: []int{406},
 	})
-}
-
-func getAccept(t *testing.T, e *Engine, path, accept string) *httptest.ResponseRecorder {
-	t.Helper()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
-	req.Header.Set("Accept", accept)
-	e.ServeHTTP(rec, req)
-	return rec
 }
 
 func TestRaw_ServesTheBodyByteForByteInItsMediaType(t *testing.T) {
