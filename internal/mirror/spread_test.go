@@ -23,7 +23,7 @@ func withIdentity(s *Spec) {
 		TTL:    time.Hour,
 		Keys:   []Key{{Name: "id"}},
 		Fields: []Field{{Name: "title", Type: FieldText, From: "title"}},
-		Reveal: &Reveal{GrantTTL: time.Hour},
+		Reveal: &Reveal{Public: "false", GrantTTL: time.Hour},
 	})
 }
 

@@ -118,7 +118,10 @@
 		rides every upstream call, so GitHub still decides each read.
 	-->
 	<identity header="X-Mirror-Identity" method="GET" path="/app" scheme="Bearer"
-		id="id" name="slug" prefix="app" ttl="10m"/>
+		id="id" name="slug" prefix="app" ttl="10m">
+		<assertion header="X-Mirror-Identity" as="Authorization" scheme="Bearer"
+			path="/app" principal="app:{{ .doc.id }}" name="slug"/>
+	</identity>
 
 	<!--
 		A user's token resolves to user:<id>, so a user keeps their grants when
