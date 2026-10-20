@@ -185,8 +185,7 @@ func rebuild(r *Resource, row Row) (map[string]any, error) {
 	if r.whole() {
 		return nil, fmt.Errorf("rebuild %s: a document resource replays its stored document", r.Name)
 	}
-	// Each value goes back where the upstream document had it, so a column
-	// absorbed from owner.login is answered as {"owner":{"login":...}}.
+	// Each value goes back where the upstream document had it.
 	out := make(map[string]any, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
 		if !k.Served() {

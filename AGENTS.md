@@ -2,14 +2,14 @@
 
 One XML spec in, one caching mirror of an API out. The engine holds every mechanism. The spec holds only the vocabulary of the API being mirrored. `README.md` is the human front page, `docs/design.md` is the grammar and the engine/spec split.
 
-The sibling project `api-cli` turns the same kind of file into a CLI. The spec language itself lives in `wow-look-at-my/api-dsl` and is shared by both. Never fork it locally.
+The sibling project `api-cli` turns the same kind of file into a CLI. Both shares the spec language itself lives in `wow-look-at-my/api-dsl` and. Never fork it locally.
 
 ## File map
 
 The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry point and holds nothing else. Paths below are inside `internal/mirror` unless stated.
 
 - `run.go` — `Run`: flags, `--check`, the server, the signal, the drain order.
-- `config.go` — the Spec model: Resource, Key, Field, Route, QueryParam, Reveal, Events, Event, Set. Types only.
+- `config.go` — the Spec model: Resource, Key, Field, Route, QueryParam, Show, Events, Event, Set. Types only.
 - `validate.go` — what a spec must mean before it is served. Every check here exists because its absence is a silent runtime failure.
 - `load.go` / `load_events.go` — XML to Spec. Builders check SHAPE. `validate` checks MEANING.
 - `dsl.go` — the boundary with api-dsl. Below it is the language, above it is what a mirror means.
@@ -28,7 +28,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `<rewrite>` — a client's own spelling of a path, canonicalised in `dispatch` before any gate sees it. `gh` needs one, because it puts REST under `/api/v3` on a non-github.com host. It grants nothing.
 - `relay.go` — `<relay>`: an uncached forward to a fixed URL off the upstream base, for login endpoints on another host that send no CORS headers. It forwards no bearer, because the body is the credential there.
 - `body-key` on a `<route>` — the resource key the REQUEST body fills, for a query language that posts every question to one path. Naming it also makes the body travel: the fetch replays it upstream. Almost always credential-keyed, because such an API filters by the caller's token.
-- `engine.go` / `fetch.go` — serving a declared route: reveal, ensure fresh, read, rebuild. And the fetch that absorbs.
+- `engine.go` / `fetch.go` — serving a declared route: show, ensure fresh, read, rebuild. And the fetch that absorbs.
 - `absorb.go` — document to columns and back, the drop patterns, the JSON marshaller.
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe. `AllowStored` is the probe-free half, for a decision with no caller credential.
 - `identity.go` — who asks: `<identity>` (a verified assertion header, as `prefix:id`), `<whoami>` (a credential's owner), else the credential fingerprint. A refused assertion is a 401, not a fallback.
@@ -64,7 +64,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **A write touches only the fields its event names.** A payload that does not carry a field cannot blank it. `null="allow"` is the explicit opt-in where absent and empty differ.
 - **Order before you write.** Every event declares a subject and a clock, or declares itself unordered out loud. A watermark refuses a view older than one applied. Equal times apply.
 - **An event says where the DELIVERY carries its key.** A resource's `from=` names a path in the upstream document, and a delivery wraps that document in an envelope. As a result, the two are not the same path. `<key field=>` states it, a `<set>` that writes a key column counts, and `validate` refuses an event that names neither. A write needs the whole key. An invalidate may name a prefix and deletes everything beneath it, because a payload names a commit rather than one page of a paginated answer.
-- **A held delivery is counted by its outcome.** With a reorder window the response goes out before the apply. As a result, the tally comes from the applier, not from that answer. Counting the answer reports every failure as accepted.
+- **Its outcome counts a held delivery.** With a reorder window the response goes out before the apply. As a result, the tally comes from the applier, not from that answer. Counting the answer reports every failure as accepted.
 - **A list only deletes when it says it is complete.** `complete="true"` replace-syncs the set under the parent key. Without it an item that vanished upstream keeps being served, because one page of a paginated list is not the set.
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
 - **An answer the route does not store belongs to the caller.** It is relayed to them and earns no backoff that another caller reads.
@@ -74,7 +74,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
 - **A rebuilt answer is a subset of the upstream's.** Each field, and each key with `from=`, returns to its source path with its upstream type. A folded key serves its as-sent spelling. One source path is declared once. `dats/upstream-shape.dats` checks the answers against the upstream with `api-mirror-delta`.
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
-- **The fingerprint is derived, not declared.** It hashes the schema the spec produces. A resource change therefore always nukes, and nothing is kept in step by hand.
+- **The fingerprint is derived, not declared.** It hashes the schema the spec produces. A resource change therefore always nukes, and hand keeps nothing.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
 - **Every request this service sends is on the chart.** The reporting is in the TRANSPORT (`observedClient`), not at a call site: a call site only covers what somebody remembered to instrument. The passthrough proxy is exactly what gets forgotten. A new outbound client is built through `observedClient` or it is a hole.
 - **The operator surface exists whether or not a spec declares one.** A spec chooses where it lives and what gates it. With no `<token>` the engine mints one per process and logs the URL carrying it: on by default, not open by default.

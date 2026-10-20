@@ -91,14 +91,6 @@ type Answer struct {
 
 // Call sends request to the upstream, carrying the caller's own forwarded
 // headers so the answer is the THAT caller is entitled to.
-//
-// A non-2xx is a real answer, not an error: a is what the upstream knows,
-// and the route decides whether that is worth storing. Only a transport failure
-// returns an error.
-//
-// A nil forward is the mirror asking on its own behalf, and only that call
-// carries the background headers. A caller's request, even a single
-// carrying no headers at all, is sent as that caller and nobody else.
 func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header, reqBody []byte) (*Answer, error) {
 	return u.CallWith(ctx, method, path, vars, forward, nil, reqBody)
 }

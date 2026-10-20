@@ -1,8 +1,8 @@
 // The dashboard.
 //
 // Plain ES modules, no build step and no dependencies. The page is served from
-// the binary, so a toolchain between the source and what ships would be a
-// single more thing that can be stale in a way nothing checks.
+// the binary. A toolchain between the source and what ships would be a single
+// more thing that can be stale in a way nothing checks.
 
 const token = new URLSearchParams(location.search).get('token') || '';
 
@@ -108,7 +108,7 @@ const PILL_VARIANT = {
 
 function pill(text) {
 	const word = String(text).toLowerCase();
-	// A danger chip is not any of the shipped variants, so it borrows the plain
+	// A danger chip is not any of the shipped variants. It borrows the plain
 	// key chip and takes its colour from a token here rather than from a
 	// variant the library does not have.
 	const variant = PILL_VARIANT[word] || 'key';
@@ -232,7 +232,7 @@ views.passthrough = async () => {
 	return out;
 };
 
-// The page keeps the frames it has seen and asks only for newer ones, so a
+// The page keeps the frames it has seen and asks only for newer ones. A
 // poll costs what arrived since the last, never the whole ring. A restarted
 // server hands back a cursor below ours, which resets the copy.
 const ring = { seq: 0, frames: [] };
@@ -501,9 +501,9 @@ const checkResults = new Map();
 // one that asks the upstream whether the stored answers are still right. This
 // is the only way a delivery that never arrived ever surfaces.
 function checkSection(kind) {
-	// The page re-reads on a timer, which rebuilds this whole panel. A check
-	// takes a single upstream call per key, so its result has to outlive that:
-	// it is held per kind and redrawn, or a long check finishes into a discarded DOM.
+	// The page re-reads on a timer, which rebuilds this whole panel. A check takes a
+	// single upstream call per key, so its result has to outlive that. It is held per
+	// kind and redrawn, or a long check finishes into a discarded DOM.
 	const held = checkResults.get(kind);
 	const results = el('div', { class: 'panel scroll' },
 		held ? checkTable(held.lines) : el('div', { class: 'empty' }, 'Not run. The check asks the upstream once per stored key.'));

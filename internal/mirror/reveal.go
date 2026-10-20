@@ -104,10 +104,7 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 	return rv.probe(ctx, principal, res, key, scope, k, forward)
 }
 
-// proofScope names grants and denials earned by a probe. They are keyed by the
-// probe's own path, so every resource that proves access by asking the same
-// question shares a single answer: reading a repository's pulls, files and
-// statuses costs a single probe, not a single per row.
+// proofScope names grants and denials earned by a probe.
 const proofScope = "probe"
 
 func (rv *Revealer) proofOf(res *Resource, key map[string]string) (scope, k string, err error) {
@@ -123,8 +120,8 @@ func (rv *Revealer) proofOf(res *Resource, key map[string]string) (scope, k stri
 
 // Visible reports, without asking the upstream, whether a principal may see
 // this key: a public row, or live proof. Anything short of that is no, because
-// a fan-out has no caller credential to probe with, and a private row's news
-// must never reach someone who has not proven they may read it.
+// a fan-out has no caller credential to probe with. A private row's news must
+// never reach someone who has not proven they may read it.
 func (rv *Revealer) Visible(ctx context.Context, principal string, res *Resource, key map[string]string) bool {
 	if res.Reveal == nil || res.Reveal.Credential || principal == "" {
 		return false
@@ -194,10 +191,10 @@ func (rv *Revealer) public(ctx context.Context, res *Resource, key map[string]st
 	return isTruthy(out), nil
 }
 
-// probedPublic answers a probe from what is already stored. When the probe
-// asks a path a route serves from a resource with its own public predicate,
-// and the stored row there is public, everything proven by that probe is
-// public too: a public repository's pulls need no probe.
+// probedPublic answers a probe from what is already stored. And the stored
+// row there is public, everything proven by that probe is public too. This
+// holds when the probe asks a path a route serves from a resource with its
+// own public predicate. A public repository's pulls need no probe.
 func (rv *Revealer) probedPublic(ctx context.Context, res *Resource, key map[string]string) (bool, error) {
 	rule := res.Reveal.Probe
 	if rule == nil || rv.store.spec == nil {

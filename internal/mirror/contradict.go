@@ -11,12 +11,7 @@ import (
 )
 
 // Contradiction names a column of ANOTHER resource that states this
-// resource's value too, arriving on a different delivery. A stored row that a
-// later row of that resource contradicts is refetched instead of served.
-//
-// It exists for the answer a lost delivery ruins worst: a branch tip. An open
-// pull request names its base sha, and a pull arrives on its own deliveries, so
-// a lost push leaves both rows disagreeing and the mirror able to see it.
+// resource's value too, arriving on a different delivery.
 type Contradiction struct {
 	// Resource is the other resource, Field its column holding the value.
 	Resource string
@@ -25,8 +20,7 @@ type Contradiction struct {
 	Against string
 	// On joins both: each of this resource's keys to the other's column.
 	On []ContradictionJoin
-	// Only narrows the other resource's rows to those whose column equals a
-	// constant, such as an open state.
+	// Only narrows the other resource's rows to those whose column equals a constant, such as an open state.
 	Only []ContradictionOnly
 }
 
@@ -67,7 +61,7 @@ func buildContradiction(n *node) (*Contradiction, error) {
 }
 
 // validate checks every name the rule uses is a real column, and that the join
-// covers every key: a partial join compares against rows about something else.
+// covers every key. A partial join compares against rows about something else.
 func (c *Contradiction) validate(r *Resource, byName map[string]*Resource) error {
 	other, ok := byName[c.Resource]
 	if !ok {
@@ -103,8 +97,7 @@ func (c *Contradiction) validate(r *Resource, byName map[string]*Resource) error
 }
 
 // settledValues remembers, per stored key, the contradicting value a refetch
-// already answered. A pull's base sha legitimately lags its branch, so the
-// same lagging value absorbed again is not new evidence.
+// already answered.
 type settledValues struct {
 	mu   sync.Mutex
 	seen map[string]string
@@ -126,7 +119,7 @@ func (s *settledValues) settle(key, value string) {
 }
 
 // contradicted reports a value another resource states for this key that
-// disagrees with the stored row, came from a write after it, and has not
+// disagrees with the stored row, came from a write after it. And has not
 // already been settled by a refetch. Empty means serve the row as stored.
 func (s *Store) contradicted(ctx context.Context, res *Resource, key map[string]string, settled *settledValues) (string, error) {
 	c := res.Contradiction
@@ -175,8 +168,8 @@ func (s *Store) contradicted(ctx context.Context, res *Resource, key map[string]
 
 // refetchIfContradicted drops the freshness of a stored row another resource
 // contradicts, so the read that follows asks the upstream. A failure to check
-// serves the row as stored: the check is a repair, and the row is what the
-// mirror would have served without it.
+// serves the row as stored: the check is a repair. The row is what the mirror
+// would have served without it.
 func (e *Engine) refetchIfContradicted(ctx context.Context, res *Resource, key map[string]string) {
 	if res.Contradiction == nil {
 		return

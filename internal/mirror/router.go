@@ -100,7 +100,7 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 				return nil, PassQuery, fmt.Errorf("route %s: the request body is over the %d byte cap", rt.Path, maxBodyBytes)
 			}
 			body = b
-			// The passthrough needs the body the resolve just consumed.
+			// The passthrough needs the body the resolve consumed.
 			r.Body = io.NopCloser(bytes.NewReader(b))
 			if rt.Bypass != nil && rt.Bypass.Match(b) {
 				return nil, PassBypass, nil

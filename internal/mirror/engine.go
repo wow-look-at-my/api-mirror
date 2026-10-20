@@ -385,8 +385,8 @@ func (e *Engine) forwardAndPurge(w *recorder, r *http.Request, purges []*Purge, 
 }
 
 // purgeKey builds the row key a write addresses. A path parameter the
-// resource does not key on is dropped, so a write on the single item can
-// still name the listing it belongs to, which keys on fewer columns.
+// resource does not key on is dropped. A write on the item can still name
+// the listing it belongs to, which keys on fewer columns.
 func purgeKey(res *Resource, params map[string]string, r *http.Request) (map[string]string, bool) {
 	key := make(map[string]string, len(res.Keys))
 	for _, k := range res.Keys {

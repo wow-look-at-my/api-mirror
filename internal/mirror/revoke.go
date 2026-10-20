@@ -8,7 +8,7 @@ import (
 )
 
 // revokeRefused drops every stored answer that handed out the credential the
-// upstream just refused.
+// upstream refused.
 //
 // A rate-limit refusal says nothing about the credential, so it revokes
 // nothing.

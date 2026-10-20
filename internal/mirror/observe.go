@@ -41,8 +41,7 @@ type Exchange struct {
 	Principal string
 	// Detail is the lane's own vocabulary. Display text, never a key.
 	Detail string
-	// Group splits a lane into the rows the chart draws: a resource, an event
-	// type, or a route shape.
+	// Group splits a lane into the rows the chart draws: a resource, an event type, or a route shape.
 	Group string
 	Err   error
 }

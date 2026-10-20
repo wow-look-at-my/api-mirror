@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// errStoredIsNewer is a write refused because the stored row carries a later
-// version than the write does.
+// errStoredIsNewer is a write refused because the stored row carries a later version than the write does.
 var errStoredIsNewer = errors.New("the stored row is newer than this write")
 
 func versionFields(r *Resource) []Field {

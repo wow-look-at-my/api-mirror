@@ -22,9 +22,7 @@ import (
 )
 
 // App is the mirror signing for itself: a JWT from a private key, and the
-// per-owner tokens that JWT mints. The mirror's own calls (refresh, check,
-// replay) carry these instead of a static background token, because an App's
-// reach is per installation and its tokens expire within the hour.
+// per-owner tokens that JWT mints.
 type App struct {
 	// ID and Key are template source; KeyFile names a PEM file and wins.
 	ID, Key, KeyFile string
@@ -126,8 +124,7 @@ func appKeyText(rule *App, vars map[string]any) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("<app> key: %w", err)
 	}
-	// An environment variable cannot hold a newline in every deployer, so
-	// an escaped a single is a newline.
+	// An environment variable cannot hold a newline in every deployer, so an escaped a single is a newline.
 	return strings.ReplaceAll(text, `\n`, "\n"), nil
 }
 
@@ -183,8 +180,8 @@ func withAppCall(ctx context.Context) context.Context {
 }
 
 // authorization is the credential the mirror's own call carries: the JWT for
-// an App-level call, an owner's installation token for a call about that
-// owner, and nothing when the call names no owner.
+// an App-level call, an owner's installation token. This holds for a call
+// about that owner, and nothing when the call names no owner.
 func (a *appAuth) authorization(ctx context.Context) (string, bool, error) {
 	if v, _ := ctx.Value(appCallKey{}).(bool); v {
 		jwt, err := a.jwt()

@@ -46,7 +46,7 @@ const checkKeyTimeout = 30 * time.Second
 // Check re-asks the upstream about every stored key of kind and reports where
 // the cache and the upstream disagree, using the mirror's own credential. A
 // non-empty scope checks only the keys whose components equal it, such as a
-// single owner's rows, so a check of a large kind can be run a slice at a time.
+// single owner's rows. A check of a large kind can be run a slice at a time.
 func (e *Engine) Check(ctx context.Context, kind string, scope map[string]string, repair bool, emit func(KeyCheck)) error {
 	keys, err := e.store.FreshnessByKind(ctx, kind)
 	if err != nil {

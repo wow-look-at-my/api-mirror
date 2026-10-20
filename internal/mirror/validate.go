@@ -427,8 +427,8 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if rt.Complete && res.whole() {
 		return fmt.Errorf("route %s: complete=\"true\" replace-syncs rows, and a document resource stores each page whole", rt.Path)
 	}
-	// A document resource stores a single answer per key, a list page
-	// included, so every route onto a single must name the whole key or pages share a row.
+	// A document resource stores a single answer per key. A list page included, so every
+	// route onto a single must name the whole key or pages share a row.
 	if res.Store == StoreRaw && (rt.List || len(rt.Accept) == 0) {
 		return fmt.Errorf("route %s: a raw resource answers one body in the media type of its first <accept>, so the route needs one and cannot be a list", rt.Path)
 	}
@@ -574,9 +574,7 @@ func (p *Purge) validate(resources map[string]*Resource) error {
 	if !ok {
 		return fmt.Errorf("purge %s names resource %q, which is not declared", p.Path, p.Resource)
 	}
-	// The path may name a PREFIX of the key, and the delete reaches everything
-	// beneath it. A gap is refused: a key named after a missing a single would
-	// widen the delete past what the path says.
+	// The path may name a PREFIX of the key, and the delete reaches everything beneath it.
 	params := pathParams(p.Path)
 	named, missing := 0, ""
 	for _, k := range res.Keys {

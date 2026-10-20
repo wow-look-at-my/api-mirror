@@ -11,13 +11,7 @@ import (
 	"time"
 )
 
-// Identity says how a caller's credential becomes a stable principal. A
-// principal gates what the reveal layer shows; it never partitions storage.
-//
-// The type itself is declared in config.go, where both branches' fields
-// meet: the rule-based shape (TTL, User, Assertion) the identities resolver
-// below reads, and the flat assertion shape (Header, Method, Path, Send,
-// Scheme, ID, Name, Prefix) the Identifier resolver further down reads.
+// Identity says how a caller's credential becomes a stable principal.
 
 // IdentityRule is a single upstream question whose answer names a principal.
 type IdentityRule struct {
@@ -31,8 +25,7 @@ type IdentityRule struct {
 	Path string
 	// Principal is template source over the answer, `.doc`.
 	Principal string
-	// Name is template source over the same answer naming the principal for
-	// a human. Display only, never a key.
+	// Name is template source over the same answer naming the principal for a human. Display only, never a key.
 	Name string
 }
 
@@ -163,8 +156,8 @@ func (id *identities) assert(ctx context.Context, rule *IdentityRule, claim stri
 }
 
 // user resolves a bearer through the upstream's "who am I". A credential the
-// upstream says is not a user keeps its fingerprint as its principal; a single
-// it rejects is refused; a single it cannot answer about right now fails this
+// upstream says is not a user keeps its fingerprint as its principal. A single
+// it rejects is refused. A single it cannot answer about right now fails this
 // request, because guessing a principal reveals another caller's grants.
 func (id *identities) user(ctx context.Context, rule *IdentityRule, auth string, h http.Header) (string, *identityRefusal) {
 	fp := fingerprint(auth)

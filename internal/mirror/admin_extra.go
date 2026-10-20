@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// gzipWriter compresses an admin answer. The data plane is never wrapped: its
-// header contract is pinned, and a streamed check must keep flushing.
+// gzipWriter compresses an admin answer.
 type gzipWriter struct {
 	http.ResponseWriter
 	zw *gzip.Writer

@@ -11,12 +11,11 @@ import (
 	"time"
 )
 
-// deliveryLogSize bounds the per-delivery log. It is a live view of the most
-// recent traffic, reset on restart, never an audit trail.
+// deliveryLogSize bounds the per-delivery log.
 const deliveryLogSize = 200
 
 // DeliveryRecord is a single line of the delivery log. An arrival is the
-// request the provider sent; an apply is a single handler's outcome for it,
+// request the provider sent. An apply is a single handler's outcome for it,
 // and a delivery the spec fans out has a single apply per resource it moves.
 type DeliveryRecord struct {
 	At          time.Time           `json:"at"`
@@ -64,9 +63,7 @@ func (l *deliveryLog) recent() ([]DeliveryRecord, int) {
 	return out, l.dropped
 }
 
-// orderingStats counts what the watermark and the reorder window did. A
-// distribution, not a boolean: a superseded count means little without the
-// lag it happened at.
+// orderingStats counts what the watermark and the reorder window did.
 type orderingStats struct {
 	mu         sync.Mutex
 	ordered    int
@@ -170,14 +167,13 @@ func actionOf(payload any) string {
 }
 
 // EventSubscriptions is the upstream's own statement of which event types it
-// sends this mirror. A delivery log can prove an event arrived, never that a
-// quiet type is unsubscribed, so the answer is asked for rather than inferred.
+// sends this mirror.
 type EventSubscriptions struct {
 	// Path is the upstream path answering the subscription, asked as the App.
 	Path string
 	// Field is the path into that answer holding the list of event types.
 	Field string
-	// Always names types the upstream sends whether or not they are listed.
+	// Always names types the upstream sends whether they are listed.
 	Always []string
 }
 
@@ -189,7 +185,7 @@ type MissingSubscription struct {
 
 // missingSubscriptions asks the upstream what it sends and reports every
 // declared type absent from the answer. It returns nil, never an empty list,
-// when the answer cannot be had: reporting everything missing on a failed
+// when the answer cannot be had. Reporting everything missing on a failed
 // call asserts a problem the mirror has no evidence for.
 func (e *Engine) missingSubscriptions(ctx context.Context) ([]MissingSubscription, error) {
 	rule := e.spec.Events.Subscriptions

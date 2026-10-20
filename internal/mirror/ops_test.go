@@ -315,10 +315,8 @@ func TestSubscriptionAPICreatesAndReturnsTheSecretOnce(t *testing.T) {
 	assert.Empty(t, listed[0].Secret, "the store never reads a secret back out to a listing")
 }
 
-// notifyEngine is an engine with subscriber notifications declared, backed by a
-// config database in a temp directory.
-// widgetDelivery is a delivery as ingest builds it: the spec's own event and a
-// payload carrying the key, which the fan-out's reveal gate reads.
+// notifyEngine is an engine with subscriber notifications declared, backed by
+// a config database in a temp directory.
 func widgetDelivery(e *Engine, subject string) *Delivery {
 	return &Delivery{
 		ID: "d1", Type: "widget.changed", Subject: subject,

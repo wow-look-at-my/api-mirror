@@ -21,8 +21,7 @@ type Telemetry struct {
 	seen map[string]time.Time
 }
 
-// seenMax bounds the last-seen map. Past it, the oldest half is dropped: a
-// principal quiet that long is the least useful line on the page.
+// seenMax bounds the last-seen map.
 const seenMax = 10000
 
 // Seen records a principal's request.

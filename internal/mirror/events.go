@@ -39,11 +39,11 @@ type Ingest struct {
 	// lastPrune stamps the last watermark sweep, as a Unix.
 	lastPrune atomic.Int64
 	// tel puts every delivery on the chart. Nil-safe, so a test can skip it.
-	tel      *Telemetry
-	notifier *Notifier
-	stats    deliveryStats
-	log      deliveryLog
-	ordering orderingStats
+	tel        *Telemetry
+	notifier   *Notifier
+	stats      deliveryStats
+	log        deliveryLog
+	ordering   orderingStats
 	dispHeader string
 }
 

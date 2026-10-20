@@ -106,8 +106,7 @@ type BriefItem struct {
 	Bytes   int            `json:"bytes"`
 	// Samples are real paths, so an author can check the guess the shape made.
 	Samples []string `json:"samples,omitempty"`
-	// Statuses and Callers say what the upstream answered and who asked, so an
-	// author can tell a shape a single script hammers from a single every client needs.
+	// Statuses and Callers say what the upstream answered and who asked.
 	Statuses map[int]int    `json:"statuses,omitempty"`
 	Callers  map[string]int `json:"callers,omitempty"`
 	// Sketch is a starting <route>, not a finished declaration.

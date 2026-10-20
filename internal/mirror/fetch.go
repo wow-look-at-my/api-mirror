@@ -64,8 +64,7 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 			return result, err
 		}
 	}
-	// A refusal the mirror's own identity got says nothing about what a
-	// caller with access would see, so it is never stored as the answer.
+	// A refusal the mirror's own identity got says nothing about what a caller with access would see.
 	background := forwardFrom(ctx) == nil && answer.Status >= 400
 	if background || !storable(e.up, plan.route, answer) {
 		if !background && !e.up.Transient(answer) && forwardFrom(ctx) != nil {
@@ -108,8 +107,7 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 // RelayedAnswer is an upstream answer the route does not store.
 type RelayedAnswer struct {
 	Answer *Answer
-	// Outage marks the upstream itself failing, the a single case every
-	// caller of the key shares, so it alone holds the key off for the backoff.
+	// Outage marks the upstream itself failing, the a single case every caller of the key shares.
 	Outage bool
 	Route  string
 }

@@ -10,8 +10,7 @@ import (
 )
 
 // LiveRate is a single App installation's budget, asked for rather than
-// observed. The passive meter only knows an identity that has made a call; a
-// quiet installation near its limit is invisible to it.
+// observed.
 type LiveRate struct {
 	Account   string       `json:"account"`
 	Resources []RateBudget `json:"resources"`

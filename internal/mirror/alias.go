@@ -8,7 +8,7 @@ type HeaderAlias struct {
 	From, To string
 }
 
-// aliasWriter copies each aliased header just before the status goes out.
+// aliasWriter copies each aliased header before the status goes out.
 type aliasWriter struct {
 	http.ResponseWriter
 	aliases []HeaderAlias
@@ -46,5 +46,4 @@ func (a *aliasWriter) Flush() {
 	}
 }
 
-// Unwrap lets http.ResponseController reach the underlying writer.
 func (a *aliasWriter) Unwrap() http.ResponseWriter { return a.ResponseWriter }

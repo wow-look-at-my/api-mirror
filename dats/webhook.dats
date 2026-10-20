@@ -1,5 +1,5 @@
 # A signed push delivery states a branch tip, and the next read of that branch
-# answers it from the delivery: the only upstream calls are the caller's
+# answers it from the delivery. The only upstream calls are the caller's
 # identity and the reveal probe.
 sandbox:
 	image: buildpack-deps:bookworm-curl

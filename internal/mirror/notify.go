@@ -30,7 +30,6 @@ type Notifier struct {
 	client *http.Client
 	tel    *Telemetry
 	// gate decides whether a subscriber's principal may hear about a delivery.
-	// Nil lets through only the operator's own subscriptions.
 	gate func(ctx context.Context, principal string, d *Delivery) bool
 	// store and reveal gate each notification on the subscriber's access.
 	store  *Store

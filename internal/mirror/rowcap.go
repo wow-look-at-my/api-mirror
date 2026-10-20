@@ -9,16 +9,14 @@ import (
 	"time"
 )
 
-// defaultMaxRows is the per-table ceiling when neither the command line nor
-// the spec names one.
+// defaultMaxRows is the per-table ceiling when neither the command line nor the spec names one.
 const defaultMaxRows = 1_000_000
 
 // rowCapInterval throttles the cap check per table.
 const rowCapInterval = 5 * time.Minute
 
-// rowCounts estimates each resource table's size, so a write pays for an exact
-// count a single time the estimate crosses the ceiling. Every written row
-// counts as new, so a replaced row makes the estimate high, never low.
+// rowCounts estimates each resource table's size, so a write pays for an
+// exact count a single time the estimate crosses the ceiling.
 type rowCounts struct {
 	mu sync.Mutex
 	n  map[string]int64

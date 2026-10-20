@@ -59,7 +59,7 @@ type TimelineView struct {
 }
 
 // timeline answers the frames after ?since=<seq>, so a page polling every few
-// seconds is sent what is new rather than the whole ring each time.
+// seconds is sent what is new rather than the whole ring. Each time.
 func (a *Admin) timeline(w http.ResponseWriter, r *http.Request) {
 	since, err := strconv.ParseUint(cmp.Or(r.URL.Query().Get("since"), "0"), 10, 64)
 	if err != nil {
@@ -128,8 +128,7 @@ type PrincipalsView struct {
 	Principals []PrincipalStanding `json:"principals"`
 	Standing   *Standing           `json:"standing,omitempty"`
 	Denials    int64               `json:"denials"`
-	// Names and LastSeen are live views: names from the identity verdicts
-	// still held, last-seen since this process started.
+	// Names and LastSeen are live views: names from the identity verdicts still held.
 	Names    map[string]string    `json:"names"`
 	LastSeen map[string]time.Time `json:"last_seen"`
 }

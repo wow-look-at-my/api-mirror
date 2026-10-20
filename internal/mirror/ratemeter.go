@@ -42,14 +42,11 @@ type RateHeaders struct {
 	Used      string
 	Reset     string
 	Resource  string
-	// Refusal is text whose presence in a refusal's body marks it as a rate
-	// limit that carries no budget header, such as GitHub's secondary limit.
+	// Refusal is text whose presence in a refusal's body marks it as a rate limit that carries no budget header.
 	Refusal string
 	// Answer is the budget path served from the meter instead of the upstream.
 	Answer string
-	// Poll is the budget path the dashboard asks a single time per App
-	// installation, and PollField the path into its answer holding a map of
-	// resource to {limit, remaining, used, reset}.
+	// Poll is the budget path the dashboard asks a single time.
 	Poll      string
 	PollField string
 }

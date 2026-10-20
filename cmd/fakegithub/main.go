@@ -1,8 +1,8 @@
-// Command fakegithub is a deterministic GitHub REST stand-in for tests.
-// It answers /user, the repo, pulls, refs, statuses and the list routes in
-// GitHub's own document shapes — fields the mirror does not keep included, so
-// a test can compare the mirror's answer with the upstream's — and counts
-// every request so a test can prove a cache hit made none.
+// Command fakegithub is a deterministic GitHub REST stand-in for tests. It
+// answers /user, the repo, pulls, refs, statuses and the list routes in
+// GitHub's own document shapes — fields the mirror does not keep included. A
+// test can compare the mirror's answer with the upstream's — and counts every
+// request so a test can prove a cache hit made none.
 package main
 
 import (

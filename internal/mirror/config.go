@@ -38,8 +38,7 @@ type Spec struct {
 	Health *Health
 	// Aliases repeat response headers under the names older clients read.
 	Aliases []HeaderAlias
-	// Identity resolves a credential to a stable principal. Nil keys a caller
-	// by their credential's fingerprint.
+	// Identity resolves a credential to a stable principal. Nil keys a caller by their credential's fingerprint.
 	Identity *Identity
 	// Whoami resolves a caller's own credential to a stable principal.
 	Whoami *Whoami
@@ -104,17 +103,13 @@ type Whoami struct {
 	TTL time.Duration
 }
 
-// Identity says how a caller's credential becomes a stable principal. A
-// principal gates what the reveal layer shows; it never partitions storage,
-// and a verified assertion keeps it stable across every credential the
-// caller rotates through.
+// Identity says how a caller's credential becomes a stable principal.
 type Identity struct {
 	// TTL bounds how long a resolved credential is trusted without asking again.
 	TTL time.Duration
 	// User resolves a bearer through the upstream's own "who am I" answer.
 	User *IdentityRule
-	// Assertion lets a caller name an identity the upstream verifies, so
-	// credentials that rotate keep the grants their holder earned.
+	// Assertion lets a caller name an identity the upstream verifies.
 	Assertion *IdentityRule
 	// Header is the request header that carries the assertion.
 	Header string
@@ -141,8 +136,7 @@ type Dashboard struct {
 	Token string
 	// Title is what the page calls this mirror.
 	Title string
-	// SignIn lets a human in through the upstream's OAuth. Nil leaves the
-	// token as the only way in.
+	// SignIn lets a human in through the upstream's OAuth. Nil leaves the token as the only way in.
 	SignIn *SignIn
 	// Login lets an operator sign in through the upstream's OAuth flow.
 	Login *Login
@@ -280,8 +274,7 @@ type Upstream struct {
 type Header struct {
 	Name  string
 	Value string // template source
-	// Background sends this header only on the mirror's own calls: refresh,
-	// replay and check. A caller's request never carries it.
+	// Background sends this header only on the mirror's own calls: refresh, replay and check.
 	Background bool
 	// Credential names the <credential> whose token renders as `.credential`.
 	Credential string
@@ -295,8 +288,7 @@ const (
 	StoreColumns StoreMode = "columns"
 	// StoreDocument keeps the response document itself, minus the declared
 	StoreDocument StoreMode = "document"
-	// StoreRaw keeps the response body byte for byte, for a media type that is
-	// not JSON. Its route's earliest <accept> is the type asked for and served.
+	// StoreRaw keeps the response body byte for byte, for a media type that is not JSON.
 	StoreRaw StoreMode = "raw"
 )
 
@@ -351,11 +343,9 @@ type Resource struct {
 	Keep []Keep
 	// Reveal gates every read of this resource. A resource without cannot
 	Reveal *Reveal
-	// RevokeOn is the document path holding a credential this resource hands
-	// out. A row whose credential the upstream refuses is dropped.
+	// RevokeOn is the document path holding a credential this resource hands out.
 	RevokeOn string
-	// Contradiction names another resource whose later rows can prove a
-	// stored row stale.
+	// Contradiction names another resource whose later rows can prove a stored row stale.
 	Contradiction *Contradiction
 	// Redirect is the lifetime rule of a redirect resource.
 	Redirect *Redirect
@@ -370,9 +360,7 @@ type Key struct {
 	Fold bool
 	// Credential fills this from the caller's own request, not the document.
 	Credential bool
-	// ByPrincipal fills a credential key with the caller's resolved principal
-	// instead of the credential's fingerprint, so a rotated credential of the
-	// same identity finds the same row.
+	// ByPrincipal fills a credential key with the caller's resolved principal instead of the credential's fingerprint.
 	ByPrincipal bool
 	// Type is the JSON type the answer serves a From key as: text or int.
 	Type FieldType
@@ -409,8 +397,7 @@ type Field struct {
 	From string
 	// Expr is template source evaluated against the absorbed document.
 	Expr string
-	// Version marks the column the upstream advances on every change. A write
-	// carrying an older value than the stored row is refused.
+	// Version marks the column the upstream advances on every change.
 	Version bool
 }
 
@@ -454,12 +441,9 @@ type Route struct {
 	Absorb []int
 	// BodyKey names the resource key the REQUEST body fills, as a digest, for a route whose question travels in its body.
 	BodyKey string
-	// Bypass is a regular expression over the request body. A body it matches
-	// is a write, such as a GraphQL mutation, and is forwarded uncached.
+	// Bypass is a regular expression over the request body.
 	Bypass *regexp.Regexp
-	// Assert says the caller's bearer is itself an identity assertion, verified
-	// by the <identity><assertion> rule. A bearer that does not verify is
-	// forwarded uncached.
+	// Assert says the caller's bearer is itself an identity assertion, verified by the <identity><assertion> rule.
 	Assert bool
 	// Spreads carry the items of a fetched answer into another resource.
 	Spreads []*Spread
@@ -560,11 +544,9 @@ type Event struct {
 	Unordered bool
 	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
 	AbsorbWhenSuperseded bool
-	// Actions limits the event to deliveries whose action is any of these.
-	// Empty handles every action.
+	// Actions limits the event to deliveries whose action is any of these. Empty handles every action.
 	Actions []string
-	// When is template source over `.payload`. The event handles a delivery
-	// only when it renders truthy.
+	// When is template source over `.payload`. The event handles a delivery only when it renders truthy.
 	When string
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set

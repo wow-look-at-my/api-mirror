@@ -4,7 +4,7 @@ import "net/http"
 
 // answerRate serves the declared budget path from the passive meter.
 //
-// Asking the upstream for a budget spends the budget being asked about, and a
+// Asking the upstream for a budget spends the budget being asked about. A
 // cached copy of that answer is stale by the time anyone reads it. The meter
 // already holds the caller's own standing from the headers of every answer
 // the mirror received for them. A caller never observed is forwarded, and the

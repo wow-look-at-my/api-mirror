@@ -100,7 +100,7 @@ func (t *Timeline) Frames() []Frame { return t.Since(0) }
 // Since returns the frames inside the window that arrived after seq, oldest
 // earliest.
 //
-// Eviction is lazy, here, rather than on a timer: a background goroutine that
+// Eviction is lazy, here, rather than on a timer. A background goroutine that
 // only ever deletes is a moving part with nothing to gain from moving. Only
 // the expired run at the front is evicted.
 func (t *Timeline) Since(seq uint64) []Frame {

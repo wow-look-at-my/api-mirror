@@ -8,9 +8,7 @@ import (
 	"strings"
 )
 
-// operatorPrincipal owns the subscriptions made through the dashboard. The
-// dashboard token already shows the operator every stored row, so their
-// subscriptions are not gated.
+// operatorPrincipal owns the subscriptions made through the dashboard.
 const operatorPrincipal = "operator"
 
 // visibleTo is the fan-out's gate: may this principal hear about this delivery.

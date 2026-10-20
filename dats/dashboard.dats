@@ -1,5 +1,5 @@
 # Drives a real api-mirror's operator surface: the token gates every admin
-# path, the gzip wrapper answers a browser that asks, and a caller with no
+# path, the gzip wrapper answers a browser that asks. A caller with no
 # credential is refused before any upstream call.
 sandbox:
 	image: buildpack-deps:bookworm-curl

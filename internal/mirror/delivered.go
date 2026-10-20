@@ -6,7 +6,8 @@ import (
 )
 
 // recordDelivered makes a row the delivery stated in full as fresh as a fetch
-// would have: a read after the delivery serves it without asking the upstream.
+// would have. This is a read after the delivery serves it without asking the
+// upstream.
 //
 // Only a delivery that writes every field of the resource states the whole
 // answer. A partial one leaves freshness alone, so a row it created still

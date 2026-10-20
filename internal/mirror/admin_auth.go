@@ -19,25 +19,21 @@ import (
 
 // SignIn lets a human reach the dashboard through the upstream's own OAuth,
 // instead of a shared token pasted into a URL. Every value is template
-// source. An admin sees everything; anyone else signed in sees only what
-// their own principal has proven.
+// source.
 type SignIn struct {
 	ClientID     string
 	ClientSecret string
 	// Authorize and Exchange are the provider's OAuth endpoints, absolute.
 	Authorize string
 	Exchange  string
-	// User is the upstream path answering who the signed-in token belongs to,
-	// and Login the path into that answer naming them.
+	// User is the upstream path answering who the signed-in token belongs to, and Login the path into that answer naming them.
 	User  string
 	Login string
 	// Admins is a comma-separated list of logins, compared case-insensitively.
 	Admins string
-	// Secret signs the session cookie. Empty mints a single per process,
-	// which signs everybody out on restart.
+	// Secret signs the session cookie. Empty mints a single per process, which signs everybody out on restart.
 	Secret string
-	// BaseURL is the public origin the provider redirects back to. Empty
-	// derives it from the request.
+	// BaseURL is the public origin the provider redirects back to. Empty derives it from the request.
 	BaseURL string
 }
 
@@ -175,8 +171,7 @@ func (a *Admin) cookie(w http.ResponseWriter, r *http.Request, name, value strin
 		Path:     a.prefix,
 		MaxAge:   int(life.Seconds()),
 		HttpOnly: true,
-		// Lax, not strict: the provider's redirect back is a cross-site
-		// navigation, and a strict cookie would not ride it.
+		// Lax, not strict: the provider's redirect back is a cross-site navigation, and a strict cookie would not ride it.
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 	})
@@ -263,7 +258,7 @@ func (s *signIn) exchange(ctx context.Context, code, redirect string) (string, e
 }
 
 // whoIs names the signed-in token's login and the principal the reveal layer
-// knows it by, so the self view shows the grants this person earned.
+// knows it by. The self view shows the grants this person earned.
 func (a *Admin) whoIs(ctx context.Context, token string) (string, string, error) {
 	e := a.engine
 	h := http.Header{"Authorization": {"Bearer " + token}}
@@ -332,7 +327,7 @@ func (a *Admin) sessionFrom(r *http.Request) (session, bool) {
 	return a.signIn.sessionOf(r)
 }
 
-// selfPaths are what a signed-in non-admin may reach: the page, its assets,
+// selfPath are what a signed-in non-admin may reach: the page, its assets,
 // who they are, and their own standing.
 func (a *Admin) selfPath(path string) bool {
 	switch strings.TrimPrefix(path, a.prefix) {

@@ -18,18 +18,18 @@ permissions:
 
 jobs:
   test:
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     # Dependencies here ship their generated files; running their generators needs stringer and yy.
     env:
       GOGENERATEDEPS: 'off'
     steps:
       - uses: actions/checkout@v4
-      - uses: wow-look-at-my/go-toolchain@master
+      - uses: wow-look-at-my/go-toolchain@lkgb
 
   validate-xml:
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: wow-look-at-my/xml-validator@master
+      - uses: wow-look-at-my/xml-validator@lkgb
         with:
           files: '**/*.xml **/*.xsd'

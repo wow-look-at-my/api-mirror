@@ -61,8 +61,7 @@ type RequestGroup struct {
 	TotalNanos   int64               `json:"-"`
 	Last         time.Time           `json:"last"`
 	Samples      []string            `json:"samples,omitempty"`
-	// Statuses is what callers were answered; Callers who asked, capped at
-	// groupCallers distinct principals so a single noisy shape stays bounded.
+	// Statuses is what callers were answered.
 	Statuses map[int]int            `json:"statuses,omitempty"`
 	Callers  map[string]int         `json:"callers,omitempty"`
 	extra    map[string]interface{} `json:"-"`

@@ -283,7 +283,7 @@ func (s *Store) DeleteFreshness(ctx context.Context, kind, key string) (int64, e
 	return n, nil
 }
 
-// Forget drops the freshness of every answer stored at or beneath key, so the
+// Forget drops the freshness of every answer stored at or beneath key. The
 // next read asks the upstream instead of reading a row that is gone. The list
 // kind is dropped from the parent down: an item that changed changes every
 // listing it appears in.
@@ -307,8 +307,9 @@ func (s *Store) Forget(ctx context.Context, res *Resource, key map[string]string
 	return nil
 }
 
-// leadingKey is the key components a key map supplies, in declared order, up
-// to the earliest a single it does not: the prefix every stored key beneath it shares.
+// leadingKey is the key components a key map supplies. That leadingKey is in declared
+// order, up to the earliest a single it does not: the prefix every stored key beneath
+// it shares.
 func leadingKey(res *Resource, key map[string]string) []string {
 	var parts []string
 	for _, k := range res.Keys {
