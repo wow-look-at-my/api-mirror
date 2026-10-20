@@ -201,12 +201,18 @@ func buildRefresh(n *node) (*Refresh, error) {
 		return nil, err
 	}
 	r := &Refresh{}
-	if v := n.Attr("interval"); v != "" {
+	if v := strings.TrimSpace(n.Attr("interval")); v != "" {
+		if v == "0" {
+			// Zero is an operator turning the sweep off, the same way it turns <replay> off.
+			return r, nil
+		}
 		d, err := parseDuration("<refresh> interval", v)
 		if err != nil {
 			return nil, err
 		}
 		r.Interval = d
+	} else {
+		return nil, fmt.Errorf(`<refresh> needs an interval, or interval="0" to turn the sweep off`)
 	}
 	for _, child := range n.Children() {
 		if child.Name() != "kind" {

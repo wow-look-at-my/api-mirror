@@ -2325,7 +2325,8 @@
 		It names no <kind>, so it sweeps every resource some route serves. A
 		row keyed by a caller's own credential is skipped whatever it names:
 		the sweep holds no caller's token, and refreshing one of those would
-		file the mirror's own answer under somebody else's key.
+		file the mirror's own answer under somebody else's key. interval="0"
+		turns it off.
 	-->
 	<refresh interval='{{ .env.REFRESH_INTERVAL | default "6h" }}'/>
 

@@ -26,8 +26,11 @@ func TestLoadTimeValueDefaultsWhenTheVariableIsUnset(t *testing.T) {
 }
 
 func TestZeroTurnsTheReplayerAndTheDebounceOff(t *testing.T) {
-	spec := opsSpec(t, `	<replay interval="0"><list>/d</list><redeliver>/d/x</redeliver><id>id</id></replay>`)
+	spec := opsSpec(t, `	<refresh interval="0"/>
+	<replay interval="0"><list>/d</list><redeliver>/d/x</redeliver><id>id</id></replay>`)
 	require.NoError(t, spec.validate(), "0 is an operator's decision to turn recovery off, not a typo")
+	require.NotNil(t, spec.Refresh)
+	assert.Zero(t, spec.Refresh.Interval, "a sweep turned off is declared, not missing")
 	assert.True(t, spec.Replay.Off)
 
 	up, err := buildUpstream(mustNode(t, `<upstream base="https://x.example" debounce="0"/>`))

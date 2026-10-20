@@ -138,8 +138,8 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		return fmt.Errorf("<dashboard> path %q must start with /", s.Dashboard.Path)
 	}
 	if s.Refresh != nil {
-		if s.Refresh.Interval <= 0 {
-			return fmt.Errorf("<refresh> needs a positive interval")
+		if s.Refresh.Interval < 0 {
+			return fmt.Errorf("<refresh> interval must not be negative; interval=\"0\" turns the sweep off")
 		}
 		kinds := set.New[string]()
 		for _, rt := range s.Routes {
