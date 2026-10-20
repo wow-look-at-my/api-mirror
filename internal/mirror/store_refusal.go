@@ -8,7 +8,6 @@ import (
 	"fmt"
 )
 
-// refusalDDL holds the document each stored refusal came with.
 //go:embed refusal.sql
 var refusalDDL string
 

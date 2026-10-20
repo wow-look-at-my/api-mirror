@@ -18,7 +18,6 @@ import (
 // gsmImportSource keys the import ledger. A moved file keeps its ledger.
 const gsmImportSource = "github-state-mirror"
 
-// gsmSelect reads every column of github-state-mirror's subscriptions table.
 //go:embed gsm_select.sql
 var gsmSelect string
 
