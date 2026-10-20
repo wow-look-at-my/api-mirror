@@ -740,5 +740,5 @@ func principalOf(r *http.Request) string {
 	if auth == "" {
 		return ""
 	}
-	return "token:" + fingerprint(auth)
+	return tokenPrincipal(r)
 }

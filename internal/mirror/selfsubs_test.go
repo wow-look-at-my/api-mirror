@@ -33,7 +33,7 @@ func TestSelfService_ACallerManagesOnlyTheirOwnSubscriptions(t *testing.T) {
 	var sub subscriptionCreated
 	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &sub))
 	assert.NotEmpty(t, sub.Secret)
-	assert.Equal(t, "token:"+fingerprint("token alice"), sub.Principal)
+	assert.Equal(t, principalFor("token alice"), sub.Principal)
 
 	var own []Subscription
 	require.NoError(t, json.Unmarshal(asCaller(t, e, http.MethodGet, path, "token alice", "").Body.Bytes(), &own))

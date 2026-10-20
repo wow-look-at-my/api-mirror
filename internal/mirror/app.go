@@ -6,10 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -128,24 +126,6 @@ func appKeyText(rule *App, vars map[string]any) (string, error) {
 	return strings.ReplaceAll(text, `\n`, "\n"), nil
 }
 
-func parseRSAKey(text string) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode([]byte(text))
-	if block == nil {
-		return nil, errors.New("not PEM")
-	}
-	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
-		return k, nil
-	}
-	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("neither PKCS#1 nor PKCS#8: %w", err)
-	}
-	k, ok := parsed.(*rsa.PrivateKey)
-	if !ok {
-		return nil, errors.New("not an RSA key")
-	}
-	return k, nil
-}
 
 // jwt signs a fresh assertion of the App's identity.
 func (a *appAuth) jwt() (string, error) {

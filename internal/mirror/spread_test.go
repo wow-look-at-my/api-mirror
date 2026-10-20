@@ -12,6 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// withIdentity leaves the caller named by its credential: no <identity>
+// rule resolves it any other way, so a grant is keyed by the fingerprint.
+func withIdentity(s *Spec) {
+	s.Identity = nil
+}
+
 // withListing adds a private "secret" resource and a caller's listing of
 // secrets that spreads into it.
 func withListing(s *Spec) {

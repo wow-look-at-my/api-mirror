@@ -34,7 +34,7 @@ func refusesAccess(status int) bool {
 func (e *Engine) relayUnstored(ctx context.Context, w *recorder, m *match, res *Resource, principal string, u *UnstoredAnswer) {
 	a := u.Answer
 	if refusesAccess(a.Status) && !res.Reveal.Credential && res.Reveal.DenyTTL > 0 {
-		e.reveal.remember(ctx, principal, res, keyString(res, m.key), a.Status, e.reveal.now().Add(res.Reveal.DenyTTL))
+		e.reveal.remember(ctx, principal, res.Name, keyString(res, m.key), a.Status, e.reveal.now().Add(res.Reveal.DenyTTL))
 		w.note(DispDenied, "", "", "fetch-refused")
 	} else {
 		w.note(DispPassthrough, "", "", string(PassResponse))

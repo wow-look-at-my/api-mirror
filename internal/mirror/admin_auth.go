@@ -177,8 +177,8 @@ func (a *Admin) cookie(w http.ResponseWriter, r *http.Request, name, value strin
 	})
 }
 
-// login sends the browser to the provider with a state bound to this browser.
-func (a *Admin) login(w http.ResponseWriter, r *http.Request) {
+// startSignIn sends the browser to the provider with a state bound to this browser.
+func (a *Admin) startSignIn(w http.ResponseWriter, r *http.Request) {
 	s := a.signIn
 	state := randomHex(16)
 	a.cookie(w, r, stateName, s.sign(state+"|"+strconv.FormatInt(time.Now().Add(stateLife).Unix(), 10)), stateLife)

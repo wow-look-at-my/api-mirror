@@ -1,31 +1,10 @@
 package mirror
 
 import (
-	"compress/gzip"
 	"net/http"
 	"os"
 	"strings"
 )
-
-// gzipWriter compresses an admin answer.
-type gzipWriter struct {
-	http.ResponseWriter
-	zw *gzip.Writer
-}
-
-func (g *gzipWriter) WriteHeader(status int) {
-	g.Header().Del("Content-Length")
-	g.Header().Set("Content-Encoding", "gzip")
-	g.Header().Add("Vary", "Accept-Encoding")
-	g.ResponseWriter.WriteHeader(status)
-}
-
-func (g *gzipWriter) Write(b []byte) (int, error) {
-	if g.Header().Get("Content-Encoding") == "" {
-		g.WriteHeader(http.StatusOK)
-	}
-	return g.zw.Write(b)
-}
 
 // compressible reports whether an admin request's answer is buffered JSON a
 // browser asked to have compressed.

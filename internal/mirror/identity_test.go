@@ -73,7 +73,7 @@ func TestIdentity_ATokenThatIsNoUserKeepsItsFingerprint(t *testing.T) {
 	ids := identityResolverUpstream(t, &calls)
 	p, refused := ids.resolve(context.Background(), asking(map[string]string{"Authorization": "token install"}))
 	require.Nil(t, refused)
-	assert.Equal(t, "token:"+fingerprint("token install"), p)
+	assert.Equal(t, principalFor("token install"), p)
 }
 
 func TestIdentity_RefusesWhatItCannotResolve(t *testing.T) {
@@ -108,7 +108,7 @@ func TestIdentity_NoBlockKeysByFingerprint(t *testing.T) {
 	var ids *identities
 	p, refused := ids.resolve(context.Background(), asking(map[string]string{"Authorization": "token x"}))
 	require.Nil(t, refused)
-	assert.Equal(t, "token:"+fingerprint("token x"), p)
+	assert.Equal(t, principalFor("token x"), p)
 	p, _ = ids.resolve(context.Background(), asking(nil))
 	assert.Empty(t, p)
 }

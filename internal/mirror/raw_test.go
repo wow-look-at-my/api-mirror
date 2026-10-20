@@ -29,7 +29,7 @@ func withDiff(s *Spec) {
 	})
 }
 
-func getAs(t *testing.T, e *Engine, path, accept string) *httptest.ResponseRecorder {
+func getAccept(t *testing.T, e *Engine, path, accept string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -51,20 +51,20 @@ func TestRaw_ServesTheBodyByteForByteInItsMediaType(t *testing.T) {
 		w.Write([]byte(diff))
 	}), withDiff)
 
-	first := getAs(t, e, "/widgets/7", diffMedia)
+	first := getAccept(t, e, "/widgets/7", diffMedia)
 	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
 	assert.Equal(t, diff, first.Body.String())
 	assert.Equal(t, diffMedia, first.Header().Get("Content-Type"))
 
-	second := getAs(t, e, "/widgets/7", diffMedia)
+	second := getAccept(t, e, "/widgets/7", diffMedia)
 	assert.Equal(t, string(OutcomeHit), second.Header().Get("X-Mirror-Cache"))
 	assert.Equal(t, diff, second.Body.String())
 
-	asJSON := getAs(t, e, "/widgets/7", "application/json")
+	asJSON := getAccept(t, e, "/widgets/7", "application/json")
 	assert.Contains(t, asJSON.Body.String(), `"title":"json"`, "the JSON route on the same path still answers JSON")
 	assert.EqualValues(t, 2, calls.Load())
 
-	patch := getAs(t, e, "/widgets/7", "application/vnd.github.patch")
+	patch := getAccept(t, e, "/widgets/7", "application/vnd.github.patch")
 	assert.Equal(t, string(PassAccept), patch.Header().Get("X-Mirror-Passthrough-Reason"))
 }
 
@@ -76,8 +76,8 @@ func TestRaw_KeepsTheDeclaredRefusal(t *testing.T) {
 		w.Write([]byte(`{"message":"Sorry, the diff exceeded the maximum number of lines"}`))
 	}), withDiff)
 
-	assert.Equal(t, http.StatusNotAcceptable, getAs(t, e, "/widgets/7", diffMedia).Code)
-	assert.Equal(t, http.StatusNotAcceptable, getAs(t, e, "/widgets/7", diffMedia).Code)
+	assert.Equal(t, http.StatusNotAcceptable, getAccept(t, e, "/widgets/7", diffMedia).Code)
+	assert.Equal(t, http.StatusNotAcceptable, getAccept(t, e, "/widgets/7", diffMedia).Code)
 	assert.EqualValues(t, 1, calls.Load(), "a stored 406 is answered without asking again")
 }
 

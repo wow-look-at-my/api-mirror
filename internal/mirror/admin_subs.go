@@ -66,10 +66,6 @@ func createSubscriptionFor(w http.ResponseWriter, r *http.Request, subs *Subscri
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	principal := tokenPrincipal(r)
-	if principal == "" {
-		principal = "operator"
-	}
 	sub, err := subs.Create(r.Context(), principal, req.URL, "", req.Events, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

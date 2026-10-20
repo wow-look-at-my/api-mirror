@@ -634,6 +634,7 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		return fmt.Errorf("<events> needs a type header")
 	}
 	// A type is declared per resource it moves.
+	seen := set.New[string]()
 	for _, ev := range e.List {
 		if ev.Type == "" {
 			return fmt.Errorf("<event> needs a type")

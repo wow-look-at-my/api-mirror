@@ -1,7 +1,6 @@
 package mirror
 
 import (
-	"compress/gzip"
 	"crypto/subtle"
 	"net/http"
 	"strings"
@@ -108,7 +107,7 @@ func (a *Admin) routes() {
 	a.mux.HandleFunc("GET "+p+"/api/whoami", a.whoami)
 	a.mux.HandleFunc("GET "+p+"/api/me", a.me)
 	if a.signIn != nil {
-		a.mux.HandleFunc("GET "+p+"/auth/login", a.login)
+		a.mux.HandleFunc("GET "+p+"/auth/login", a.startSignIn)
 		a.mux.HandleFunc("GET "+p+"/auth/callback", a.callback)
 		a.mux.HandleFunc("GET "+p+"/auth/logout", a.logout)
 	}
@@ -163,11 +162,6 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, a.prefix+"/", http.StatusMovedPermanently)
 		return
 	}
-	if compressible(r, a.prefix) {
-		zw := gzip.NewWriter(w)
-		defer zw.Close()
-		w = &gzipWriter{ResponseWriter: w, zw: zw}
-	}
 	a.engine.setCORS(w, r)
 	a.serveMux(w, r)
 }
@@ -175,7 +169,7 @@ func (a *Admin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveMux gzips the admin JSON, which the dashboard polls. The check
 // streams its progress, so it is left alone to keep flushing.
 func (a *Admin) serveMux(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, a.prefix+"/api/") && r.URL.Path != a.prefix+"/api/check" {
+	if compressible(r, a.prefix) {
 		compressed(w, r, a.mux.ServeHTTP)
 		return
 	}

@@ -35,12 +35,6 @@ func (id *Identity) validate(forward []string) error {
 	if id == nil {
 		return nil
 	}
-	if id.TTL <= 0 {
-		return fmt.Errorf("<identity> needs a positive ttl: an unremembered verdict costs an upstream call on every request")
-	}
-	if id.User == nil && id.Assertion == nil {
-		return fmt.Errorf("<identity> declares neither <user> nor <assertion>")
-	}
 	forwarded := func(name string) bool {
 		for _, f := range forward {
 			if http.CanonicalHeaderKey(f) == http.CanonicalHeaderKey(name) {
@@ -64,6 +58,36 @@ func (id *Identity) validate(forward []string) error {
 		if !forwarded(a.As) {
 			return fmt.Errorf("<identity><assertion> sends the assertion as %s, which <upstream> does not forward", a.As)
 		}
+	}
+	if id.User != nil || id.Assertion != nil {
+		if id.TTL <= 0 {
+			return fmt.Errorf("<identity> needs a positive ttl: an unremembered verdict costs an upstream call on every request")
+		}
+	}
+	if id.Path != "" {
+		for attr, v := range map[string]string{
+			"header": id.Header, "path": id.Path, "id": id.ID, "prefix": id.Prefix,
+		} {
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("<identity> needs %s=", attr)
+			}
+		}
+		if !strings.HasPrefix(id.Path, "/") {
+			return fmt.Errorf("<identity> path %q must start with /", id.Path)
+		}
+		if strings.Contains(id.Prefix, ":") {
+			return fmt.Errorf("<identity> prefix %q must not contain ':', the separator of a principal", id.Prefix)
+		}
+		for _, name := range forward {
+			// The assertion names the caller to the mirror. Sent upstream, it
+			// would reach an API that never asked for it.
+			if strings.EqualFold(name, id.Header) {
+				return fmt.Errorf("<identity> header %s is also a <forward>, so the assertion would leave for the upstream", id.Header)
+			}
+		}
+	}
+	if id.TTL < 0 {
+		return fmt.Errorf("<identity> ttl must not be negative")
 	}
 	return nil
 }
@@ -103,10 +127,7 @@ func newIdentities(spec *Identity, up *Upstreamer, vars map[string]any) *identit
 func (id *identities) resolve(ctx context.Context, r *http.Request) (string, *identityRefusal) {
 	auth := r.Header.Get("Authorization")
 	if id == nil || id.spec == nil {
-		if auth == "" {
-			return "", nil
-		}
-		return "token:" + fingerprint(auth), nil
+		return tokenPrincipal(r), nil
 	}
 	if a := id.spec.Assertion; a != nil {
 		if claim := r.Header.Get(a.Header); claim != "" {
@@ -120,7 +141,7 @@ func (id *identities) resolve(ctx context.Context, r *http.Request) (string, *id
 		return "", nil
 	}
 	if id.spec.User == nil {
-		return "token:" + fingerprint(auth), nil
+		return tokenPrincipal(r), nil
 	}
 	return id.user(ctx, id.spec.User, auth, r.Header)
 }
@@ -172,7 +193,7 @@ func (id *identities) user(ctx context.Context, rule *IdentityRule, auth string,
 	case answer.Status == http.StatusUnauthorized:
 		return "", &identityRefusal{http.StatusUnauthorized, "the upstream rejected the credential"}
 	case answer.Status == http.StatusNotFound || answer.Status == http.StatusForbidden:
-		v := identityVerdict{principal: "token:" + fp, expires: id.now().Add(id.spec.TTL)}
+		v := identityVerdict{principal: principalFor(auth), expires: id.now().Add(id.spec.TTL)}
 		id.remember(cacheKey, v)
 		return v.principal, nil
 	case answer.Status < 200 || answer.Status >= 300:
@@ -509,7 +530,12 @@ func scalarString(v any) string {
 
 // tokenPrincipal names a caller by the full SHA-256 of its bare credential.
 func tokenPrincipal(r *http.Request) string {
-	cred := bareCredential(r.Header.Get("Authorization"))
+	return principalFor(r.Header.Get("Authorization"))
+}
+
+// principalFor names a credential by the full SHA-256 of it.
+func principalFor(auth string) string {
+	cred := bareCredential(auth)
 	if cred == "" {
 		return ""
 	}
@@ -526,60 +552,4 @@ func bareCredential(auth string) string {
 		}
 	}
 	return strings.TrimSpace(auth)
-}
-
-func (id *Identity) validate(forward []string) error {
-	if id == nil {
-		return nil
-	}
-	forwarded := func(name string) bool {
-		for _, f := range forward {
-			if http.CanonicalHeaderKey(f) == http.CanonicalHeaderKey(name) {
-				return true
-			}
-		}
-		return false
-	}
-	if u := id.User; u != nil {
-		if u.Path == "" || u.Principal == "" {
-			return fmt.Errorf("<identity><user> needs a path and a principal")
-		}
-		if !forwarded("Authorization") {
-			return fmt.Errorf("<identity><user> asks with the caller's Authorization, which <upstream> does not forward")
-		}
-	}
-	if a := id.Assertion; a != nil {
-		if a.Header == "" || a.As == "" || a.Path == "" || a.Principal == "" {
-			return fmt.Errorf("<identity><assertion> needs a header, an as, a path and a principal")
-		}
-		if !forwarded(a.As) {
-			return fmt.Errorf("<identity><assertion> sends the assertion as %s, which <upstream> does not forward", a.As)
-		}
-	}
-	if id.Path != "" {
-		for attr, v := range map[string]string{
-			"header": id.Header, "path": id.Path, "id": id.ID, "prefix": id.Prefix,
-		} {
-			if strings.TrimSpace(v) == "" {
-				return fmt.Errorf("<identity> needs %s=", attr)
-			}
-		}
-		if !strings.HasPrefix(id.Path, "/") {
-			return fmt.Errorf("<identity> path %q must start with /", id.Path)
-		}
-		if strings.Contains(id.Prefix, ":") {
-			return fmt.Errorf("<identity> prefix %q must not contain ':', the separator of a principal", id.Prefix)
-		}
-		for _, name := range forward {
-			// The assertion names the caller to the mirror. Sent upstream, it
-			// would reach an API that never asked for it.
-			if strings.EqualFold(name, id.Header) {
-				return fmt.Errorf("<identity> header %s is also a <forward>, so the assertion would leave for the upstream", id.Header)
-			}
-		}
-		if id.TTL < 0 {
-			return fmt.Errorf("<identity> ttl must not be negative")
-		}
-	}
-	return nil
 }

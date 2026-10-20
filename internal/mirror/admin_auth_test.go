@@ -137,7 +137,7 @@ func TestSignIn_TheRoundTripSignsTheBrowserIn(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &who))
 	assert.Equal(t, "Boss", who.Login)
 	assert.True(t, who.Admin)
-	assert.Equal(t, "token:"+fingerprint("Bearer gho_person"), who.Principal)
+	assert.Equal(t, principalFor("Bearer gho_person"), who.Principal)
 
 	r = httptest.NewRequest(http.MethodGet, "/_mirror/auth/callback?code=the-code&state=forged", nil)
 	r.AddCookie(stateCookie)
