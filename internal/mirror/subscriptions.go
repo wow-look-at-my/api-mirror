@@ -19,6 +19,12 @@ import (
 //go:embed subscription_schema.sql
 var subscriptionSchema string
 
+//go:embed adopt_subscription.sql
+var adoptSubscriptionSQL string
+
+//go:embed mark_failed.sql
+var markFailedSQL string
+
 // subscriptionColumns are added to a file an older build created. Each
 // is additive with a default, so every existing registration survives.
 var subscriptionColumns = []struct{ name, ddl string }{
