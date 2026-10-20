@@ -21,7 +21,7 @@ func withIdentity(s *Spec) {
 		Name:   "secret",
 		Store:  StoreColumns,
 		TTL:    time.Hour,
-		Keys:   []Key{{Name: "id"}},
+		Keys:   []Key{{Name: "id", From: "id"}},
 		Fields: []Field{{Name: "title", Type: FieldText, From: "title"}},
 		Reveal: &Reveal{Public: "false", GrantTTL: time.Hour},
 	})
