@@ -202,7 +202,12 @@ func buildRefresh(n *node) (*Refresh, error) {
 	}
 	r := &Refresh{}
 	if v := strings.TrimSpace(n.Attr("interval")); v != "" {
-		if v == "0" {
+		// The attribute may be template source, so resolve it before judging it.
+		resolved, err := loadTimeValue("<refresh> interval", v)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(resolved) == "0" {
 			// Zero is an operator turning the sweep off, the same way it turns <replay> off.
 			return r, nil
 		}
