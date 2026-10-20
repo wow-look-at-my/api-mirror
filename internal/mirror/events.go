@@ -263,18 +263,6 @@ func upstreamID(r *http.Request, header string) string {
 	return r.Header.Get(header)
 }
 
-// eventApplies evaluates an event's when= against the delivery.
-func eventApplies(ev *Event, payload any) (bool, error) {
-	if ev.When == "" {
-		return true, nil
-	}
-	s, err := renderString(ev.When, map[string]any{"payload": payload})
-	if err != nil {
-		return false, err
-	}
-	return isTruthy(s), nil
-}
-
 // answer reports a disposition to the provider.
 func (i *Ingest) answer(w http.ResponseWriter, d DeliveryDisposition) {
 	i.reply(w, deliveryStatus(d), string(d))
