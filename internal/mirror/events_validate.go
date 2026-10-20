@@ -44,7 +44,7 @@ func (e *Events) validate(resources map[string]*Resource) error {
 	}
 	for _, r := range repeats {
 		if r.declarations > 1 && r.bare > 0 {
-			return fmt.Errorf("event %q is declared %d times for resource %q, which needs when= on every declaration", r.typ, r.declarations, r.res)
+			return fmt.Errorf("event %q declared twice for resource %q: two handlers for one type and resource need when= on every declaration", r.typ, r.res)
 		}
 	}
 	// A type is declared per resource it moves.

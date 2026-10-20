@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 )
 
 // UnstoredAnswer is an upstream answer that the route does not keep.
@@ -44,7 +43,8 @@ func (e *Engine) relayUnstored(ctx context.Context, w *recorder, m *match, res *
 		}
 		w.note(DispDenied, "", "", "fetch-refused")
 	} else {
-		w.note(DispRelayed, "", "", strconv.Itoa(a.Status))
+		w.note(DispPassthrough, "", "", string(PassResponse))
+		w.Header().Set(e.hdr.Reason, string(PassResponse))
 	}
 	e.relayAnswer(w, a)
 }

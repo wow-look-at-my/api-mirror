@@ -563,22 +563,6 @@
 		</reveal>
 	</resource>
 
-	<!--
-		A pull request's unified diff, kept byte for byte. GitHub refuses a
-		diff past its size limit with 406, and that verdict is as stable as
-		the diff itself, so it is kept too.
-	-->
-	<resource name="pull_diff" store="raw" ttl="24h">
-		<key name="owner" fold="true"/>
-		<key name="repo" fold="true"/>
-		<key name="number"/>
-		<reveal>
-			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.repo }}"/>
-			<grant ttl="24h"/>
-			<deny ttl="5m"/>
-		</reveal>
-	</resource>
-
 	<resource name="pull_commits" store="document" ttl="24h">
 		<key name="owner" fold="true"/>
 		<key name="repo" fold="true"/>
@@ -1527,40 +1511,10 @@
 			the key stops at the repository. A stale compare is the worst of
 			them: a cached behind_by of 0 stops a PR from ever being updated.
 		-->
-		<event type="push" resource="git_ref" clock="repository.pushed_at">
-			<subject>git-ref:<value name="payload.repository.full_name"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<invalidate reason="the stored answers are keyed by ref spelling, and the payload names one ref in one spelling"/>
-		</event>
 
-		<event type="push" resource="matching_refs" clock="repository.pushed_at">
-			<subject>matching-refs:<value name="payload.repository.full_name"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<invalidate reason="the stored answer is every ref under a prefix, and the payload states one"/>
-		</event>
 
-		<event type="push" resource="commits_list" clock="repository.pushed_at">
-			<subject>commits:<value name="payload.repository.full_name"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<invalidate reason="a page of history shifts with every new commit, and the payload cannot say which page a commit lands on"/>
-		</event>
 
-		<event type="push" resource="compare" clock="repository.pushed_at">
-			<subject>compare:<value name="payload.repository.full_name"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<invalidate reason="a compare's ahead_by, behind_by and files are computed by the upstream against both tips, and the payload moves one of them"/>
-		</event>
 
-		<event type="push" resource="branches_list" clock="repository.pushed_at">
-			<subject>branches:<value name="payload.repository.full_name"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<invalidate reason="the stored answer is a page of branches with their tips, and the payload cannot say which page this branch is on"/>
-		</event>
 
 		<!--
 			A pull request's files and commits change on every synchronize, and
@@ -1609,16 +1563,6 @@
 			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
 			<key field="name">repository.name</key>
 			<invalidate reason="the old owner no longer names this repository"/>
-		</event>
-		<event type="repository" resource="org_repos" clock="repository.updated_at" action="transferred">
-			<subject>org-repos-transferred:<value name="payload.repository.full_name"/></subject>
-			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
-			<invalidate reason="the repository left the old owner's list, which can only be refetched"/>
-		</event>
-		<event type="repository" resource="owner_user_repos" clock="repository.updated_at" action="transferred">
-			<subject>user-repos-transferred:<value name="payload.repository.full_name"/></subject>
-			<key field="owner" expr="{{ with .payload.changes.owner.from.user }}{{ .login }}{{ else }}{{ .payload.changes.owner.from.organization.login }}{{ end }}"/>
-			<invalidate reason="the repository left the old owner's list, which can only be refetched"/>
 		</event>
 
 		<event type="installation" resource="install_token" clock="installation.updated_at">
@@ -1715,21 +1659,7 @@
 			<invalidate reason="a new status is prepended to the history, which shifts every page after it"/>
 		</event>
 
-		<event type="check_run" resource="check_run" clock="check_run.completed_at">
-			<subject>check-run:<value name="payload.repository.full_name"/>:<value name="payload.check_run.id"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<key field="check_run_id">check_run.id</key>
-			<invalidate reason="the stored answer is a trimmed document whose shape the delivery's check_run object does not match field for field"/>
-		</event>
 
-		<event type="workflow_job" resource="workflow_job" clock="workflow_job.started_at">
-			<subject>single-job:<value name="payload.repository.full_name"/>:<value name="payload.workflow_job.id"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<key field="job_id">workflow_job.id</key>
-			<invalidate reason="the stored answer is a trimmed document whose shape the delivery's workflow_job object does not match field for field"/>
-		</event>
 
 		<event type="label" resource="label" clock="repository.updated_at">
 			<subject>label:<value name="payload.repository.full_name"/>:<value name="payload.label.name"/></subject>
@@ -1748,55 +1678,18 @@
 			Each handler has its own subject, so the watermark orders them
 			apart rather than refusing all but the first.
 		-->
-		<event type="installation" resource="install_token" clock="installation.updated_at">
-			<subject>inst-token:<value name="payload.installation.id"/></subject>
-			<key field="id">installation.id</key>
-			<invalidate reason="the payload states the installation, and a minted token is a secret it never carries"/>
-		</event>
 
-		<event type="installation" resource="repo_installation" clock="installation.updated_at">
-			<subject>inst-repo:<value name="payload.installation.id"/></subject>
-			<key field="owner">installation.account.login</key>
-			<invalidate reason="a coverage verdict is keyed by the asking credential, which the payload cannot name"/>
-		</event>
 
-		<event type="installation" resource="owner_installation" clock="installation.updated_at">
-			<subject>inst-owner:<value name="payload.installation.id"/></subject>
-			<key field="owner">installation.account.login</key>
-			<invalidate reason="a coverage verdict is keyed by the asking credential, which the payload cannot name"/>
-		</event>
 
-		<event type="installation" resource="app_installations" clock="installation.updated_at">
-			<subject>inst-list:<value name="payload.installation.id"/></subject>
-			<invalidate every="true" reason="the listing is keyed only by the App's credential fingerprint and a page, and the payload names neither"/>
-		</event>
 
-		<event type="installation" resource="installation_repos" clock="installation.updated_at">
-			<subject>inst-repos:<value name="payload.installation.id"/></subject>
-			<invalidate every="true" reason="the listing is keyed only by an installation token's fingerprint and a page, and the payload names neither"/>
-		</event>
 
 		<!--
 			Repositories added to or removed from an installation. The payload
 			lists them, but each stored answer is a whole page per credential,
 			and a token minted before the change may name the old set.
 		-->
-		<event type="installation_repositories" resource="installation_repos" clock="installation.updated_at">
-			<subject>inst-repos-change:<value name="payload.installation.id"/></subject>
-			<invalidate every="true" reason="the listing is keyed only by an installation token's fingerprint and a page, and the payload names neither"/>
-		</event>
 
-		<event type="installation_repositories" resource="repo_installation" clock="installation.updated_at">
-			<subject>inst-repo-change:<value name="payload.installation.id"/></subject>
-			<key field="owner">installation.account.login</key>
-			<invalidate reason="a coverage verdict is keyed by the asking credential, which the payload cannot name"/>
-		</event>
 
-		<event type="installation_repositories" resource="install_token" clock="installation.updated_at">
-			<subject>inst-token-change:<value name="payload.installation.id"/></subject>
-			<key field="id">installation.id</key>
-			<invalidate reason="a token minted before the change may name the old repository set, and the payload carries no token"/>
-		</event>
 
 		<!--
 			Organization membership changed, or the organization was renamed or
@@ -1899,13 +1792,6 @@
 			no event: it names the ref, and the archive host resolves it when
 			it is opened.
 		-->
-		<event type="pull_request" resource="pull_diff" clock="pull_request.updated_at">
-			<subject>prdiff:<value name="payload.repository.full_name"/>#<value name="payload.number"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="repo">repository.name</key>
-			<key field="number">number</key>
-			<invalidate reason="the payload states the head and base shas, never the diff between them"/>
-		</event>
 
 		<!-- Tags move by a push to refs/tags, a create or a delete. None of them states the page a tag sits on. -->
 		<event type="push" resource="tags_list" clock="repository.pushed_at"

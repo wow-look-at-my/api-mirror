@@ -455,7 +455,9 @@ func (e *Engine) serve(w *recorder, r *http.Request, m *match) {
 	}
 	outcome, err := e.fresh.Ensure(ctx, kind, key)
 	var relayed *RelayedAnswer
-	if errors.As(err, &relayed) {
+	// A refusal the caller earned is theirs to read. An upstream outage is not:
+	// that caller gets the stored answer, marked stale.
+	if errors.As(err, &relayed) && !relayed.Outage {
 		w.note(DispRelayed, "", "", strconv.Itoa(relayed.Answer.Status))
 		e.revokeRefused(ctx, r.Header.Get("Authorization"), relayed.Answer.Status, relayed.Answer.Header)
 		e.relayAnswer(w, relayed.Answer)

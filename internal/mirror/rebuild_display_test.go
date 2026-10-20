@@ -11,7 +11,7 @@ func displayResource() *Resource {
 	return &Resource{
 		Name:   "repo",
 		Store:  StoreColumns,
-		Keys:   []Key{{Name: "owner", From: "owner.login", Fold: true}, {Name: "name", From: "name", Fold: true}},
+		Keys:   []Key{{Name: "owner", From: "owner.login", Fold: true}, {Name: "name", From: "name"}},
 		Fields: []Field{{Name: "description", Type: FieldText, From: "description"}},
 	}
 }

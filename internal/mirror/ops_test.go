@@ -205,7 +205,7 @@ func TestNotifierSignsAndTellsSubscribersAfterTheWriteLands(t *testing.T) {
 	t.Cleanup(subscriber.Close)
 
 	e := notifyEngine(t)
-	e.notify.rule.Fields = []Set{{Field: "widget", From: "widget.id"}, {Field: "missing", From: "nope"}}
+	e.notify.rule.Fields = []Set{{Field: "widget", From: "id"}, {Field: "missing", From: "nope"}}
 	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", subscriber.URL, "", nil, nil)
 	require.NoError(t, err)
 
@@ -319,7 +319,7 @@ func TestSubscriptionAPICreatesAndReturnsTheSecretOnce(t *testing.T) {
 // a config database in a temp directory.
 func widgetDelivery(e *Engine, subject string) *Delivery {
 	return &Delivery{
-		ID: "d1", Type: "widget.changed", Subject: subject,
+		ID: "d1", Type: "widget.changed", Subject: subject, UpstreamID: "up-1",
 		Event:   e.spec.Events.List[0],
 		Payload: map[string]any{"id": "7", "title": "renamed"},
 	}
