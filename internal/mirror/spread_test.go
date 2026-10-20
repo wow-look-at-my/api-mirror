@@ -25,6 +25,9 @@ func withIdentity(s *Spec) {
 		Fields: []Field{{Name: "title", Type: FieldText, From: "title"}},
 		Reveal: &Reveal{Public: "false", GrantTTL: time.Hour},
 	})
+	s.Routes = append(s.Routes, &Route{
+		Method: "GET", Path: "/secrets/{id}", Resource: "secret",
+	})
 }
 
 // withListing adds a private "secret" resource and a caller's listing of
