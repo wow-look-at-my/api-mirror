@@ -23,7 +23,7 @@ tests:
 		WEBHOOK_SECRET=dats-secret GITHUB_API_URL=http://127.0.0.1:19951 {shared.api-mirror} -spec {shared.mirror-spec.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19950 &
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19951/_requests && curl -s -o /dev/null http://127.0.0.1:19950/nonexistent && break; sleep 0.1; done
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19951/_requests && curl -s -o /dev/null http://127.0.0.1:19950/.well-known/docker-updater/health && break; sleep 0.1; done
 		BODY='{"ref":"refs/heads/main","before":"1111111111111111111111111111111111111111","after":"2222222222222222222222222222222222222222","deleted":false,"repository":{"full_name":"octo/demo","name":"demo","owner":{"login":"octo"},"pushed_at":1787000000}}'
 		SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac dats-secret | sed 's/^.*= //')"
 		echo "unsigned=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-GitHub-Event: push' -H 'Content-Type: application/json' --data "$BODY" http://127.0.0.1:19950/webhook)"

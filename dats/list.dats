@@ -19,10 +19,10 @@ tests:
 		set -e
 		{shared.fakegithub} -listen 127.0.0.1:19961 &
 		FAKE_PID=$!
-		WEBHOOK_SECRET=dats-secret GITHUB_API_URL=http://127.0.0.1:19961 {shared.api-mirror} -spec {shared.mirror-spec.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19960 &
+		WEBHOOK_SECRET=dats-secret GITHUB_API_URL=http://127.0.0.1:19961 REFRESH_INTERVAL=0 WEBHOOK_REPLAY_INTERVAL=0 {shared.api-mirror} -spec {shared.mirror-spec.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19960 &
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19961/_requests && curl -s -o /dev/null http://127.0.0.1:19960/nonexistent && break; sleep 0.1; done
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19961/_requests && curl -s -o /dev/null http://127.0.0.1:19960/.well-known/docker-updater/health && break; sleep 0.1; done
 		get() { curl -s -H 'Authorization: Bearer fake-token' -H 'Accept: application/vnd.github+json' "http://127.0.0.1:19960/repos/octo/demo/branches$1"; }
 		calls() { echo "$(curl -s http://127.0.0.1:19961/_requests) $(curl -s http://127.0.0.1:19961/_log)"; }
 		echo "miss=$(get '')"
@@ -40,7 +40,7 @@ tests:
 	  outputs:
 		stdout:
 			0: '^miss=\[\{.*3{40}'
-			1: "^calls-after-miss=3 GET:/user GET:/repos/octo/demo GET:/repos/octo/demo/branches"
+			1: "^calls-after-miss=3 GET:/user GET:/repos/octo/demo GET:/repos/octo/demo/branches.page=1&per_page=30$"
 			2: '^hit=\[\{.*3{40}'
 			3: "^calls-after-hit=3 "
 			4: "^calls-after-other-page=4 .*per_page=1$"

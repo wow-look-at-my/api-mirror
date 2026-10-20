@@ -35,10 +35,10 @@ tests:
 		set -e
 		{shared.fakegithub} -listen 127.0.0.1:19931 &
 		FAKE_PID=$!
-		GITHUB_API_URL=http://127.0.0.1:19931 {shared.api-mirror} -spec {shared.mirror-spec.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19930 &
+		GITHUB_API_URL=http://127.0.0.1:19931 REFRESH_INTERVAL=0 WEBHOOK_REPLAY_INTERVAL=0 {shared.api-mirror} -spec {shared.mirror-spec.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19930 &
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19931/_requests && curl -s -o /dev/null http://127.0.0.1:19930/nonexistent && break; sleep 0.1; done
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19931/_requests && curl -s -o /dev/null http://127.0.0.1:19930/.well-known/docker-updater/health && break; sleep 0.1; done
 		calls() { echo "$(curl -s http://127.0.0.1:19931/_requests) $(curl -s http://127.0.0.1:19931/_log)"; }
 		echo "anonymous-status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19930/repos/octo/demo)"
 		echo "after-anonymous=$(calls)"
