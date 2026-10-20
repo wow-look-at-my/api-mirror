@@ -12,10 +12,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// withIdentity leaves the caller named by its credential: no <identity>
-// rule resolves it any other way, so a grant is keyed by the fingerprint.
+// withIdentity declares the private "secret" resource a listing spreads into,
+// and leaves the caller named by its credential. No <identity> rule resolves
+// it any other way. A grant is keyed by the fingerprint.
 func withIdentity(s *Spec) {
 	s.Identity = nil
+	s.Resources = append(s.Resources, &Resource{
+		Name:   "secret",
+		Store:  StoreColumns,
+		TTL:    time.Hour,
+		Keys:   []Key{{Name: "id"}},
+		Fields: []Field{{Name: "title", Type: FieldText, From: "title"}},
+		Reveal: &Reveal{GrantTTL: time.Hour},
+	})
 }
 
 // withListing adds a private "secret" resource and a caller's listing of

@@ -38,13 +38,13 @@ func (e *Events) validate(resources map[string]*Resource) error {
 			repeats[pair] = r
 		}
 		r.declarations++
-		if ev.When == "" {
+		if ev.When == "" && len(ev.Actions) == 0 {
 			r.bare++
 		}
 	}
 	for _, r := range repeats {
 		if r.declarations > 1 && r.bare > 0 {
-			return fmt.Errorf("event %q declared twice for resource %q: two handlers for one type and resource need when= on every declaration", r.typ, r.res)
+			return fmt.Errorf("event %q declared twice for resource %q, which needs when= on every declaration, or action= on every one", r.typ, r.res)
 		}
 	}
 	// A type is declared per resource it moves.
