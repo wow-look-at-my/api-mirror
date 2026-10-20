@@ -126,7 +126,6 @@ func appKeyText(rule *App, vars map[string]any) (string, error) {
 	return strings.ReplaceAll(text, `\n`, "\n"), nil
 }
 
-
 // jwt signs a fresh assertion of the App's identity.
 func (a *appAuth) jwt() (string, error) {
 	now := a.now()
