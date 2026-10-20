@@ -35,7 +35,7 @@ func NewAdmin(e *Engine) (*Admin, error) {
 	}
 	a := &Admin{engine: e, prefix: prefix, mux: http.NewServeMux()}
 
-	token, err := renderString(d.Token, e.vars)
+	token, err := renderString(d.Token, map[string]any{"env": envMap(), "var": e.vars})
 	if err != nil {
 		logf("<dashboard> token: %v", err)
 	}
