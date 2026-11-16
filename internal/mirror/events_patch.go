@@ -86,7 +86,7 @@ func (i *Ingest) patchEach(ctx context.Context, res *Resource, p *Patch, key map
 	}
 	values := make([]any, len(p.Sets))
 	for n, st := range p.Sets {
-		v, err := setValue(st, FieldText, payload)
+		v, err := patchValue(st, payload)
 		if err != nil {
 			return 0, fmt.Errorf("set %q: %w", st.Field, err)
 		}
@@ -115,6 +115,16 @@ func (i *Ingest) patchEach(ctx context.Context, res *Resource, p *Patch, key map
 		changed++
 	}
 	return changed, nil
+}
+
+// patchValue reads the value a set writes into an item. A payload path gives
+// the payload's own JSON value, so the item keeps the upstream's type. An expr
+// gives text.
+func patchValue(st Set, payload any) (any, error) {
+	if st.Expr == "" {
+		return lookupPath(payload, st.From), nil
+	}
+	return renderString(st.Expr, map[string]any{"payload": payload})
 }
 
 // patchPage writes values into each item whose match path equals match. It

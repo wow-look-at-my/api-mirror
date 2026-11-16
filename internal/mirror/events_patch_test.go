@@ -101,6 +101,25 @@ func TestAPatchRewritesTheItemInEveryPageThatListsIt(t *testing.T) {
 	assert.EqualValues(t, 4, calls.Load(), "nothing was fetched to learn what the delivery stated")
 }
 
+func TestAPatchKeepsThePayloadsJSONType(t *testing.T) {
+	payload := map[string]any{"forced": true, "size": json.Number("7"), "commit": map[string]any{"sha": "b2"}}
+	p := &Patch{Match: "name", Sets: []Set{
+		{Field: "forced", From: "forced"},
+		{Field: "size", From: "size"},
+		{Field: "commit", From: "commit"},
+		{Field: "label", Expr: `{{ .payload.commit.sha }}!`},
+	}}
+	values := make([]any, len(p.Sets))
+	for n, st := range p.Sets {
+		v, err := patchValue(st, payload)
+		require.NoError(t, err)
+		values[n] = v
+	}
+	body, ok := patchPage(`[{"name":"v1","forced":false,"size":1,"commit":{"sha":"a1"}}]`, p, "v1", values)
+	require.True(t, ok)
+	assert.JSONEq(t, `[{"name":"v1","forced":true,"size":7,"commit":{"sha":"b2"},"label":"b2!"}]`, body)
+}
+
 func TestAPatchThatMatchesNothingChangesNothing(t *testing.T) {
 	var calls atomic.Int32
 	e, _ := newTestEngine(t, tagUpstream(&calls), tagSpec)
