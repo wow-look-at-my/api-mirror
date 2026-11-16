@@ -1,4 +1,4 @@
-
+<?xml version="1.1" encoding="UTF-8"?>
 <mirror name="embedded">
 	<upstream base="UPSTREAM"/>
 	<resource name="tags_list" store="document" ttl="1h">
