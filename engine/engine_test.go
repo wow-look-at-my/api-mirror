@@ -26,8 +26,6 @@ import (
 // testSecret signs deliveries. The spec reads it from the environment, as a host's spec does.
 const testSecret = "embed-test-secret"
 
-// embedSpec is the route a host moves first: a tag listing, dropped by a tag create.
-//
 //go:embed testdata/embed-spec.xml
 var embedSpec string
 
