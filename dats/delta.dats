@@ -20,13 +20,13 @@ tests:
 	- desc: compare reports every difference and exits 1
 	  timeout: 30s
 	  cmd: |
-		{shared.fixtureserver} -listen 127.0.0.1:19951 -route /repos/o/demo={shared.truth-demo.json} -route /same={shared.truth-same.json} &
+		{shared.fixtureserver} -listen 127.0.0.1:19911 -route /repos/o/demo={shared.truth-demo.json} -route /same={shared.truth-same.json} &
 		T=$!
-		{shared.fixtureserver} -listen 127.0.0.1:19952 -route /repos/o/demo={shared.mirror-demo.json} -route /same={shared.mirror-same.json} &
+		{shared.fixtureserver} -listen 127.0.0.1:19912 -route /repos/o/demo={shared.mirror-demo.json} -route /same={shared.mirror-same.json} &
 		M=$!
 		trap "kill $T $M 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19951/same && curl -s -o /dev/null http://127.0.0.1:19952/same && break; sleep 0.1; done
-		{shared.delta} compare --truth http://127.0.0.1:19951 --mirror local=http://127.0.0.1:19952 /repos/o/demo /same
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19911/same && curl -s -o /dev/null http://127.0.0.1:19912/same && break; sleep 0.1; done
+		{shared.delta} compare --truth http://127.0.0.1:19911 --mirror local=http://127.0.0.1:19912 /repos/o/demo /same
 		echo "exit=$?"
 	  outputs:
 		stdout:
@@ -41,13 +41,13 @@ tests:
 	- desc: ignore rules hide what they name, and compare exits 0
 	  timeout: 30s
 	  cmd: |
-		{shared.fixtureserver} -listen 127.0.0.1:19953 -route /repos/o/demo={shared.truth-demo.json} &
+		{shared.fixtureserver} -listen 127.0.0.1:19913 -route /repos/o/demo={shared.truth-demo.json} &
 		T=$!
-		{shared.fixtureserver} -listen 127.0.0.1:19954 -route /repos/o/demo={shared.mirror-demo.json} &
+		{shared.fixtureserver} -listen 127.0.0.1:19914 -route /repos/o/demo={shared.mirror-demo.json} &
 		M=$!
 		trap "kill $T $M 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19953/ && curl -s -o /dev/null http://127.0.0.1:19954/ && break; sleep 0.1; done
-		{shared.delta} compare -c {shared.ignore.yaml} --truth http://127.0.0.1:19953 --mirror local=http://127.0.0.1:19954 /repos/o/demo
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19913/ && curl -s -o /dev/null http://127.0.0.1:19914/ && break; sleep 0.1; done
+		{shared.delta} compare -c {shared.ignore.yaml} --truth http://127.0.0.1:19913 --mirror local=http://127.0.0.1:19914 /repos/o/demo
 		echo "exit=$?"
 	  outputs:
 		stdout:
@@ -72,19 +72,19 @@ tests:
 	- desc: serve answers from the truth, compares in the background, and keeps writes off the mirror
 	  timeout: 30s
 	  cmd: |
-		{shared.fixtureserver} -listen 127.0.0.1:19955 -route /repos/o/demo={shared.truth-demo.json} &
+		{shared.fixtureserver} -listen 127.0.0.1:19915 -route /repos/o/demo={shared.truth-demo.json} &
 		T=$!
-		{shared.fixtureserver} -listen 127.0.0.1:19956 -route /repos/o/demo={shared.mirror-demo.json} &
+		{shared.fixtureserver} -listen 127.0.0.1:19916 -route /repos/o/demo={shared.mirror-demo.json} &
 		M=$!
-		{shared.delta} serve --listen 127.0.0.1:19957 --truth http://127.0.0.1:19955 --mirror local=http://127.0.0.1:19956 --report {outputs.delta.ndjson} &
+		{shared.delta} serve --listen 127.0.0.1:19917 --truth http://127.0.0.1:19915 --mirror local=http://127.0.0.1:19916 --report {outputs.delta.ndjson} &
 		D=$!
 		trap "kill $T $M $D 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19957/_delta/summary && curl -s -o /dev/null http://127.0.0.1:19955/ && curl -s -o /dev/null http://127.0.0.1:19956/ && break; sleep 0.1; done
-		curl -s -D - http://127.0.0.1:19957/repos/o/demo
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19917/_delta/summary && curl -s -o /dev/null http://127.0.0.1:19915/ && curl -s -o /dev/null http://127.0.0.1:19916/ && break; sleep 0.1; done
+		curl -s -D - http://127.0.0.1:19917/repos/o/demo
 		echo
-		curl -s -o /dev/null -X POST http://127.0.0.1:19957/repos/o/demo
-		for i in $(seq 1 50); do curl -s http://127.0.0.1:19957/_delta/summary | grep -q '"exchanges": 1' && break; sleep 0.1; done
-		curl -s 'http://127.0.0.1:19957/_delta/summary?format=text'
+		curl -s -o /dev/null -X POST http://127.0.0.1:19917/repos/o/demo
+		for i in $(seq 1 50); do curl -s http://127.0.0.1:19917/_delta/summary | grep -q '"exchanges": 1' && break; sleep 0.1; done
+		curl -s 'http://127.0.0.1:19917/_delta/summary?format=text'
 	  outputs:
 		stdout:
 			- "X-Delta-Served: truth"
