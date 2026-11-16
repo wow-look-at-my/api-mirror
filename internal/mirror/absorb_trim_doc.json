@@ -1,0 +1,9 @@
+{
+		"name": "api-mirror",
+		"url": "https://upstream/repos/1",
+		"html_url": "https://upstream/wow/api-mirror",
+		"AVATAR_URL": "https://upstream/a.png",
+		"node_id": "MDEw",
+		"owner": {"login": "wow", "url": "https://upstream/users/wow"},
+		"tags": [{"name": "v1", "commit_url": "https://upstream/c/1"}]
+	}

@@ -25,8 +25,7 @@ func Run() error {
 
 // run parses argv into its own flag set and reports to out. Nothing here
 // reads a process global, so a test hands both in rather than assigning
-// os.Args and os.Stdout. Those assignments reached every other test in the
-// binary, which broke a re-executed test and a parallel one.
+// os.Args and os.Stdout.
 func run(argv []string, out io.Writer) error {
 	fs := flag.NewFlagSet(argv[0], flag.ContinueOnError)
 	var (
@@ -34,9 +33,13 @@ func run(argv []string, out io.Writer) error {
 		dbPath   = fs.String("db", "mirror.db", "path to the cache database")
 		addr     = fs.String("listen", ":8080", "listen address")
 		check    = fs.Bool("check", false, "load the spec, report what it derives, and exit")
+		maxRows  = fs.Int64("max-rows", defaultMaxRows, "per-table row ceiling; the oldest rows beyond it are evicted")
 	)
 	if err := fs.Parse(argv[1:]); err != nil {
 		return err
+	}
+	if *maxRows < 1 {
+		return fmt.Errorf("--max-rows %d: must be at least 1", *maxRows)
 	}
 
 	spec, err := Load(*specPath)
@@ -53,6 +56,7 @@ func run(argv []string, out io.Writer) error {
 		return err
 	}
 	defer store.Close()
+	store.maxRows = *maxRows
 
 	engine, err := NewEngine(spec, store, nil)
 	if err != nil {

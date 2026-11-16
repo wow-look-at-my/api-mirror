@@ -182,9 +182,10 @@ func toUnix(v any) (any, error) {
 // path. The answer is a subset of the upstream document. A route-only key and
 // an expr field are not the upstream's words, so neither is served.
 func rebuild(r *Resource, row Row) (map[string]any, error) {
-	if r.Store == StoreDocument {
+	if r.whole() {
 		return nil, fmt.Errorf("rebuild %s: a document resource replays its stored document", r.Name)
 	}
+	// Each value goes back where the upstream document had it.
 	out := make(map[string]any, len(r.Keys)+len(r.Fields))
 	for _, k := range r.Keys {
 		if !k.Served() {
@@ -272,6 +273,15 @@ func present(f Field, v any) any {
 			return v
 		}
 		return time.Unix(n.(int64), 0).UTC().Format(time.RFC3339)
+	case FieldInt:
+		s, ok := v.(string)
+		if !ok {
+			return v
+		}
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
+		}
+		return v
 	case FieldJSON:
 		s, ok := v.(string)
 		if !ok {

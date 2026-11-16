@@ -22,6 +22,8 @@ const (
 	LaneDelivery    Lane = "delivery"    // an inbound webhook, timed at the handler
 	LaneNotify      Lane = "notify"      // an outbound subscriber notification
 	LaneCredential  Lane = "credential"  // obtaining a background credential by exchange
+	LaneAdmin       Lane = "admin"       // the operator surface asking the upstream itself
+	LaneInbound     Lane = "inbound"     // a caller's request, as this mirror answered it
 )
 
 // Exchange is completed request, inbound or outbound, as reported to the
@@ -39,7 +41,9 @@ type Exchange struct {
 	Principal string
 	// Detail is the lane's own vocabulary. Display text, never a key.
 	Detail string
-	Err    error
+	// Group splits a lane into the rows the chart draws: a resource, an event type, or a route shape.
+	Group string
+	Err   error
 }
 
 // laneKey carries a lane into the transport, the place that sees every request.
@@ -122,6 +126,7 @@ func (t *observeTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		Started:   started,
 		Principal: tag.principal,
 		Detail:    tag.detail,
+		Group:     tag.detail,
 	}
 
 	resp, err := t.base.RoundTrip(req)

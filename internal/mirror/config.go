@@ -36,7 +36,9 @@ type Spec struct {
 	Replay *Replay
 	// Health declares the liveness and pre-update paths an orchestrator polls.
 	Health *Health
-	// Identity lets a caller name a stable principal the upstream vouches for.
+	// Aliases repeat response headers under the names older clients read.
+	Aliases []HeaderAlias
+	// Identity resolves a credential to a stable principal. Nil keys a caller by their credential's fingerprint.
 	Identity *Identity
 	// Whoami resolves a caller's own credential to a stable principal.
 	Whoami *Whoami
@@ -101,9 +103,14 @@ type Whoami struct {
 	TTL time.Duration
 }
 
-// Identity is a verified assertion that names the caller. The principal
-// is then stable across every credential the caller rotates through.
+// Identity says how a caller's credential becomes a stable principal.
 type Identity struct {
+	// TTL bounds how long a resolved credential is trusted without asking again.
+	TTL time.Duration
+	// User resolves a bearer through the upstream's own "who am I" answer.
+	User *IdentityRule
+	// Assertion lets a caller name an identity the upstream verifies.
+	Assertion *IdentityRule
 	// Header is the request header that carries the assertion.
 	Header string
 	// Method and Path are the upstream call that verifies the assertion.
@@ -118,8 +125,6 @@ type Identity struct {
 	Name string
 	// Prefix starts the principal, which is "<prefix>:<id>".
 	Prefix string
-	// TTL bounds how long a verdict is reused.
-	TTL time.Duration
 }
 
 // Dashboard is the operator surface: the tabs, the admin JSON, and the token
@@ -131,6 +136,8 @@ type Dashboard struct {
 	Token string
 	// Title is what the page calls this mirror.
 	Title string
+	// SignIn lets a human in through the upstream's OAuth. Nil leaves the token as the only way in.
+	SignIn *SignIn
 	// Login lets an operator sign in through the upstream's OAuth flow.
 	Login *Login
 }
@@ -251,18 +258,24 @@ type Upstream struct {
 	Headers []Header
 	// Forward names the request headers copied from the caller to the upstream.
 	Forward []string
+	// Require names forwarded headers a caller must send.
+	Require []string
 	// Rate names the budget headers. Their spelling is the upstream's, not ours.
 	Rate RateHeaders
 	// Debounce holds an eligible passthrough READ so identical reads share call.
 	Debounce time.Duration
 	// RetryAfter names the header saying a refusal is about waiting, not access.
 	RetryAfter string
+	// App is the mirror's own signed identity for the calls it makes itself.
+	App *App
 }
 
 // Header is header sent upstream.
 type Header struct {
 	Name  string
 	Value string // template source
+	// Background sends this header only on the mirror's own calls: refresh, replay and check.
+	Background bool
 	// Credential names the <credential> whose token renders as `.credential`.
 	Credential string
 }
@@ -275,6 +288,8 @@ const (
 	StoreColumns StoreMode = "columns"
 	// StoreDocument keeps the response document itself, minus the declared
 	StoreDocument StoreMode = "document"
+	// StoreRaw keeps the response body byte for byte, for a media type that is not JSON.
+	StoreRaw StoreMode = "raw"
 )
 
 const (
@@ -283,6 +298,11 @@ const (
 	// StoreText keeps a representation that is not JSON, such as a diff, with its media type.
 	StoreText StoreMode = "text"
 )
+
+// whole reports whether the resource keeps each answer in a single stored cell.
+func (r *Resource) whole() bool {
+	return r.Store == StoreDocument || r.Store == StoreRaw
+}
 
 // Redirect says how long a stored Location may be served.
 type Redirect struct {
@@ -323,6 +343,10 @@ type Resource struct {
 	Keep []Keep
 	// Reveal gates every read of this resource. A resource without cannot
 	Reveal *Reveal
+	// RevokeOn is the document path holding a credential this resource hands out.
+	RevokeOn string
+	// Contradiction names another resource whose later rows can prove a stored row stale.
+	Contradiction *Contradiction
 	// Redirect is the lifetime rule of a redirect resource.
 	Redirect *Redirect
 }
@@ -336,6 +360,8 @@ type Key struct {
 	Fold bool
 	// Credential fills this from the caller's own request, not the document.
 	Credential bool
+	// ByPrincipal fills a credential key with the caller's resolved principal instead of the credential's fingerprint.
+	ByPrincipal bool
 	// Type is the JSON type the answer serves a From key as: text or int.
 	Type FieldType
 }
@@ -371,6 +397,8 @@ type Field struct {
 	From string
 	// Expr is template source evaluated against the absorbed document.
 	Expr string
+	// Version marks the column the upstream advances on every change.
+	Version bool
 }
 
 // Keep rescues document key from a resource's Drop patterns.
@@ -413,6 +441,10 @@ type Route struct {
 	Absorb []int
 	// BodyKey names the resource key the REQUEST body fills, as a digest, for a route whose question travels in its body.
 	BodyKey string
+	// Bypass is a regular expression over the request body.
+	Bypass *regexp.Regexp
+	// Assert says the caller's bearer is itself an identity assertion, verified by the <identity><assertion> rule.
+	Assert bool
 	// Spreads carry the items of a fetched answer into another resource.
 	Spreads []*Spread
 	// Match constrains the shape of a path parameter. A request that fails one is left for a later route on the same path.
@@ -496,6 +528,8 @@ type Events struct {
 	// ReorderWindow holds a delivery so other deliveries for the same subject
 	ReorderWindow time.Duration
 	List          []*Event
+	// Subscriptions asks the upstream which types it sends. Nil reports none.
+	Subscriptions *EventSubscriptions
 }
 
 // Event maps delivery to stored rows.
@@ -510,7 +544,9 @@ type Event struct {
 	Unordered bool
 	// AbsorbWhenSuperseded lets a delivery the watermark refused still write its
 	AbsorbWhenSuperseded bool
-	// When is a predicate over `.payload`. A false result skips this event for the delivery. Empty always applies.
+	// Actions limits the event to deliveries whose action is any of these. Empty handles every action.
+	Actions []string
+	// When is template source over `.payload`. The event handles a delivery only when it renders truthy.
 	When string
 	// Keys say where the DELIVERY carries each key column.
 	Keys []Set
@@ -534,6 +570,8 @@ type Set struct {
 // Invalidate drops the stored row for this event's subject.
 type Invalidate struct {
 	Reason string
+	// All drops every row of the resource, for rows no delivery can key.
+	All bool
 	// Every drops every row of the resource.
 	Every bool
 	// Field and Differs make the drop conditional.

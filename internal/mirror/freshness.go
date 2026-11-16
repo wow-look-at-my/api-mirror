@@ -180,6 +180,10 @@ func (f *Fresh) doFetch(ctx context.Context, kind, key string, meta *Freshness) 
 
 	res, err := f.fetch(fetchCtx, kind, key, etag)
 	now := f.now()
+	var relayed *RelayedAnswer
+	if errors.As(err, &relayed) && !relayed.Outage {
+		return OutcomeError, err
+	}
 	var mine interface{ Unstored() bool }
 	if errors.As(err, &mine) && mine.Unstored() {
 		// One caller's answer: other callers must not read it as a backoff.

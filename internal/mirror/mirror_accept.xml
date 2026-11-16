@@ -1,0 +1,4 @@
+<mirror name="m">
+	<accept>application/vnd.example+json</accept>
+	<upstream base="https://example.invalid"/>
+</mirror>

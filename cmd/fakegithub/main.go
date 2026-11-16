@@ -1,7 +1,8 @@
-// Command fakegithub is a deterministic GitHub REST stand-in for tests.
-// It answers in GitHub's own document shapes, fields the mirror does not keep
-// included, so a test can compare the mirror's answer with the upstream's. It
-// counts every request so a test can prove a cache hit made none.
+// Command fakegithub is a deterministic GitHub REST stand-in for tests. It
+// answers /user, the repo, pulls, refs, statuses and the list routes in
+// GitHub's own document shapes — fields the mirror does not keep included. A
+// test can compare the mirror's answer with the upstream's — and counts every
+// request so a test can prove a cache hit made none.
 package main
 
 import (
@@ -13,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -106,6 +108,9 @@ func gitCommit(owner, name, sha string) doc {
 }
 
 func answer(path string) (any, bool) {
+	if path == "/user" {
+		return doc{"id": 42, "login": "fake-user"}, true
+	}
 	if m := repoPath.FindStringSubmatch(path); m != nil {
 		return repo(m[1], m[2]), true
 	}
@@ -151,6 +156,7 @@ func answer(path string) (any, bool) {
 		return []doc{
 			{"name": "feature", "protected": false, "commit": doc{"sha": "aaaa000000000000000000000000000000000001", "url": api + "/repos/" + m[1] + "/" + m[2] + "/commits/aaaa"}},
 			{"name": "main", "protected": true, "commit": doc{"sha": "ffff000000000000000000000000000000000006", "url": api + "/repos/" + m[1] + "/" + m[2] + "/commits/ffff"}},
+			{"name": "dev", "protected": false, "commit": doc{"sha": "3333333333333333333333333333333333333333", "url": api + "/repos/" + m[1] + "/" + m[2] + "/commits/3333"}},
 		}, true
 	}
 	return nil, false
@@ -171,12 +177,20 @@ func main() {
 	}
 
 	var requests atomic.Int64
+	var mu sync.Mutex
+	var served []string
 	var repoAuth atomic.Value
 	repoAuth.Store("")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_requests", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%d", requests.Load())
+	})
+	// /_log names every request served, so a failing count says which call it was.
+	mux.HandleFunc("/_log", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprint(w, strings.Join(served, " "))
 	})
 	// The Authorization the latest /repos/ request carried, so a test can see who asked.
 	mux.HandleFunc("/_auth", func(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +205,9 @@ func main() {
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
+		mu.Lock()
+		served = append(served, r.Method+":"+r.URL.RequestURI())
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasPrefix(r.URL.Path, "/repos/") {
 			repoAuth.Store(r.Header.Get("Authorization"))
@@ -205,6 +222,7 @@ func main() {
 			_ = json.NewEncoder(w).Encode(v)
 			return
 		}
+
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Not Found"})
 	})

@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,15 +19,19 @@ func (a *Admin) check(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	repair := r.Method == http.MethodPost && r.URL.Query().Get("apply") == "true"
+	var scope map[string]string
+	if res, ok := a.engine.store.Resource(strings.TrimSuffix(kind, ":list")); ok {
+		scope = scopeOf(r, res)
+	}
 
 	if r.URL.Query().Get("stream") == "1" {
-		a.streamCheck(w, r, kind, repair)
+		a.streamCheck(w, r, kind, scope, repair)
 		return
 	}
 
 	summary := CheckSummary{Kind: kind}
 	started := time.Now()
-	err := a.engine.Check(r.Context(), kind, repair, summary.add)
+	err := a.engine.Check(r.Context(), kind, scope, repair, summary.add)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -40,7 +45,7 @@ func (a *Admin) check(w http.ResponseWriter, r *http.Request) {
 // A check asks the upstream per stored key, so a large kind takes minutes.
 // Buffering it means an operator watches a spinner and cannot tell a slow check
 // from a wedged; each line is flushed as it is decided.
-func (a *Admin) streamCheck(w http.ResponseWriter, r *http.Request, kind string, repair bool) {
+func (a *Admin) streamCheck(w http.ResponseWriter, r *http.Request, kind string, scope map[string]string, repair bool) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
@@ -60,7 +65,7 @@ func (a *Admin) streamCheck(w http.ResponseWriter, r *http.Request, kind string,
 		}
 	}
 
-	err := a.engine.Check(r.Context(), kind, repair, func(k KeyCheck) {
+	err := a.engine.Check(r.Context(), kind, scope, repair, func(k KeyCheck) {
 		summary.add(k)
 		emit(k)
 	})

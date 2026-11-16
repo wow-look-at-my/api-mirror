@@ -1,0 +1,8 @@
+
+<mirror name="m">
+	<upstream base="https://api.example.com"/>
+	<resource name="r">
+		<key name="id"/>
+		<field name="a" type="text">a</field>
+	</resource>
+</mirror>

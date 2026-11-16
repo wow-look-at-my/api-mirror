@@ -232,6 +232,27 @@ func TestEqualClockApplies(t *testing.T) {
 	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
 }
 
+func TestNullClockAppliesUnorderedAndMovesNoWatermark(t *testing.T) {
+	in, store := newIngest(t, ingestSpec())
+
+	payload := repoDelivery("acme", "widget", 0, map[string]any{"visibility": "public"})
+	payload["repository"].(map[string]any)["updated_at"] = nil
+	w := deliver(t, in, "repository", payload)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, string(DeliveryApplied), w.Header().Get(dispositionHeader),
+		"a view stating no moment still carries the new value")
+	assert.Equal(t, "public", repoRow(t, store, "acme", "widget")["visibility"])
+
+	_, found, err := store.Watermark(context.Background(), "acme/widget")
+	require.NoError(t, err)
+	assert.False(t, found, "a view with no moment cannot move the watermark")
+
+	w = deliver(t, in, "repository", repoDelivery("acme", "widget", clockEarly,
+		map[string]any{"visibility": "private"}))
+	assert.Equal(t, string(DeliveryApplied), w.Header().Get(dispositionHeader),
+		"a later dated view is not refused by an undated one")
+}
+
 func TestSupersededDeliveryStillAbsorbsWhenDeclared(t *testing.T) {
 	spec := ingestSpec()
 	spec.Events.List[0].AbsorbWhenSuperseded = true

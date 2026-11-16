@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -51,27 +52,30 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 	case StoreText:
 		set = http.Header{"Accept": {plan.route.Accept[0]}}
 	}
-	answer, err := e.up.CallWith(ctx, plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), set, plan.body)
+	answer, err := e.up.CallWith(plan.media(ctx), plan.route.Method, plan.upstreamPath(), e.vars, forwardFrom(ctx), set, plan.body)
 	if err != nil {
 		return FetchResult{}, err
 	}
 	if answer.Status == 304 {
 		return FetchResult{ETag: etag}, nil
 	}
-	if !plan.res.Store.answersJSON() {
+	if plan.res.Store == StoreRedirect || plan.res.Store == StoreText {
 		if result, held, err := e.absorbHeld(ctx, plan, answer); held {
 			return result, err
 		}
 	}
-	if !storable(e.up, plan.route, answer) {
-		// The route models the request but not this answer. Storing it anyway
-		// would be a guess written down as a fact.
-		if !e.up.Transient(answer) && forwardFrom(ctx) != nil {
+	// A refusal the mirror's own identity got says nothing about what a caller with access would see.
+	background := forwardFrom(ctx) == nil && answer.Status >= 400
+	if background || !storable(e.up, plan.route, answer) {
+		if !background && !e.up.Transient(answer) && forwardFrom(ctx) != nil {
 			// The caller's own credential earned this answer, so it is theirs.
 			return FetchResult{}, &UnstoredAnswer{Path: plan.path, Answer: answer}
 		}
-		return FetchResult{}, fmt.Errorf("upstream %s answered %d, which route %s does not absorb",
-			plan.path, answer.Status, plan.route.Path)
+		return FetchResult{}, &RelayedAnswer{
+			Answer: answer,
+			Outage: answer.Status >= 500 && !e.up.RateLimited(answer),
+			Route:  plan.route.Path,
+		}
 	}
 	if answer.Overflow {
 		return FetchResult{}, fmt.Errorf("upstream %s answered more than the %d byte cap", plan.path, maxBodyBytes)
@@ -84,6 +88,9 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return result, nil
 	}
 
+	if plan.res.Store == StoreRaw {
+		return result, e.store.Put(ctx, plan.res, plan.rawRow(answer.Body), time.Now())
+	}
 	doc, err := decodeJSON(answer.Body)
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("upstream %s: %w", plan.path, err)
@@ -95,6 +102,18 @@ func (e *Engine) fetch(ctx context.Context, kind, key, etag string) (FetchResult
 		return FetchResult{}, err
 	}
 	return result, nil
+}
+
+// RelayedAnswer is an upstream answer the route does not store.
+type RelayedAnswer struct {
+	Answer *Answer
+	// Outage marks the upstream itself failing, the a single case every caller of the key shares.
+	Outage bool
+	Route  string
+}
+
+func (r *RelayedAnswer) Error() string {
+	return fmt.Sprintf("upstream answered %d, which route %s does not absorb", r.Answer.Status, r.Route)
 }
 
 // refusalBody re-encodes the document a stored refusal carries, with the
@@ -227,7 +246,10 @@ func (e *Engine) absorbOne(ctx context.Context, plan *fetchPlan, doc any, now ti
 	if err := requireKeys(plan.res, row); err != nil {
 		return fmt.Errorf("route %s: %w", plan.route.Path, err)
 	}
-	return e.store.Put(ctx, plan.res, row, now)
+	if err := e.store.Put(ctx, plan.res, row, now); !errors.Is(err, errStoredIsNewer) {
+		return err
+	}
+	return nil
 }
 
 // requireKeys refuses a row whose identity is incomplete. A row filed under a

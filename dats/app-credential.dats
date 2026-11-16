@@ -32,6 +32,10 @@ tests:
 		curl -s -o /dev/null http://127.0.0.1:19970/repos/octo/demo
 		echo "caller=[$(curl -s http://127.0.0.1:19971/_auth)]"
 		echo "exchanges-after-caller=$(curl -s http://127.0.0.1:19971/_exchanges)"
+		# The spec requires the caller's Authorization on the data plane, so the
+		# row the check sweeps comes from a caller who has one. The check itself
+		# is the mirror's own call, and that one carries the App's token.
+		curl -s -o /dev/null -H 'Authorization: token seed' http://127.0.0.1:19970/repos/octo/demo
 		echo "check-1=$(curl -s "http://127.0.0.1:19970/_mirror/api/check?kind=repo&token=admin")"
 		echo "check=[$(curl -s http://127.0.0.1:19971/_auth)]"
 		echo "check-2=$(curl -s "http://127.0.0.1:19970/_mirror/api/check?kind=repo&token=admin")"

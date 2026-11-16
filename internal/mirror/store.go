@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/wow-look-at-my/api-mirror/internal/database/dbgen"
@@ -21,7 +23,11 @@ type Store struct {
 	spec *Spec
 	// byName resolves a resource, so no hot path does a linear scan.
 	byName map[string]*Resource
-	cap    *rowCap
+	// maxRows is the ceiling on every resource table; capRows enforces it.
+	maxRows int64
+	counts  rowCounts
+	// cap trims every table to the spec's max-rows, at most once per interval.
+	cap *rowCap
 }
 
 // Open opens (or creates) the database at path and brings it to the schema this
@@ -64,8 +70,13 @@ func Open(ctx context.Context, path string, spec *Spec) (*Store, error) {
 		}
 	}
 
-	s := &Store{db: db, path: path, q: dbgen.New(db), spec: spec, byName: make(map[string]*Resource, len(spec.Resources)),
-		cap: &rowCap{max: spec.MaxRows, checked: map[string]time.Time{}}}
+	s := &Store{
+		db: db, path: path, q: dbgen.New(db), spec: spec,
+		byName:  make(map[string]*Resource, len(spec.Resources)),
+		maxRows: defaultMaxRows,
+		counts:  rowCounts{n: map[string]int64{}},
+		cap:     &rowCap{max: spec.MaxRows, checked: map[string]time.Time{}},
+	}
 	for _, r := range spec.Resources {
 		s.byName[r.Name] = r
 	}
@@ -270,6 +281,45 @@ func (s *Store) DeleteFreshness(ctx context.Context, kind, key string) (int64, e
 		return 0, fmt.Errorf("delete freshness %s/%s: %w", kind, key, err)
 	}
 	return n, nil
+}
+
+// Forget drops the freshness of every answer stored at or beneath key. The
+// next read asks the upstream instead of reading a row that is gone. The list
+// kind is dropped from the parent down: an item that changed changes every
+// listing it appears in.
+func (s *Store) Forget(ctx context.Context, res *Resource, key map[string]string) error {
+	lead := leadingKey(res, key)
+	parent := lead
+	if len(lead) == len(res.Keys) && len(lead) > 0 {
+		parent = lead[:len(lead)-1]
+	}
+	for kind, parts := range map[string][]string{res.Name: lead, res.Name + ":list": parent} {
+		exact := strings.Join(parts, "/")
+		_, err := s.q.DeleteFreshnessUnder(ctx, dbgen.DeleteFreshnessUnderParams{
+			Kind:  kind,
+			Key:   exact,
+			Below: exact + "/",
+		})
+		if err != nil {
+			return fmt.Errorf("forget %s/%s: %w", kind, exact, err)
+		}
+	}
+	return nil
+}
+
+// leadingKey is the key components a key map supplies. That leadingKey is in declared
+// order, up to the earliest a single it does not: the prefix every stored key beneath
+// it shares.
+func leadingKey(res *Resource, key map[string]string) []string {
+	var parts []string
+	for _, k := range res.Keys {
+		v, ok := key[k.Name]
+		if !ok {
+			break
+		}
+		parts = append(parts, url.PathEscape(v))
+	}
+	return parts
 }
 
 // SetListMembers records the row keys one list answer held, in order. the

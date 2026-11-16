@@ -38,7 +38,7 @@ func loginEngine(t *testing.T, admins string) *Engine {
 }
 
 // signIn walks the flow and returns the callback's answer.
-func signIn(t *testing.T, e *Engine, code string) *httptest.ResponseRecorder {
+func walkLogin(t *testing.T, e *Engine, code string) *httptest.ResponseRecorder {
 	t.Helper()
 	start := httptest.NewRecorder()
 	e.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/_mirror/login", nil))
@@ -66,7 +66,7 @@ func TestDashboardSignInIssuesASessionToAnAdmin(t *testing.T) {
 	assert.Equal(t, http.StatusFound, bare.Code, "a browser without a session is sent to sign in")
 	assert.Equal(t, "/_mirror/login", bare.Header().Get("Location"))
 
-	done := signIn(t, e, "good-code")
+	done := walkLogin(t, e, "good-code")
 	require.Equal(t, http.StatusFound, done.Code, done.Body.String())
 
 	req := httptest.NewRequest(http.MethodGet, "/_mirror/api/overview", nil)
@@ -86,12 +86,12 @@ func TestDashboardSignInIssuesASessionToAnAdmin(t *testing.T) {
 
 func TestDashboardSignInRefusesSomeoneNotOnTheList(t *testing.T) {
 	e := loginEngine(t, "bob")
-	assert.Equal(t, http.StatusForbidden, signIn(t, e, "good-code").Code)
+	assert.Equal(t, http.StatusForbidden, walkLogin(t, e, "good-code").Code)
 }
 
 func TestDashboardSignInRefusesABadCodeAndABadState(t *testing.T) {
 	e := loginEngine(t, "alice")
-	assert.Equal(t, http.StatusBadGateway, signIn(t, e, "bad-code").Code)
+	assert.Equal(t, http.StatusBadGateway, walkLogin(t, e, "bad-code").Code)
 
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/_mirror/auth/callback?code=good-code&state=forged", nil))
@@ -100,8 +100,11 @@ func TestDashboardSignInRefusesABadCodeAndABadState(t *testing.T) {
 
 func TestDashboardSignInIsOffWithoutAClient(t *testing.T) {
 	e := loginEngine(t, "alice")
-	e.admin = NewAdmin(e)
+	var err error
+	e.admin, err = NewAdmin(e)
+	require.NoError(t, err)
 	e.spec.Dashboard.Login.ClientID = ""
-	e.admin = NewAdmin(e)
+	e.admin, err = NewAdmin(e)
+	require.NoError(t, err)
 	assert.Nil(t, e.admin.login, "no client means no sign-in, and the token still gates the dashboard")
 }

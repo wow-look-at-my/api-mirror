@@ -130,6 +130,39 @@ func TestTimeline_ReportsWhatItDroppedRatherThanLosingItQuietly(t *testing.T) {
 		"a chart that silently loses its oldest frames reads as a quiet period that never happened")
 }
 
+func TestTimeline_SinceAnswersOnlyNewerFrames(t *testing.T) {
+	tl := NewTimeline()
+	for i := range 3 {
+		tl.Observe(Exchange{Lane: LaneFetch, Group: "repo", Path: "/" + itoa(i), Started: time.Now()})
+	}
+	cursor := tl.Stats().Seq
+	assert.Equal(t, uint64(3), cursor)
+	assert.Empty(t, tl.Since(cursor))
+
+	tl.Observe(Exchange{Lane: LaneInbound, Group: "GET /x", Path: "/x", Started: time.Now()})
+	got := tl.Since(cursor)
+	require.Len(t, got, 1)
+	assert.Equal(t, "GET /x", got[0].Group)
+	assert.Len(t, tl.Since(0), 4)
+}
+
+func TestTimeline_ALiveFrameBehindAnExpiredOneStays(t *testing.T) {
+	now := time.Now()
+	tl := NewTimeline()
+	tl.now = func() time.Time { return now }
+	old := now.Add(-timelineWindow - time.Minute)
+	// A slow exchange started before an expired a single ended, so it sits behind it.
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/old", Started: old})
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/live", Started: now})
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/stale", Started: old})
+	tl.Observe(Exchange{Lane: LaneFetch, Path: "/also-live", Started: now})
+
+	got := tl.Frames()
+	require.Len(t, got, 2)
+	assert.Equal(t, "/live", got[0].Path)
+	assert.Equal(t, "/also-live", got[1].Path, "evicting past a live frame would have dropped this one")
+}
+
 func TestRequestLog_TalliesByShapeSoOneOffPathsDoNotHideTheFamily(t *testing.T) {
 	log := NewRequestLog()
 	for _, path := range []string{"/repos/a/b", "/repos/c/d", "/repos/e/f"} {
@@ -145,6 +178,18 @@ func TestRequestLog_TalliesByShapeSoOneOffPathsDoNotHideTheFamily(t *testing.T) 
 	assert.Equal(t, 3, groups[0].Reasons["unrouted"])
 	assert.Len(t, groups[0].Samples, 3, "the samples let an author check the guess the shape made")
 	assert.Equal(t, time.Millisecond, groups[0].MeanDuration())
+}
+
+func TestRequestLog_KeepsStatusesAndABoundedCallerTally(t *testing.T) {
+	log := NewRequestLog()
+	for i := range groupCallers + 5 {
+		log.Record(Request{Method: "GET", Path: "/x", Shape: "/x", Status: 200, Principal: "token:" + itoa(i)})
+	}
+	log.Record(Request{Method: "GET", Path: "/x", Shape: "/x", Status: 404, Principal: "token:0"})
+	g := log.Groups()[0]
+	assert.Equal(t, map[int]int{200: groupCallers + 5, 404: 1}, g.Statuses)
+	assert.Len(t, g.Callers, groupCallers, "one noisy shape cannot grow the tally without bound")
+	assert.Equal(t, 2, g.Callers["token:0"], "a caller already counted keeps counting")
 }
 
 func TestGeneralizeWith_UsesTheSpecsOwnWordsRatherThanGuessing(t *testing.T) {

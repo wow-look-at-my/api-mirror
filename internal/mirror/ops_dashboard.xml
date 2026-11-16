@@ -1,0 +1,3 @@
+	<dashboard path="/_ops" title="Ops">
+		<token><value name="env.MIRROR_TOKEN"/></token>
+	</dashboard>

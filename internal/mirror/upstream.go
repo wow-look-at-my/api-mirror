@@ -24,7 +24,10 @@ type Upstreamer struct {
 	headers []Header
 	client  *http.Client
 	observe Observer
-	creds   *credentials
+	// app signs the mirror's own calls; nil falls back to background headers.
+	app *appAuth
+	// creds obtains and caches the tokens of the declared <credential>s.
+	creds *credentials
 }
 
 // NewUpstreamer resolves the upstream's base URL and static headers.
@@ -49,6 +52,11 @@ func NewUpstreamer(spec *Spec, vars map[string]any, observe Observer) (*Upstream
 		observe: observe,
 	}
 	u.creds = newCredentials(u, spec, vars)
+	app, err := newAppAuth(spec.Upstream.App, vars, u)
+	if err != nil {
+		return nil, err
+	}
+	u.app = app
 	follow := u.client.CheckRedirect
 	u.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if req.Context().Value(noFollowKey{}) != nil {
@@ -81,8 +89,8 @@ type Answer struct {
 	Overflow bool
 }
 
-// Call sends a request with the caller's forwarded headers. A nil forward
-// is background work on the static headers.
+// Call sends request to the upstream, carrying the caller's own forwarded
+// headers so the answer is the THAT caller is entitled to.
 func (u *Upstreamer) Call(ctx context.Context, method, path string, vars map[string]any, forward http.Header, reqBody []byte) (*Answer, error) {
 	return u.CallWith(ctx, method, path, vars, forward, nil, reqBody)
 }
@@ -102,6 +110,9 @@ func (u *Upstreamer) CallWith(ctx context.Context, method, path string, vars map
 	}
 	req.ContentLength = int64(len(reqBody))
 	for _, h := range u.headers {
+		if h.Background && forward != nil {
+			continue
+		}
 		name, err := renderString(h.Name, vars)
 		if err != nil {
 			return nil, fmt.Errorf("upstream header name: %w", err)
@@ -142,6 +153,18 @@ func (u *Upstreamer) CallWith(ctx context.Context, method, path string, vars map
 			} else {
 				req.Header.Del(name)
 			}
+		}
+	}
+	if m := mediaFrom(ctx); m != "" {
+		req.Header.Set("Accept", m)
+	}
+	if forward == nil && u.app != nil {
+		auth, ok, err := u.app.authorization(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("app credential for %s %s: %w", method, path, err)
+		}
+		if ok {
+			req.Header.Set("Authorization", auth)
 		}
 	}
 	for name, values := range set {
@@ -215,10 +238,12 @@ func (u *Upstreamer) RateLimited(a *Answer) bool {
 	if a.Header.Get(retryAfter) != "" {
 		return true
 	}
-	if name := u.spec.Upstream.Rate.Remaining; name != "" {
-		return a.Header.Get(name) == "0"
+	if name := u.spec.Upstream.Rate.Remaining; name != "" && a.Header.Get(name) == "0" {
+		return true
 	}
-	return false
+	marker := u.spec.Upstream.Rate.Refusal
+	return marker != "" && a.Status >= 400 &&
+		strings.Contains(strings.ToLower(string(a.Body)), strings.ToLower(marker))
 }
 
 // Transient reports whether an answer is that must never be stored.

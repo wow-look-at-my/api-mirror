@@ -3,6 +3,7 @@ package mirror
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,11 +18,8 @@ import (
 // gsmImportSource keys the import ledger. A moved file keeps its ledger.
 const gsmImportSource = "github-state-mirror"
 
-// gsmSelect reads every column of github-state-mirror's subscriptions table.
-const gsmSelect = `SELECT id, principal, url, secret, repo_filters, event_filters, active,
-	consecutive_failures, disabled_reason, created_at, updated_at,
-	last_success_at, last_failure_at, last_error
-	FROM subscriptions ORDER BY created_at, id`
+//go:embed gsm_select.sql
+var gsmSelect string
 
 // gsmFingerprint is the principal github-state-mirror gives a credential it cannot name: the hex SHA-256 of the bare token.
 var gsmFingerprint = regexp.MustCompile(`^[0-9a-f]{64}$`)

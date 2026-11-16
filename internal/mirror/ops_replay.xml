@@ -1,0 +1,6 @@
+	<replay interval="5m" method="POST" lookback="24h" max="25">
+		<list>/app/hook/deliveries?status=failure</list>
+		<redeliver>/app/hook/deliveries/<value name="delivery.id"/>/attempts</redeliver>
+		<id>id</id>
+		<at>delivered_at</at>
+	</replay>
