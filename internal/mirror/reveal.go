@@ -68,6 +68,13 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 		return Verdict{Allowed: true}, nil
 	}
 
+	// Ahead of every rung: the upstream refused this credential this key.
+	if status, found, err := rv.fetchDenied(ctx, principal, res, key, forward); err != nil {
+		return refuse(http.StatusBadGateway), err
+	} else if found {
+		return Verdict{Status: status, Cached: true, Reason: DenyCached}, nil
+	}
+
 	public, err := rv.public(ctx, res, key)
 	if err != nil {
 		return refuse(http.StatusBadGateway), err

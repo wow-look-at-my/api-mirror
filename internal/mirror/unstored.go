@@ -30,19 +30,12 @@ func refusesAccess(status int) bool {
 // relayUnstored answers a caller with the upstream's own answer to the fetch
 // their credential made.
 //
-// An access refusal is remembered as this principal's denial, exactly as a
-// refused probe is, so the caller does not re-ask on every request. Any other
-// status is reported as an answer the route does not model.
+// An access refusal is remembered, so the caller does not re-ask on every
+// request. Any other status is reported as an answer the route does not model.
 func (e *Engine) relayUnstored(ctx context.Context, w *recorder, m *match, res *Resource, principal string, u *UnstoredAnswer) {
 	a := u.Answer
 	if refusesAccess(a.Status) && !res.Reveal.Credential && res.Reveal.DenyTTL > 0 {
-		// The denial is remembered under the proof the reveal ladder asks for.
-		scope, k, err := e.reveal.proofOf(res, m.key)
-		if err != nil {
-			logf("relay %s: %v", u.Path, err)
-		} else {
-			e.reveal.remember(ctx, principal, scope, k, a.Status, e.reveal.now().Add(res.Reveal.DenyTTL))
-		}
+		e.reveal.FetchRefused(ctx, principal, res, m.key, a.Status, forwardFrom(ctx))
 		w.note(DispDenied, "", "", "fetch-refused")
 	} else {
 		w.note(DispPassthrough, "", "", string(PassResponse))

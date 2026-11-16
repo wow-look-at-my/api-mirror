@@ -19,7 +19,8 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `internal/database/` — `schema.sql`, `queries/*.sql`, and sqlc's generated `dbgen/`.
 - `freshness.go` — the TTL state machine, detached fetches, per-key singleflight, the shutdown drain.
 - `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary. `<accept>` under `<mirror>` names the default representation for every JSON route.
-- `unstored.go` — an upstream answer the route does not keep: relayed to the caller whose credential earned it, a 403 or 404 recorded as their denial.
+- `unstored.go` — an upstream answer the route does not keep: relayed to the caller whose credential earned it.
+- `reveal_fetch.go` — what a refused fetch denies. The probe is asked again. A refused probe denies the proof. A passing probe keeps it. The refusal is that credential's for that key.
 - `invalidate.go` — an invalidation drops the freshness under its key too. A stored refusal goes with the rows.
 - `store_refusal.go` — the refusal document kept with a stored refusal, and prefix deletes, in plain SQL.
 - `redirect.go` — `store="redirect"` (a Location kept until its signed URL expires) and `store="text"` (a non-JSON body with its media type).
@@ -69,6 +70,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **A list only deletes when it says it is complete.** `complete="true"` replace-syncs the set under the parent key. Without it an item that vanished upstream keeps being served, because one page of a paginated list is not the set.
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
 - **An answer the route does not store belongs to the caller.** It is relayed to them and earns no backoff that another caller reads.
+- **A refused fetch denies one endpoint, not the proof.** Resources share a probe. An endpoint can need a permission the probe does not prove. Only a refused probe revokes the proof.
 - **A fresh answer with no row is refetched.** A delivery dropped it, and serving it as absent will invent a 404.
 - **A push may not change a generated file.** A new engine table is plain SQL in Go, beside `mirror_list_member`.
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.

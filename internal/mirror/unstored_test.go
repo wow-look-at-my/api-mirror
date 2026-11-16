@@ -64,6 +64,93 @@ func TestAFetchRefusalIsTheCallersDenial(t *testing.T) {
 		"one caller's refusal is not a backoff another caller reads")
 }
 
+// sharedProof gates both resources on one probe, as routes of one
+// repository are.
+func sharedProof(s *Spec) {
+	for _, res := range s.Resources {
+		res.Reveal = &Reveal{Probe: &Probe{Method: http.MethodGet, Path: "/access"}, GrantTTL: time.Hour, DenyTTL: time.Minute}
+	}
+	s.Upstream.Forward = []string{"Authorization"}
+}
+
+// sharedProofUpstream answers the probe, the widget and its parts. The widget
+// refuses "token weak". Once removed is set, the probe and the widget refuse
+// everyone.
+func sharedProofUpstream(probes *atomic.Int32, removed *atomic.Bool) http.Handler {
+	refuse := func(w http.ResponseWriter) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message":"Resource not accessible by integration"}`))
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/access":
+			probes.Add(1)
+			if removed.Load() {
+				refuse(w)
+				return
+			}
+			w.Write([]byte(`{}`))
+		case strings.HasSuffix(r.URL.Path, "/parts"):
+			w.Write([]byte(`[{"id":"1","name":"bolt"}]`))
+		case removed.Load() || r.Header.Get("Authorization") == "token weak":
+			refuse(w)
+		default:
+			w.Write([]byte(`{"id":"7","title":"hello"}`))
+		}
+	})
+}
+
+func TestAFetchRefusalOfOneEndpointKeepsTheProof(t *testing.T) {
+	var probes atomic.Int32
+	var removed atomic.Bool
+	e, _ := newTestEngine(t, sharedProofUpstream(&probes, &removed), sharedProof)
+
+	require.Equal(t, http.StatusForbidden, getAs(t, e, "/widgets/7", "token weak").Code)
+	assert.EqualValues(t, 2, probes.Load(), "the probe is asked again, and it still passes")
+
+	parts := getAs(t, e, "/widgets/7/parts", "token weak")
+	require.Equal(t, http.StatusOK, parts.Code, parts.Body.String())
+	assert.EqualValues(t, 2, probes.Load(), "the proof stands, so the other resource needs no new probe")
+
+	assert.Equal(t, http.StatusForbidden, getAs(t, e, "/widgets/7", "token weak").Code, "the refused key stays refused for the deny window")
+}
+
+func TestAFetchRefusalWithARefusedProbeDeniesTheProof(t *testing.T) {
+	var probes atomic.Int32
+	var removed atomic.Bool
+	e, _ := newTestEngine(t, sharedProofUpstream(&probes, &removed), sharedProof)
+
+	require.Equal(t, http.StatusOK, getAs(t, e, "/widgets/7/parts", "token a").Code)
+	require.EqualValues(t, 1, probes.Load())
+
+	removed.Store(true)
+	require.Equal(t, http.StatusForbidden, getAs(t, e, "/widgets/7", "token a").Code)
+	assert.EqualValues(t, 2, probes.Load(), "the refused fetch asks the probe again")
+
+	parts := getAs(t, e, "/widgets/7/parts", "token a")
+	assert.Equal(t, http.StatusForbidden, parts.Code, "a refused probe revokes the proof, so a stored row is not shown either")
+	assert.EqualValues(t, 2, probes.Load(), "the denial is cached")
+}
+
+func TestAFetchRefusalBelongsToTheCredential(t *testing.T) {
+	var probes atomic.Int32
+	var removed atomic.Bool
+	e, _ := newTestEngine(t, sharedProofUpstream(&probes, &removed), sharedProof)
+	ask := func(auth string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/widgets/7", nil)
+		req.Header.Set("Authorization", auth)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req.WithContext(WithHostPrincipal(req.Context(), "user:1")))
+		return rec
+	}
+
+	require.Equal(t, http.StatusForbidden, ask("token weak").Code)
+	strong := ask("token strong")
+	assert.Equal(t, http.StatusOK, strong.Code, "another token of the same owner is asked, and answered: %s", strong.Body.String())
+	assert.Equal(t, http.StatusForbidden, ask("token weak").Code)
+}
+
 func TestABadCredentialIsTold401(t *testing.T) {
 	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
