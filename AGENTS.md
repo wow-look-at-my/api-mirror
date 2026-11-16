@@ -8,7 +8,10 @@ The sibling project `api-cli` turns the same kind of file into a CLI. The spec l
 
 The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry point and holds nothing else. Paths below are inside `internal/mirror` unless stated.
 
+- It holds no engine logic.
+- `engine/` at the top of the tree — the public package a host embeds. It wraps this package and holds no engine logic.
 - `run.go` — `Run`: flags, `--check`, the server, the signal, the drain order.
+- `lifecycle.go` — the construction and shutdown that `run.go` and `engine/` both call.
 - `config.go` — the Spec model: Resource, Key, Field, Route, QueryParam, Reveal, Events, Event, Set. Types only.
 - `validate.go` — what a spec must mean before it is served. Every check here exists because its absence is a silent runtime failure.
 - `load.go` / `load_events.go` — XML to Spec. Builders check SHAPE. `validate` checks MEANING.
