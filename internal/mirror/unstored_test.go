@@ -133,6 +133,28 @@ func TestAFetchRefusalWithARefusedProbeDeniesTheProof(t *testing.T) {
 	assert.EqualValues(t, 2, probes.Load(), "the denial is cached")
 }
 
+func TestANotFoundBehindAProbeIsAskedAgain(t *testing.T) {
+	var fetches, probes atomic.Int32
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/access" {
+			probes.Add(1)
+			w.Write([]byte(`{}`))
+			return
+		}
+		if fetches.Add(1) == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"message":"Not Found"}`))
+			return
+		}
+		w.Write([]byte(`{"id":"7","title":"hello"}`))
+	}), sharedProof, func(s *Spec) { s.Routes[0].Absorb = nil })
+
+	require.Equal(t, http.StatusNotFound, getAs(t, e, "/widgets/7", "token a").Code)
+	found := getAs(t, e, "/widgets/7", "token a")
+	assert.Equal(t, http.StatusOK, found.Code, "a thing that appeared after a 404 is served on the next request: %s", found.Body.String())
+	assert.EqualValues(t, 1, probes.Load(), "a 404 asks the probe nothing")
+}
+
 func TestAFetchRefusalBelongsToTheCredential(t *testing.T) {
 	var probes atomic.Int32
 	var removed atomic.Bool

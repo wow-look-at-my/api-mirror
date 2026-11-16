@@ -12,7 +12,7 @@ const fetchScope = "fetch:"
 
 // FetchRefused remembers a refusal the upstream gave this caller's own fetch.
 //
-// A refused fetch does not say whether the caller lost the whole proof or
+// A forbidden answer does not say whether the caller lost the whole proof or
 // lacks the permission of one endpoint. The probe says which, so it is asked
 // again. A refused probe denies the proof, and every resource behind it. A
 // passing probe keeps the proof, and the refusal belongs to this credential
@@ -27,6 +27,10 @@ func (rv *Revealer) FetchRefused(ctx context.Context, principal string, res *Res
 	if res.Reveal.Probe == nil {
 		// Without a probe the proof is this key's own, so the refusal is its denial.
 		rv.remember(ctx, principal, scope, k, status, expires)
+		return
+	}
+	if status != http.StatusForbidden {
+		// A missing thing behind a probe is not a refusal. The route chose not to store it, so the next request asks again.
 		return
 	}
 	if v, err := rv.probe(ctx, principal, res, key, scope, k, forward); err == nil && !v.Allowed {
