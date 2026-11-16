@@ -187,7 +187,7 @@ func routeKind(rt *Route) string {
 
 func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rec := newRecorder(w, r)
-	defer func() { e.tel.Requests.Record(rec.entry()) }()
+	defer func() { e.tel.Record(rec.entry()) }()
 	e.dispatch(rec, r)
 }
 

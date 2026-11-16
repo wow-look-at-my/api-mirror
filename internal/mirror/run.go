@@ -47,30 +47,12 @@ func run(argv []string, out io.Writer) error {
 		return report(spec, out)
 	}
 
-	ctx := context.Background()
-	store, err := Open(ctx, *dbPath, spec)
+	engine, err := Build(context.Background(), spec, *dbPath, nil)
 	if err != nil {
 		return err
 	}
-	defer store.Close()
-
-	engine, err := NewEngine(spec, store, nil)
-	if err != nil {
-		return err
-	}
-	defer engine.notify.Close()
-	if spec.Events != nil {
-		ingest, err := NewIngest(spec, store, engine.vars)
-		if err != nil {
-			return err
-		}
-		ingest.SetTelemetry(engine.tel)
-		ingest.SetNotifier(engine.notify)
-		engine.SetIngest(ingest)
-	}
-	engine.up.creds.announce()
-	engine.refresh.Start()
-	engine.replay.Start()
+	defer engine.Close()
+	engine.Start()
 
 	srv := &http.Server{
 		Addr:              *addr,

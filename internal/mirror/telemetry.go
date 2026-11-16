@@ -16,6 +16,24 @@ type Telemetry struct {
 	mu      sync.Mutex
 	lanes   map[Lane]*LaneTally
 	upBytes int
+
+	// onExchange and onRequest are a host's taps.
+	onExchange func(Exchange)
+	onRequest  func(Request)
+}
+
+// Tap hands every outbound exchange and every inbound request to a host as
+// well. Call it before the engine serves or starts.
+func (t *Telemetry) Tap(outbound func(Exchange), inbound func(Request)) {
+	t.onExchange, t.onRequest = outbound, inbound
+}
+
+// Record logs an inbound request and hands it to the host's tap.
+func (t *Telemetry) Record(r Request) {
+	t.Requests.Record(r)
+	if t.onRequest != nil {
+		t.onRequest(r)
+	}
 }
 
 // LaneTally is the running cost of lane of traffic.
@@ -47,6 +65,10 @@ func (t *Telemetry) Observe(e Exchange) {
 		return
 	}
 	t.Timeline.Observe(e)
+	// A delivery is inbound, timed at the handler. The tap is for outbound only.
+	if t.onExchange != nil && e.Lane != LaneDelivery {
+		t.onExchange(e)
+	}
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
