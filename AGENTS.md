@@ -24,6 +24,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `store_refusal.go` — the refusal document kept with a stored refusal, and prefix deletes, in plain SQL.
 - `redirect.go` — `store="redirect"` (a Location kept until its signed URL expires) and `store="text"` (a non-JSON body with its media type).
 - `events_document.go` — an event's `<document>`: the payload object written whole as a document resource's answer.
+- `events_patch.go` — an event's `<patch>`: one item rewritten in every stored page of a document list. A failure drops the pages instead.
 - `project.go` — `<param empties=>`: a bool flag that serves one answer path as an empty array, off one stored answer.
 - `validate_paths.go` — `{name...}` rest parameters and `<match>` shape constraints on path parameters.
 - `<rewrite>` — a client's own spelling of a path, canonicalised in `dispatch` before any gate sees it. `gh` needs one, because it puts REST under `/api/v3` on a non-github.com host. It grants nothing.

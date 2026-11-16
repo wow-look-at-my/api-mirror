@@ -114,7 +114,7 @@ func (s *Spec) validate() error {
 		}
 	}
 	if s.Events != nil {
-		if err := s.Events.validate(byName); err != nil {
+		if err := s.Events.validate(byName, s.Routes); err != nil {
 			return err
 		}
 	}
@@ -662,6 +662,14 @@ func validateEventKeys(ev *Event, res *Resource) error {
 	named := func(name string) bool {
 		match := func(s Set) bool { return s.Field == name }
 		return slices.ContainsFunc(ev.Keys, match) || slices.ContainsFunc(ev.Sets, match)
+	}
+	if ev.Patch != nil {
+		// A patch reaches every page under a partial key, but naming none of
+		// them would rewrite pages of every parent.
+		if len(ev.Keys) == 0 {
+			return fmt.Errorf("event %q: <patch> needs <key field=...> naming the parent whose pages it rewrites", ev.Type)
+		}
+		return nil
 	}
 	if ev.Invalidate != nil {
 		// A partial key is legitimate here and deletes everything beneath it,

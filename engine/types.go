@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/wow-look-at-my/api-mirror/internal/mirror"
@@ -25,6 +26,8 @@ type Exchange struct {
 	Detail string
 	// Err is set when no response came back. Status is then zero.
 	Err error
+	// Header is the upstream's response header, such as its rate-limit budget. It is nil when Err is set.
+	Header http.Header
 }
 
 // Disposition is what the engine did with an inbound request.
@@ -72,6 +75,7 @@ func exchangeOf(x mirror.Exchange) Exchange {
 		Principal: x.Principal,
 		Detail:    x.Detail,
 		Err:       x.Err,
+		Header:    x.Header,
 	}
 }
 

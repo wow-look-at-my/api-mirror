@@ -411,6 +411,23 @@
 			</xs:element>
 			<!-- The payload path whose object becomes a document resource's answer. -->
 			<xs:element name="document" type="xs:string"/>
+			<!-- Finds an item of each stored page by `match` and writes the fields the payload states. -->
+			<xs:element name="patch">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="set" maxOccurs="unbounded">
+							<xs:complexType mixed="true">
+								<xs:attribute name="field" type="xs:string" use="required"/>
+								<xs:attribute name="expr" type="xs:string"/>
+								<xs:attribute name="null" type="xs:string"/>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="match" type="xs:string" use="required"/>
+					<xs:attribute name="from" type="xs:string"/>
+					<xs:attribute name="expr" type="xs:string"/>
+				</xs:complexType>
+			</xs:element>
 			<xs:element name="invalidate">
 				<xs:complexType>
 					<xs:attribute name="reason" type="xs:string" use="required"/>

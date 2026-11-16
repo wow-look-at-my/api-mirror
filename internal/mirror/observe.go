@@ -46,6 +46,8 @@ type Exchange struct {
 	// Group splits a lane into the rows the chart draws: a resource, an event type, or a route shape.
 	Group string
 	Err   error
+	// Header is the upstream's response header. Nil when no response came back.
+	Header http.Header
 }
 
 // laneKey carries a lane into the transport, the place that sees every request.
@@ -140,6 +142,7 @@ func (t *observeTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	}
 
 	base.Status = resp.StatusCode
+	base.Header = resp.Header
 	// Read now: by the time the body is done the window may have rolled over.
 	t.obs.ObserveHeaders(tag.principal, resp.Header)
 

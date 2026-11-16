@@ -80,6 +80,7 @@ func newEmbedded(t *testing.T) (*Engine, *tap, *atomic.Int32) {
 		}
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-RateLimit-Remaining", "4999")
 		_, _ = w.Write([]byte(`[{"name":"v1"}]`))
 	}))
 	t.Cleanup(up.Close)
@@ -144,6 +145,7 @@ func TestEmbedded_MissThenHitThenDeliveryInvalidates(t *testing.T) {
 	assert.Equal(t, "/repos/acme/widget/tags", x.Path)
 	assert.Equal(t, http.StatusOK, x.Status)
 	assert.False(t, x.Started.IsZero())
+	assert.Equal(t, "4999", x.Header.Get("X-RateLimit-Remaining"), "the tap carries the upstream's response headers")
 
 	payload, err := json.Marshal(map[string]any{
 		"ref":      "v2",

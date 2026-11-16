@@ -11,7 +11,7 @@ import (
 
 // validate refuses an <events> block that would accept a delivery it cannot
 // apply, or would apply events to one row without saying which wins.
-func (e *Events) validate(resources map[string]*Resource) error {
+func (e *Events) validate(resources map[string]*Resource, routes []*Route) error {
 	if e.Path == "" {
 		return fmt.Errorf("<events> needs a path")
 	}
@@ -73,8 +73,11 @@ func (e *Events) validate(resources map[string]*Resource) error {
 		if ev.Clock != "" && ev.Unordered {
 			return fmt.Errorf("event %q declares both a clock and unordered", ev.Type)
 		}
-		if len(ev.Sets) == 0 && ev.Invalidate == nil && ev.Document == "" {
-			return fmt.Errorf("event %q does nothing: give it <set> fields, a <document>, or an <invalidate> with a reason", ev.Type)
+		if len(ev.Sets) == 0 && ev.Invalidate == nil && ev.Document == "" && ev.Patch == nil {
+			return fmt.Errorf("event %q does nothing: give it <set> fields, a <document>, a <patch>, or an <invalidate> with a reason", ev.Type)
+		}
+		if err := validateEventPatch(ev, res, routes); err != nil {
+			return err
 		}
 		if err := validateEventDocument(ev, res); err != nil {
 			return err

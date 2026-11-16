@@ -316,6 +316,8 @@ type EventView struct {
 	Invalidate string `json:"invalidate,omitempty"`
 	// Document is the payload path a delivery writes as the whole answer.
 	Document string `json:"document,omitempty"`
+	// Patch is the item path a delivery matches in each stored page.
+	Patch string `json:"patch,omitempty"`
 }
 
 func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
@@ -351,6 +353,9 @@ func (a *Admin) events(w http.ResponseWriter, r *http.Request) {
 		}
 		if ev.Invalidate != nil {
 			e.Invalidate = ev.Invalidate.Reason
+		}
+		if ev.Patch != nil {
+			e.Patch = ev.Patch.Match
 		}
 		view.Declared = append(view.Declared, e)
 	}

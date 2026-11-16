@@ -153,6 +153,7 @@ An event declares how one webhook payload becomes stored rows:
 - `<key field="...">payload path</key>` — where THIS delivery carries a key column.
 - `<apply>` — `<set field="...">payload path</set>`, one per column.
 - `<document>payload path</document>` — for a document resource, the object at that path IS the new answer, and it is written whole. A workflow run delivery carries the run, a check run delivery carries the check run. A payload with no object there fails the delivery.
+- `<patch match="item path" from="payload path">` (or `expr=`) — for a document list, the item whose `match` path equals the payload value gets each `<set field="item path">` written into it. That `<patch match="item path" from="payload path">` is in every stored page under the event's key. A page that does not list the item is left alone.
 - `<invalidate reason="...">` — the escape hatch. The `reason` is required.
 
 The engine sorts deliveries for one subject inside a short reorder window, refuses a view older than one already applied, and applies unconditionally. There is no "does anyone have this cached?" gate to write.
@@ -166,6 +167,15 @@ A write needs the whole key. An invalidate may name part of it and deletes every
 Narrower forms:
 
 - `when="{{ ... }}"` on `<event>` is a predicate over `.payload`. False skips that event for the delivery. A type may declare one resource twice only when every declaration has one. The two then cannot both decide the row.
+- `<patch>` corrects one item in place. A moved tag keeps its page and its position, so the push that states the new commit patches the pages it is on:
+
+```xml
+<patch match="name" expr='{{ trimPrefix "refs/tags/" .payload.ref }}'>
+	<set field="commit.sha">after</set>
+</patch>
+```
+
+  Like an invalidate it names part of the key. A patch leaves freshness alone, as a partial write does, so a patched page keeps its fetch's TTL. A stored refusal has no page and stays. A page that cannot be read or patched, or a payload that states no value, drops every page under the key and logs an error.
 - `<invalidate every="true">` drops the whole resource. It is for a per-credential answer whose key the payload cannot state.
 - `<invalidate field="tip_sha" differs="pull_request.base.sha">` drops the one stored row only when its field disagrees with what the delivery states. A disagreement means a delivery was lost, so the next reader refetches.
 
