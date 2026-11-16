@@ -150,8 +150,10 @@ func TestAPatchOlderThanAnAppliedOneIsRefused(t *testing.T) {
 	get(t, e, "/repos/acme/tool/tags")
 	in := ingestFor(t, e)
 
-	deliver(t, in, "push", tagPush("v1", "new", 200))
-	w := deliver(t, in, "push", tagPush("v1", "old", 100))
+	// Recent clocks, because the watermark sweep forgets a month-old moment.
+	now := time.Now().Unix()
+	deliver(t, in, "push", tagPush("v1", "new", now))
+	w := deliver(t, in, "push", tagPush("v1", "old", now-60))
 	assert.Equal(t, string(DeliverySuperseded), w.Header().Get(dispositionHeader))
 	assert.Equal(t, "new", tagShas(t, get(t, e, "/repos/acme/tool/tags").Body.Bytes())["v1"])
 }
@@ -169,7 +171,11 @@ func TestValidatePatchEvents(t *testing.T) {
 		bend func(s *Spec)
 		want string
 	}{
-		{"not a document", func(s *Spec) { s.Resources[len(s.Resources)-1].Store = StoreColumns }, "not a document list"},
+		{"not a document", func(s *Spec) {
+			res := s.Resources[len(s.Resources)-1]
+			res.Store = StoreColumns
+			res.Fields = []Field{{Name: "name", Type: FieldText, From: "name"}}
+		}, "not a document list"},
 		{"not a list", func(s *Spec) { s.Routes[len(s.Routes)-1].List = false }, "not a document list"},
 		{"no match", func(s *Spec) { s.Events.List[0].Patch.Match = "" }, "needs match="},
 		{"no value", func(s *Spec) { s.Events.List[0].Patch.Expr = "" }, "needs from="},
