@@ -1,0 +1,4 @@
+	<replay interval="5m">
+		<list>/deliveries</list>
+		<redeliver>/deliveries/x</redeliver>
+	</replay>

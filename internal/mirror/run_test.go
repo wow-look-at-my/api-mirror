@@ -1,5 +1,7 @@
 package mirror
 
+import _ "embed"
+
 import (
 	"bytes"
 	"context"
@@ -34,31 +36,10 @@ func writeSpec(t *testing.T, src string) string {
 	return path
 }
 
-// runnableSpec is a whole mirror, events included, so a start-up test exercises
-// the ingest wiring rather than only the serving half.
-const runnableSpec = `
-<mirror name="runnable">
-	<upstream base="https://api.example.com"/>
-	<resource name="thing" ttl="1h">
-		<key name="id"/>
-		<field name="title" type="text">title</field>
-		<reveal>
-			<public>true</public>
-		</reveal>
-	</resource>
-	<route method="GET" path="/things/{id}" resource="thing"/>
-	<events path="/webhook" signature-header="X-Signature" type-header="X-Event">
-		<secret>a-test-secret</secret>
-		<event type="thing" resource="thing" clock="thing.updated_at">
-			<subject>thing:<value name="payload.thing.id"/></subject>
-			<key field="id">thing.id</key>
-			<apply>
-				<set field="title">thing.title</set>
-			</apply>
-		</event>
-	</events>
-</mirror>
-`
+// runnableSpec is a whole mirror, events included, so a start-up test exercises the ingest wiring rather than only the serving half.
+//
+//go:embed testdata/runnable-spec.xml
+var runnableSpec string
 
 // report is what an author reads before running anything. It has to name
 // every derived thing: the fingerprint that decides a nuke, the tables, the
@@ -91,17 +72,7 @@ func TestReport_NamesEverythingTheSpecDerives(t *testing.T) {
 }
 
 func TestReport_MarksAListRouteAsAList(t *testing.T) {
-	spec, err := ParseSpec([]byte(`
-<mirror name="m">
-	<upstream base="https://api.example.com"/>
-	<resource name="thing">
-		<key name="id"/>
-		<field name="title" type="text">title</field>
-		<reveal><public>true</public></reveal>
-	</resource>
-	<route method="GET" path="/things" resource="thing" list="true"/>
-</mirror>
-`))
+	spec, err := ParseSpec([]byte(testReport_MarksAListRouteAsAListXml))
 	require.NoError(t, err)
 
 	out, err := os.CreateTemp(t.TempDir(), "report-*")
@@ -115,12 +86,7 @@ func TestReport_MarksAListRouteAsAList(t *testing.T) {
 }
 
 func TestReport_OmitsTheEventSectionWhenNothingIsDeclared(t *testing.T) {
-	spec, err := ParseSpec([]byte(`
-<mirror name="m">
-	<upstream base="https://api.example.com"/>
-	<route method="GET" path="/things" resource="thing"/>
-</mirror>
-`))
+	spec, err := ParseSpec([]byte(testReport_OmitsTheEventSectionWhenNothingIsDeclaredXml))
 	require.NoError(t, err)
 
 	out, err := os.CreateTemp(t.TempDir(), "report-*")
@@ -261,3 +227,9 @@ func TestEngineDrain_IsSafeWithNothingInFlight(t *testing.T) {
 	assert.True(t, engine.Drain(drainTimeout),
 		"a shutdown waits for deliveries too; an upstream never sends one twice")
 }
+
+//go:embed testdata/test-report-marks-a-list-route-as-a-list.xml
+var testReport_MarksAListRouteAsAListXml string
+
+//go:embed testdata/test-report-omits-the-event-section-when-nothing-is-declared.xml
+var testReport_OmitsTheEventSectionWhenNothingIsDeclaredXml string

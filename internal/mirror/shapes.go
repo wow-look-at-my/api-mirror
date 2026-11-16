@@ -139,10 +139,10 @@ func (e *Engine) Brief() []BriefItem {
 	return out
 }
 
-// sketchTemplate is the declaration an author starts from. It is a template
-// because it is a DOCUMENT.
+// sketchTemplate is the declaration an author starts from. It is a template because it is a DOCUMENT. Each file holds one root element, so each
+// is well-formed XML.
 var sketchTemplate = template.Must(template.New("sketch").Parse(
-	sketchTemplateXml))
+	strings.TrimSpace(sketchTemplateXml) + "\n" + strings.TrimSpace(sketchRouteTemplateXml)))
 
 // sketchRoute writes the declaration an author would start from.
 func sketchRoute(method, shape string) string {
@@ -196,3 +196,6 @@ func singular(s string) string {
 
 //go:embed sketch-template.xml
 var sketchTemplateXml string
+
+//go:embed sketch-route-template.xml
+var sketchRouteTemplateXml string

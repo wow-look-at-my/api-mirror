@@ -65,7 +65,7 @@ Store modes hold an answer that is not JSON at all, and neither is rebuilt, beca
 </redirect>
 ```
 
-The first `<expires>` whose parameter parses gives the URL's expiry. The row lives until then, less the margin. `format` is `time` (RFC 3339, the default), `unix`, or `seconds` counted from the `since` parameter. A `Location` with no query string carries no signature and lives `unsigned`. Nobody relays one the rule cannot date lives `fallback`, or. A URL already inside its margin is relayed and not kept.
+The first `<expires>` whose parameter parses gives the URL's expiry. The row lives until then, less the margin. A `Location` with no query string carries no signature and lives `unsigned`. Nobody relays one the rule cannot date lives `fallback`, or. A URL already inside its margin is relayed and not kept.
 
 The rebuilt answer is a subset of the upstream document. A client of the upstream must read the mirror unchanged.
 

@@ -1,5 +1,7 @@
 package mirror
 
+import _ "embed"
+
 import (
 	"net/http"
 	"net/http/httptest"
@@ -47,10 +49,10 @@ func TestValidateRejectsAMirrorAcceptThatIsNotAMediaType(t *testing.T) {
 }
 
 func TestLoadReadsTheMirrorAccept(t *testing.T) {
-	spec, err := ParseSpec([]byte(`<mirror name="m">
-	<accept>application/vnd.example+json</accept>
-	<upstream base="https://example.invalid"/>
-</mirror>`))
+	spec, err := ParseSpec([]byte(testLoadReadsTheMirrorAcceptXml))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"application/vnd.example+json"}, spec.Accept)
 }
+
+//go:embed testdata/test-load-reads-the-mirror-accept.xml
+var testLoadReadsTheMirrorAcceptXml string

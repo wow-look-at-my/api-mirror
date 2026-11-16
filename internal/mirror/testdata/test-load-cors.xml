@@ -1,0 +1,4 @@
+	<cors max-age="10m">
+		<origin>https://viewer.example</origin>
+		<expose>X-Total-Count</expose>
+	</cors>

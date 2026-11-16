@@ -1,0 +1,5 @@
+
+<mirror name="m">
+	<upstream base="https://api.example.com"/>
+	<route method="GET" path="/things" resource="thing"/>
+</mirror>

@@ -1,5 +1,7 @@
 package mirror
 
+import _ "embed"
+
 import (
 	"os"
 	"path/filepath"
@@ -10,78 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// wholeSpec exercises every element and attribute the loader understands, in
-// file. A parse test per element would pass while the elements refused to
-// sit beside each other. This is the only way an author ever writes them.
+// wholeSpec exercises every element and attribute the loader understands, in file.
 //
-// The XML declaration is omitted the way the shipped files are not: the loader
-// strips it, so an inline snippet does not need. Indentation is TABS.
-const wholeSpec = `
-<mirror name="example">
-	<description>Prose for a human. The engine reads none of it.</description>
-	<vars>
-		<var name="base">https://api.example.com</var>
-	</vars>
-	<upstream base="{{ .var.base }}">
-		<header name="Accept">application/json</header>
-		<forward name="Authorization"/>
-	</upstream>
-	<resource name="repo" ttl="6h">
-		<key name="owner" from="owner.login" fold="true"/>
-		<key name="name" from="name"/>
-		<field name="visibility" type="text">visibility</field>
-		<field name="stars" type="int">stargazers_count</field>
-		<field name="private" type="bool">private</field>
-		<field name="pushed_at" type="time">pushed_at</field>
-		<field name="topics" type="json">topics</field>
-		<field name="slug" type="text" expr="{{ .owner.login }}/{{ .name }}"/>
-		<reveal>
-			<public>{{ eq .row.visibility "public" }}</public>
-			<probe method="GET" path="/repos/{{ .key.owner }}/{{ .key.name }}"/>
-			<grant ttl="24h"/>
-			<deny ttl="5m"/>
-		</reveal>
-	</resource>
-	<resource name="readme" ttl="1h" store="document">
-		<key name="owner"/>
-		<key name="repo"/>
-		<drop key="*url"/>
-		<keep name="html_url" reason="the docs viewer links a reader back to the rendered page"/>
-		<reveal>
-			<public>true</public>
-		</reveal>
-	</resource>
-	<route method="get" path="/repos/{owner}/{name}" resource="repo" ttl="30m">
-		<accept>application/json</accept>
-		<absorb status="404"/>
-	</route>
-	<route method="GET" path="/orgs/{org}/repos" resource="repo" list="true" complete="true">
-		<map param="org" key="owner"/>
-		<param name="per_page" type="int" default="30" min="1" max="100"/>
-		<param name="type" type="text" key="true"/>
-	</route>
-	<route method="GET" path="/repos/{owner}/{repo}/readme" resource="readme"/>
-	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-Event" reorder-window="2s">
-		<secret><value name="env.WEBHOOK_SECRET"/></secret>
-		<event type="repository" resource="repo" clock="repository.updated_at">
-			<subject>repo:<value name="payload.repository.full_name"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="name">repository.name</key>
-			<apply>
-				<set field="visibility">repository.visibility</set>
-				<set field="stars" expr="{{ .payload.repository.stargazers_count }}"/>
-				<set field="topics" null="allow">repository.topics</set>
-			</apply>
-		</event>
-		<event type="repository_renamed" resource="repo" unordered="true" absorb-when-superseded="true">
-			<subject>repo:<value name="payload.repository.full_name"/></subject>
-			<key field="owner">repository.owner.login</key>
-			<key field="name">changes.repository.name.from</key>
-			<invalidate reason="a rename states the old name, never the new full name"/>
-		</event>
-	</events>
-</mirror>
-`
+//go:embed testdata/whole-spec.xml
+var wholeSpec string
 
 func mustParse(t *testing.T, src string) *Spec {
 	t.Helper()
@@ -165,19 +99,7 @@ func TestParseSpec_ReadsTheRevealLadder(t *testing.T) {
 }
 
 func TestParseSpec_ProbeDefaultsToGET(t *testing.T) {
-	spec := mustParse(t, `
-<mirror name="m">
-	<resource name="r">
-		<key name="id"/>
-		<field name="a" type="text">a</field>
-		<reveal>
-			<probe path="/things/{{ .key.id }}"/>
-			<grant ttl="1h"/>
-			<deny ttl="5m"/>
-		</reveal>
-	</resource>
-</mirror>
-`)
+	spec := mustParse(t, testParseSpec_ProbeDefaultsToGETXml)
 	assert.Equal(t, "GET", resourceNamed(t, spec, "r").Reveal.Probe.Method,
 		"a probe only ever reads, so the method a spec leaves out is GET")
 }
@@ -298,15 +220,7 @@ func TestLoad_ParseErrorAndValidationErrorAreToldApart(t *testing.T) {
 	assert.Contains(t, err.Error(), "parse spec", "a shape error is reported as a parse failure")
 
 	meaningless := dir + "/meaningless.xml"
-	require.NoError(t, os.WriteFile(meaningless, []byte(`
-<mirror name="m">
-	<upstream base="https://api.example.com"/>
-	<resource name="r">
-		<key name="id"/>
-		<field name="a" type="text">a</field>
-	</resource>
-</mirror>
-`), 0o600))
+	require.NoError(t, os.WriteFile(meaningless, []byte(testLoad_ParseErrorAndValidationErrorAreToldApartXml), 0o600))
 	_, err = Load(meaningless)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "validate spec",
@@ -453,3 +367,9 @@ func TestParseSpec_Rejects(t *testing.T) {
 		})
 	}
 }
+
+//go:embed testdata/test-parse-spec-probe-defaults-to-get.xml
+var testParseSpec_ProbeDefaultsToGETXml string
+
+//go:embed testdata/test-load-parse-error-and-validation-error-are-told-apart.xml
+var testLoad_ParseErrorAndValidationErrorAreToldApartXml string
