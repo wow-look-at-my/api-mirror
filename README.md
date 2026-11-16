@@ -39,6 +39,17 @@ mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
 A host that already authenticated the caller passes its principal with `engine.WithPrincipal(r.Context(), "user:42")`. The engine then keys grants by it and makes no identity call of its own.
 
+## Compare a mirror with its upstream
+
+`api-mirror-delta` sends one request to the real API and to a mirror, and reports how the mirror's answer differs.
+
+```sh
+api-mirror-delta compare --truth https://api.github.com --mirror local=http://127.0.0.1:8080 /repos/o/r
+api-mirror-delta serve -c samples/github/delta.yaml   # a proxy that compares every read
+```
+
+[`docs/delta.md`](docs/delta.md) is the config and report reference.
+
 ## The spec, in one screen
 
 ```xml

@@ -6,7 +6,7 @@ The sibling project `api-cli` turns the same kind of file into a CLI. Both share
 
 ## File map
 
-The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry point and holds nothing else. Paths below are inside `internal/mirror` unless stated.
+The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry point and holds no engine logic. Paths below are inside `internal/mirror` unless stated.
 
 - `run.go` — `Run`: flags, `--check`, the server, the signal, the drain order.
 - `lifecycle.go` — the construction and shutdown that `run.go` and `engine/` both call.
@@ -53,6 +53,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `check.go` — the consistency check: re-ask the upstream about every stored key of one kind, and optionally write back what drifted.
 - `refresh.go` / `replay.go` / `notify.go` / `subscriptions.go` / `debounce.go` — the background half.
 - `mirror.schema.xsd` — the reference grammar. Not enforced at load. A test walks the shipped specs against it.
+- `cmd/api-mirror-delta` + `internal/delta` — the comparison proxy. It sends each request to the truth API and to every mirror, and diffs each mirror answer against the truth's. `dats/upstream-shape.dats` runs it, and `dats/delta.dats` tests it against `cmd/fixtureserver`. docs/delta.md.
 - `mirror.example.xml` — a runnable small spec. `samples/github/github.xml` — the full worked example. Both at the top of the tree, reached from a test through `repoRoot`.
 
 ## Invariants
@@ -76,6 +77,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
 - **A rebuilt answer is a subset of the upstream's.** Each field, and each key with `from=`, returns to its source path with its upstream type. A folded key serves its as-sent spelling. One source path is declared once. `dats/upstream-shape.dats` checks the answers against the upstream with `api-mirror-delta`.
+- **The comparison proxy fans out reads only.** A write sent to the truth and to a mirror reaches the upstream twice. An ignore rule names what it hides, and the summary counts every rule's matches. A target that does not answer is a difference, not a skip.
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
 - **The fingerprint is derived, not declared.** It hashes the schema the spec produces. A resource change therefore always nukes, and hand keeps nothing.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
