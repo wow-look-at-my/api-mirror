@@ -1,3 +1,5 @@
+// load.go holds Load.
+
 package mirror
 
 import (

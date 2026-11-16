@@ -1,3 +1,5 @@
+// run.go holds drainTimeout.
+
 package mirror
 
 import (

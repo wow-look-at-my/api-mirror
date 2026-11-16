@@ -1,3 +1,5 @@
+// telemetry.go holds Telemetry.
+
 package mirror
 
 import (
