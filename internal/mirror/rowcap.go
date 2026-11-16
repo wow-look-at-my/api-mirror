@@ -1,3 +1,5 @@
+// rowcap.go holds defaultMaxRows.
+
 package mirror
 
 import (

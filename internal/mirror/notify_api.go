@@ -1,3 +1,5 @@
+// notify_api.go holds handlesSubscriptions.
+
 package mirror
 
 import (

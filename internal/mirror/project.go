@@ -1,3 +1,5 @@
+// project.go holds validateEmpties.
+
 package mirror
 
 import "fmt"

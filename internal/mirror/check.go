@@ -1,3 +1,5 @@
+// check.go holds CheckVerdict.
+
 package mirror
 
 import (

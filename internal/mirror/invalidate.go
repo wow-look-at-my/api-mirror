@@ -1,3 +1,5 @@
+// invalidate.go holds forgetFreshness.
+
 package mirror
 
 import (

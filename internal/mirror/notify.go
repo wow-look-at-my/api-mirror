@@ -1,3 +1,5 @@
+// notify.go holds Notifier.
+
 package mirror
 
 import (

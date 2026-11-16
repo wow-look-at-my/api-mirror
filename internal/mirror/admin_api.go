@@ -1,3 +1,5 @@
+// admin_api.go holds writeJSON.
+
 package mirror
 
 import (

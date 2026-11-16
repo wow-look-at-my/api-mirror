@@ -1,3 +1,5 @@
+// upstream.go holds maxBodyBytes.
+
 package mirror
 
 import (

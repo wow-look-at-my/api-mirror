@@ -1,3 +1,5 @@
+// identity.go holds defaultIdentityTTL.
+
 package mirror
 
 import (

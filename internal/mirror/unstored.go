@@ -1,3 +1,5 @@
+// unstored.go holds UnstoredAnswer.
+
 package mirror
 
 import (

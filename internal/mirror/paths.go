@@ -1,3 +1,5 @@
+// paths.go holds stringAt.
+
 package mirror
 
 import (

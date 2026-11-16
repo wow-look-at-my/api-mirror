@@ -1,3 +1,5 @@
+// freshness.go holds fetchSafetyTimeout.
+
 package mirror
 
 import (

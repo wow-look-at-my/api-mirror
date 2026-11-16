@@ -1,3 +1,5 @@
+// store_resources.go holds Row.
+
 package mirror
 
 import (

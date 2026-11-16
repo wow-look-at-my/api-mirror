@@ -1,3 +1,5 @@
+// relay.go holds relayHeaders.
+
 package mirror
 
 import (

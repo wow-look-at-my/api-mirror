@@ -1,4 +1,8 @@
+// store_refusal.go holds refusalDDL.
+
 package mirror
+
+import _ "embed"
 
 import (
 	"context"
@@ -8,13 +12,9 @@ import (
 )
 
 // refusalDDL holds the document each stored refusal came with.
-const refusalDDL = `CREATE TABLE mirror_refusal (
-	kind TEXT NOT NULL,
-	key  TEXT NOT NULL,
-	body TEXT NOT NULL,
-	PRIMARY KEY (kind, key)
-);
-`
+//
+//go:embed refusal-ddl.sql
+var refusalDDL string
 
 // SetRefusalBody records the document a refusal came with. An empty body
 // removes the record, so an older document never answers for a newer refusal.

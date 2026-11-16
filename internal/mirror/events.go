@@ -1,3 +1,5 @@
+// events.go holds maxDeliveryBytes.
+
 package mirror
 
 import (

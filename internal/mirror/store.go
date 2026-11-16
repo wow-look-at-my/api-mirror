@@ -1,3 +1,5 @@
+// store.go holds Store.
+
 package mirror
 
 import (

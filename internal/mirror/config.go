@@ -1,3 +1,5 @@
+// config.go holds Spec.
+
 package mirror
 
 import (

@@ -1,4 +1,8 @@
+// schema.go holds enginePrefix.
+
 package mirror
+
+import _ "embed"
 
 import (
 	"fmt"
@@ -60,16 +64,10 @@ func resourceDDL(r *Resource) string {
 	return b.String()
 }
 
-// listMemberDDL holds the rows each list answer named, in the upstream's
-// order.
-const listMemberDDL = `CREATE TABLE mirror_list_member (
-	kind     TEXT    NOT NULL,
-	list_key TEXT    NOT NULL,
-	position INTEGER NOT NULL,
-	row_key  TEXT    NOT NULL,
-	PRIMARY KEY (kind, list_key, position)
-);
-`
+// listMemberDDL holds the rows each list answer named, in the upstream's order.
+//
+//go:embed list-member-ddl.sql
+var listMemberDDL string
 
 // DDL is the whole schema: the engine's fixed tables, then the resources in
 // declared order.

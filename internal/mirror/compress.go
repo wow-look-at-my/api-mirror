@@ -1,3 +1,5 @@
+// compress.go holds gzipWriter.
+
 package mirror
 
 import (

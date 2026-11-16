@@ -1,3 +1,5 @@
+// load_events.go holds buildEvents.
+
 package mirror
 
 import (

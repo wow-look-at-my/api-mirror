@@ -1,3 +1,5 @@
+// ingest_stats.go holds SetTelemetry.
+
 package mirror
 
 import (

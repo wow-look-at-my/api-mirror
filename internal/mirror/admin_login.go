@@ -1,3 +1,5 @@
+// admin_login.go holds sessionLifetime.
+
 package mirror
 
 import (

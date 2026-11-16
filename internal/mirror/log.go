@@ -1,3 +1,5 @@
+// log.go holds logger.
+
 package mirror
 
 import (

@@ -1,3 +1,5 @@
+// reveal.go holds grantSourceProbe.
+
 package mirror
 
 import (

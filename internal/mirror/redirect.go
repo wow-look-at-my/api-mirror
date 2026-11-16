@@ -1,3 +1,5 @@
+// redirect.go holds validateRedirect.
+
 package mirror
 
 import (

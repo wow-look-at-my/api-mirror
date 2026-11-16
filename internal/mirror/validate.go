@@ -1,3 +1,5 @@
+// validate.go holds parseDuration.
+
 package mirror
 
 import (
