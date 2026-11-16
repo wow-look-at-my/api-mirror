@@ -270,19 +270,8 @@ func (e *Engine) dispatch(rec *recorder, r *http.Request) {
 		e.writeMessage(rec, http.StatusUnauthorized, "missing required header "+name)
 		return
 	}
-	asserting := e.assertingRoute(r)
-	if asserting {
-		r = withBearerAssertion(r)
-	}
-	principal, refused := e.ids.resolve(r.Context(), r)
-	if refused != nil && asserting {
-		// The upstream decides a bearer the mirror could not verify.
-		e.passthrough(rec, r, PassNoIdentity)
-		return
-	}
-	if refused != nil {
-		rec.note(DispDenied, e.shapeOf(r), "", "identity")
-		e.writeMessage(rec, refused.status, refused.message)
+	r, principal, ok := e.caller(rec, r)
+	if !ok {
 		return
 	}
 	rec.principal = principal

@@ -63,6 +63,11 @@ func build(ctx context.Context, s *mirror.Spec, opts Options) (*Engine, error) {
 	return &Engine{m: m}, nil
 }
 
+// WithPrincipal names the caller of a request the host authenticated.
+func WithPrincipal(ctx context.Context, principal string) context.Context {
+	return mirror.WithHostPrincipal(ctx, principal)
+}
+
 // ServeHTTP answers a request exactly as the standalone server does.
 func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) { e.m.ServeHTTP(w, r) }
 

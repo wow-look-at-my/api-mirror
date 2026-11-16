@@ -34,6 +34,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `absorb.go` — document to columns and back, the drop patterns, the JSON marshaller.
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe. `AllowStored` is the probe-free half, for a decision with no caller credential.
 - `identity.go` — who asks: `<identity>` (a verified assertion header, as `prefix:id`), `<whoami>` (a credential's owner), else the credential fingerprint. A refused assertion is a 401, not a fallback.
+- `host_principal.go` — the principal an embedding host names for a request it authenticated. It replaces the spec's identity rules for that request.
 - `spread.go` — `<spread>` on a route: each item of a fetched listing is a grant for its caller, and optionally truth.
 - `notify_api.go` — the public subscription API at `<notify path=>`, under the caller's own principal, and `<notify>` validation.
 - `gsm_import.go` — `<notify import=>`: adopts a github-state-mirror subscription file once per row, translating each owner to the principal it resolves to here.

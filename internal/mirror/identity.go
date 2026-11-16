@@ -377,6 +377,9 @@ func (e *IdentityError) Error() string { return e.Reason }
 // to the credential fingerprint: a caller that asked to be someone must
 // not quietly become someone else.
 func (id *Identifier) Resolve(ctx context.Context, r *http.Request) (string, error) {
+	if p := hostPrincipal(ctx); p != "" {
+		return p, nil
+	}
 	assertion := ""
 	if id.spec != nil {
 		assertion = r.Header.Get(id.spec.Header)

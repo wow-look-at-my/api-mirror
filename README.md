@@ -37,6 +37,8 @@ mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 // On shutdown: e.Drain(30 * time.Second), then e.Close().
 ```
 
+A host that already authenticated the caller passes its principal with `engine.WithPrincipal(r.Context(), "user:42")`. The engine then keys grants by it and makes no identity call of its own.
+
 ## The spec, in one screen
 
 ```xml

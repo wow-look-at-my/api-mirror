@@ -176,6 +176,24 @@ func TestEmbedded_MissThenHitThenDeliveryInvalidates(t *testing.T) {
 	assert.NoError(t, e.Close())
 }
 
+func TestWithPrincipal_NamesTheCallerTheRequestTapReports(t *testing.T) {
+	e, c, _ := newEmbedded(t)
+	t.Cleanup(func() { e.Close() })
+	ask := func(ctx context.Context) {
+		req := httptest.NewRequest(http.MethodGet, "/repos/acme/widget/tags", nil).WithContext(ctx)
+		req.Header.Set("Authorization", "Bearer some-token")
+		w := httptest.NewRecorder()
+		e.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	}
+
+	ask(WithPrincipal(context.Background(), "user:42"))
+	assert.Equal(t, "user:42", c.lastRequest(t).Principal)
+
+	ask(context.Background())
+	assert.True(t, strings.HasPrefix(c.lastRequest(t).Principal, "token:"), "without a host principal the engine names the credential")
+}
+
 func TestNewFromFile_BuildsTheSameEngine(t *testing.T) {
 	t.Setenv("EMBED_TEST_SECRET", testSecret)
 	path := filepath.Join(t.TempDir(), "mirror.xml")
