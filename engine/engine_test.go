@@ -163,8 +163,8 @@ func TestEmbedded_MissThenHitThenDeliveryInvalidates(t *testing.T) {
 	req.Header.Set("X-Hub-Signature-256", sign(payload))
 	w := httptest.NewRecorder()
 	e.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Equal(t, "applied", w.Header().Get("X-Mirror-Disposition"))
+	require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
+	assert.Equal(t, "invalidated", w.Header().Get("X-Mirror-Disposition"))
 	assert.Equal(t, DispositionDelivery, c.lastRequest(t).Disposition)
 
 	third := get(t, e, "/repos/acme/widget/tags")
