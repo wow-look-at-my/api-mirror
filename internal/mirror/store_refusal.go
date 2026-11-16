@@ -1,19 +1,16 @@
-// store_refusal.go holds refusalDDL.
+// store_refusal.go holds SetRefusalBody.
 
 package mirror
-
-import _ "embed"
 
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"errors"
 	"fmt"
 )
 
-// refusalDDL holds the document each stored refusal came with.
-//
-//go:embed refusal-ddl.sql
+//go:embed refusal.sql
 var refusalDDL string
 
 // SetRefusalBody records the document a refusal came with. An empty body

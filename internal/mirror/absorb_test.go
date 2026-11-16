@@ -1,7 +1,5 @@
 package mirror
 
-import _ "embed"
-
 import (
 	"encoding/json"
 	"testing"
@@ -159,7 +157,7 @@ func TestAbsorbAndRebuild_ProjectOnlyTheDeclaredFields(t *testing.T) {
 			{Name: "slug", Type: FieldText, Expr: "{{ .owner.login }}/{{ .name }}"},
 		},
 	}
-	doc := jsonValue(t, testAbsorbAndRebuild_ProjectOnlyTheDeclaredFieldsJson)
+	doc := jsonValue(t, absorbProjectDocJSON)
 
 	row, err := absorb(res, doc)
 	require.NoError(t, err)
@@ -177,6 +175,20 @@ func TestAbsorbAndRebuild_ProjectOnlyTheDeclaredFields(t *testing.T) {
 		"stargazers_count": int64(5),
 		"archived":         false,
 	}, out, "each key and field goes back to its path, a folded key as sent; an expr field is not the upstream's word")
+}
+
+func TestRebuild_AnIntKeyIsAnsweredAsANumber(t *testing.T) {
+	res := &Resource{
+		Name: "pull", Store: StoreColumns,
+		Keys:   []Key{{Name: "number", From: "number", Type: FieldInt}, {Name: "fp", Credential: true}},
+		Fields: []Field{{Name: "head_sha", Type: FieldText, From: "head.sha"}},
+	}
+	out, err := rebuild(res, Row{"number": "42", "fp": "secret", "head_sha": "abc"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"number": int64(42),
+		"head":   map[string]any{"sha": "abc"},
+	}, out, "a credential fingerprint is never answered")
 }
 
 func TestAbsorb_ReportsWhichFieldRefusedTheValue(t *testing.T) {
@@ -206,7 +218,7 @@ func TestTrim_DropsBySuffixAndByExactName(t *testing.T) {
 		Drop: []string{"*url", "node_id"},
 		Keep: []Keep{{Name: "html_url", Reason: "the viewer links a reader back to the page"}},
 	}
-	doc := jsonValue(t, testTrim_DropsBySuffixAndByExactNameJson)
+	doc := jsonValue(t, absorbTrimDocJSON)
 
 	got, ok := trim(res, doc).(map[string]any)
 	require.True(t, ok)
@@ -267,9 +279,3 @@ func TestDecodeJSON_KeepsALargeIDExact(t *testing.T) {
 	_, err = decodeJSON([]byte(`{`))
 	require.Error(t, err, "a truncated body must fail rather than absorb as an empty document")
 }
-
-//go:embed testdata/test-absorb-and-rebuild-project-only-the-declared-fields.json
-var testAbsorbAndRebuild_ProjectOnlyTheDeclaredFieldsJson string
-
-//go:embed testdata/test-trim-drops-by-suffix-and-by-exact-name.json
-var testTrim_DropsBySuffixAndByExactNameJson string

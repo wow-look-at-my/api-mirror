@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -11,200 +12,108 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// identityUpstream is a fake upstream for the identity tests. GET
-// /app accepts one JWT.
-type identityUpstream struct {
-	appCalls    atomic.Int32
-	secretCalls atomic.Int32
-	leaked      atomic.Bool
-	appStatus   atomic.Int32
+func githubIdentity() *Identity {
+	return &Identity{
+		TTL:       time.Hour,
+		User:      &IdentityRule{Path: "/user", Principal: "user:{{ .doc.id }}"},
+		Assertion: &IdentityRule{Header: "X-Mirror-Identity", As: "Authorization", Scheme: "Bearer", Path: "/app", Principal: "app:{{ .doc.id }}"},
+	}
 }
 
-func (u *identityUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("X-Mirror-Identity") != "" {
-		u.leaked.Store(true)
-	}
-	switch r.URL.Path {
-	case "/app":
-		u.appCalls.Add(1)
-		if s := u.appStatus.Load(); s != 0 {
-			w.WriteHeader(int(s))
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer good-jwt" {
+// identityResolverUpstream answers /user and /app by the Authorization it was sent.
+func identityResolverUpstream(t *testing.T, calls *atomic.Int32) *identities {
+	t.Helper()
+	up, _, _ := newUpstreamer(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		auth := r.Header.Get("Authorization")
+		switch {
+		case r.URL.Path == "/app" && auth == "Bearer good-jwt":
+			w.Write([]byte(`{"id":7,"slug":"minder"}`))
+		case r.URL.Path == "/app":
 			w.WriteHeader(http.StatusUnauthorized)
-			return
+		case auth == "token user-a" || auth == "token user-a-rotated":
+			w.Write([]byte(`{"id":42,"login":"alice"}`))
+		case auth == "token install":
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"message":"Resource not accessible by integration"}`))
+		case auth == "token revoked":
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusBadGateway)
 		}
-		w.Write([]byte(`{"id":42,"slug":"my-app"}`))
-	case "/secrets/1":
-		u.secretCalls.Add(1)
-		if r.Header.Get("Authorization") != "token t1" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Write([]byte(`{"id":"1","title":"classified"}`))
-	default:
-		w.WriteHeader(http.StatusNotFound)
-	}
-}
-
-func withIdentity(s *Spec) {
-	s.Upstream.Forward = append(s.Upstream.Forward, "Authorization")
-	s.Resources = append(s.Resources, &Resource{
-		Name:   "secret",
-		Store:  StoreColumns,
-		TTL:    time.Hour,
-		Keys:   []Key{{Name: "id", From: "id"}},
-		Fields: []Field{{Name: "title", Type: FieldText, From: "title"}},
-		Reveal: &Reveal{
-			Probe:    &Probe{Method: http.MethodGet, Path: "/secrets/{id}"},
-			GrantTTL: time.Hour,
-			DenyTTL:  time.Minute,
-		},
 	})
-	s.Routes = append(s.Routes, &Route{Method: "GET", Path: "/secrets/{id}", Resource: "secret"})
-	s.Identity = &Identity{Header: "X-Mirror-Identity", Path: "/app", Scheme: "Bearer", ID: "id", Name: "slug", Prefix: "app"}
+	return newIdentities(githubIdentity(), up, callVars)
 }
 
-func getSecret(e *Engine, token, jwt string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodGet, "/secrets/1", nil)
-	if token != "" {
-		req.Header.Set("Authorization", token)
+func asking(headers map[string]string) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/repos/o/r", nil)
+	for k, v := range headers {
+		r.Header.Set(k, v)
 	}
-	if jwt != "" {
-		req.Header.Set("X-Mirror-Identity", jwt)
-	}
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	return rec
+	return r
 }
 
-func TestIdentity_GrantSurvivesTokenRotation(t *testing.T) {
-	up := &identityUpstream{}
-	e, _ := newTestEngine(t, up, withIdentity)
+func TestIdentity_AUserKeepsOnePrincipalAcrossTokens(t *testing.T) {
+	var calls atomic.Int32
+	ids := identityResolverUpstream(t, &calls)
+	ctx := context.Background()
 
-	first := getSecret(e, "token t1", "good-jwt")
-	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
-	assert.Contains(t, first.Body.String(), "classified")
+	p, refused := ids.resolve(ctx, asking(map[string]string{"Authorization": "token user-a"}))
+	require.Nil(t, refused)
+	assert.Equal(t, "user:42", p)
+	again, _ := ids.resolve(ctx, asking(map[string]string{"Authorization": "token user-a-rotated"}))
+	assert.Equal(t, "user:42", again)
 
-	// The rotated token alone cannot read this.
-	secretsBefore := up.secretCalls.Load()
-	rotated := getSecret(e, "token t2", "good-jwt")
-	assert.Equal(t, http.StatusOK, rotated.Code, "a grant earned as app:42 must survive a new installation token")
-	assert.Equal(t, secretsBefore, up.secretCalls.Load(), "the grant answers, so neither a probe nor a fetch goes out")
-
-	// Without the assertion, t2 is its own principal and has no grant.
-	bare := getSecret(e, "token t2", "")
-	assert.Equal(t, http.StatusNotFound, bare.Code, "the fingerprint principal of t2 must prove access itself")
-
-	assert.False(t, up.leaked.Load(), "the identity header must never reach the upstream")
+	ids.resolve(ctx, asking(map[string]string{"Authorization": "token user-a"}))
+	assert.EqualValues(t, 2, calls.Load(), "a resolved token is remembered for the ttl")
 }
 
-func TestIdentity_VerdictIsCached(t *testing.T) {
-	up := &identityUpstream{}
-	e, _ := newTestEngine(t, up, withIdentity)
-
-	getSecret(e, "token t1", "good-jwt")
-	getSecret(e, "token t1", "good-jwt")
-	assert.EqualValues(t, 1, up.appCalls.Load(), "a verified assertion is reused, not re-verified per request")
+func TestIdentity_ATokenThatIsNoUserKeepsItsFingerprint(t *testing.T) {
+	var calls atomic.Int32
+	ids := identityResolverUpstream(t, &calls)
+	p, refused := ids.resolve(context.Background(), asking(map[string]string{"Authorization": "token install"}))
+	require.Nil(t, refused)
+	assert.Equal(t, principalFor("token install"), p)
 }
 
-func TestIdentity_ForgedAssertionIsRefused(t *testing.T) {
-	up := &identityUpstream{}
-	e, _ := newTestEngine(t, up, withIdentity)
+func TestIdentity_RefusesWhatItCannotResolve(t *testing.T) {
+	var calls atomic.Int32
+	ids := identityResolverUpstream(t, &calls)
+	ctx := context.Background()
 
-	rec := getSecret(e, "token t1", "forged-jwt")
-	assert.Equal(t, http.StatusUnauthorized, rec.Code,
-		"a refused assertion must not fall back to the token fingerprint")
-	assert.Zero(t, up.secretCalls.Load(), "nothing is revealed or fetched for a caller whose identity failed")
+	_, refused := ids.resolve(ctx, asking(map[string]string{"Authorization": "token revoked"}))
+	require.NotNil(t, refused)
+	assert.Equal(t, http.StatusUnauthorized, refused.status)
 
-	getSecret(e, "token t1", "forged-jwt")
-	assert.EqualValues(t, 2, up.appCalls.Load(), "a refusal is not cached, so a fixed assertion is not locked out")
+	_, refused = ids.resolve(ctx, asking(map[string]string{"Authorization": "token upstream-down"}))
+	require.NotNil(t, refused)
+	assert.Equal(t, http.StatusServiceUnavailable, refused.status, "a guessed principal reveals another caller's grants")
 }
 
-func TestIdentity_TransientFailureIsNotCached(t *testing.T) {
-	up := &identityUpstream{}
-	e, _ := newTestEngine(t, up, withIdentity)
+func TestIdentity_AnAssertionTheUpstreamVouchesForNamesTheApp(t *testing.T) {
+	var calls atomic.Int32
+	ids := identityResolverUpstream(t, &calls)
+	ctx := context.Background()
 
-	up.appStatus.Store(http.StatusServiceUnavailable)
-	rec := getSecret(e, "token t1", "good-jwt")
-	assert.Equal(t, http.StatusBadGateway, rec.Code, "an outage is not a refusal of the assertion")
+	p, refused := ids.resolve(ctx, asking(map[string]string{"Authorization": "token install", "X-Mirror-Identity": "good-jwt"}))
+	require.Nil(t, refused)
+	assert.Equal(t, "app:7", p)
 
-	up.appStatus.Store(0)
-	rec = getSecret(e, "token t1", "good-jwt")
-	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	_, refused = ids.resolve(ctx, asking(map[string]string{"Authorization": "token install", "X-Mirror-Identity": "forged"}))
+	require.NotNil(t, refused)
+	assert.Equal(t, http.StatusUnauthorized, refused.status)
 }
 
-// A caller with no credential must never get the mirror's own.
-func TestTokenlessCallerDoesNotRideTheBackgroundCredential(t *testing.T) {
-	up := &identityUpstream{}
-	e, _ := newTestEngine(t, up, withIdentity, func(s *Spec) {
-		s.Upstream.Headers = append(s.Upstream.Headers, Header{Name: "Authorization", Value: "token t1"})
-	})
-
-	rec := getSecret(e, "", "")
-	assert.Equal(t, http.StatusNotFound, rec.Code,
-		"the probe must go out with no credential, not with the static background one")
+func TestIdentity_NoBlockKeysByFingerprint(t *testing.T) {
+	var ids *identities
+	p, refused := ids.resolve(context.Background(), asking(map[string]string{"Authorization": "token x"}))
+	require.Nil(t, refused)
+	assert.Equal(t, principalFor("token x"), p)
+	p, _ = ids.resolve(context.Background(), asking(nil))
+	assert.Empty(t, p)
 }
 
-func TestWhoamiKeepsAUsersGrantsAcrossTokens(t *testing.T) {
-	var whoCalls atomic.Int32
-	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/user":
-			whoCalls.Add(1)
-			switch r.Header.Get("Authorization") {
-			case "token t1", "token t2":
-				w.Write([]byte(`{"id":7}`))
-			default:
-				w.WriteHeader(http.StatusForbidden)
-			}
-		case "/secrets/1":
-			if r.Header.Get("Authorization") != "token t1" {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			w.Write([]byte(`{"id":"1","title":"classified"}`))
-		}
-	}), withIdentity, func(s *Spec) {
-		s.Whoami = &Whoami{Path: "/user", ID: "id", Prefix: "user"}
-	})
-
-	require.Equal(t, http.StatusOK, getSecret(e, "token t1", "").Code)
-	assert.Equal(t, http.StatusOK, getSecret(e, "token t2", "").Code,
-		"t2 belongs to the same user, whose grant t1 earned")
-	assert.Equal(t, http.StatusNotFound, getSecret(e, "token other", "").Code,
-		"a credential the upstream will not name keeps its own fingerprint and proves nothing")
-
-	before := whoCalls.Load()
-	getSecret(e, "token t2", "")
-	assert.Equal(t, before, whoCalls.Load(), "the owner of a credential is cached")
-}
-
-func TestValidate_Identity(t *testing.T) {
-	base := func() *Spec {
-		s := testSpec("https://api.example.com")
-		withIdentity(s)
-		return s
-	}
-	require.NoError(t, base().validate())
-
-	s := base()
-	s.Upstream.Forward = append(s.Upstream.Forward, "x-mirror-identity")
-	err := s.validate()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "leave for the upstream")
-
-	s = base()
-	s.Identity.Prefix = "app:x"
-	require.Error(t, s.validate())
-
-	s = base()
-	s.Identity.ID = ""
-	require.Error(t, s.validate())
-
-	s = base()
-	require.NoError(t, s.validate())
-	assert.Equal(t, http.MethodGet, s.Identity.Method)
-	assert.Equal(t, "Authorization", s.Identity.Send)
+func TestIdentity_ValidateRefusesAnUnforwardedCredential(t *testing.T) {
+	assert.NoError(t, githubIdentity().validate([]string{"Authorization"}))
+	assert.ErrorContains(t, githubIdentity().validate(nil), "does not forward")
 }

@@ -51,7 +51,9 @@ A resource declares WHAT IS STORED. Its `<key>` children are the identity: the p
 
 A key reads the document field of its own name. `from=` says otherwise, and `fold="true"` lower-cases the value so a differently cased URL cannot land on a row a delivery never reaches. The engine's own per-row column is `mirror_written_at`. The prefix keeps it clear of a field the upstream has. `updated_at` is exactly the name an API uses.
 
-`<field>` declares a stored column with a name and a SQL-ish `type`. Its body is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query.
+`<field>` declares a stored column: a name. This also covers a SQL-ish `type`, and a body that is a path into the absorbed document (`owner.login`) or a template. `store="document"` on the resource stores the response body itself rather than columns, for a route whose answer is a blob nobody needs to query. `store="raw"` keeps a non-JSON body byte for byte. Its route asks the upstream for, and answers in, the media type of its first `<accept>`, and a route on the same path. With a different `<accept>` answers the JSON.
+
+`version="true"` on a time or int field makes it the row's clock. A write whose version is older than the stored row's is refused, whether it comes from a fetch or a delivery, because the delivery. Watermark only orders deliveries against each other.
 
 Store modes hold an answer that is not JSON at all, and neither is rebuilt, because there is nothing in it to parse.
 
@@ -262,11 +264,19 @@ A failed lookup or exchange fails the request with an error that names the step 
 
 A consumer can also receive the upstream's webhooks. It then reads the mirror before the mirror ingested the delivery. It gets the state that delivery was about to replace. `<notify>` lets them register an endpoint and sends an HMAC-signed notification AFTER the write lands. Registrations live in a separate database file, because the cache nuke is safe only for rows the upstream still has a copy of.
 
+A consumer manages its own subscriptions at `path` with its own credential, and sees and changes only its own. A notification reaches a subscriber only when its principal can read the delivery's row without a probe. The row is public, or the principal holds live proof. The fan-out has no caller credential to probe with, so anything short of that is silence.
+
+The path it asked keys a probe's grant, not by the row. That row asked it, so every resource proving access with the same question shares one answer.
+
 A caller manages its own registrations at `<notify path=>`, under its resolved principal. A delivery notifies once, after its last handler applies. It reaches a subscriber only when `<scope>` matches the subscriber's filter and the subscriber holds stored proof for the row `<reveal>` names. A filter entry matches its scope or any scope beneath it at a `/`, so `acme` admits `acme/widget`. `<field>` adds payload values to the body.
 
 `<notify import=>` names a github-state-mirror subscription file, as template source over `.env`. At startup the engine adopts each row it has not adopted before. The row keeps its id, secret, filters, counters, timestamps (to the second) and owner. A ledger records each source id, so a registration deleted here stays deleted. The owner is translated into the principal the same caller resolves to here. A row that no caller here can own is not imported.
 
 Id and counted on the dashboard logs it, and the next start tries it again. A named file that is missing or not that format stops startup. A value that renders empty imports nothing and logs that once. The format belongs to that service. As a result, the importer is its own file, `gsm_import.go`.
+
+### `<identity>` — who is asking
+
+`<user>` asks the upstream who a bearer is and names the principal from the answer, so grants survive a rotated token. A credential the upstream says is not a user keeps its fingerprint. One it cannot answer about fails the request. `<assertion>` lets a caller name an identity the upstream verifies, and a route with `assert="true"` treats its bearer as that assertion. A key with `credential="principal"` files rows under the verified principal.
 
 ### `<login>` — operators sign in upstream
 

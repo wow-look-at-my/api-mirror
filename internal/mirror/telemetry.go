@@ -4,6 +4,7 @@ package mirror
 
 import (
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -22,6 +23,9 @@ type Telemetry struct {
 	// onExchange and onRequest are a host's taps.
 	onExchange func(Exchange)
 	onRequest  func(Request)
+
+	// seen is when each principal last asked this mirror anything.
+	seen map[string]time.Time
 }
 
 // Tap hands every outbound exchange and every inbound request to a host as
@@ -36,6 +40,50 @@ func (t *Telemetry) Record(r Request) {
 	if t.onRequest != nil {
 		t.onRequest(r)
 	}
+}
+
+// seenMax bounds the last-seen map.
+const seenMax = 10000
+
+// Seen records a principal's request.
+func (t *Telemetry) Seen(principal string, at time.Time) {
+	if t == nil || principal == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.seen == nil {
+		t.seen = map[string]time.Time{}
+	}
+	t.seen[principal] = at
+	if len(t.seen) <= seenMax {
+		return
+	}
+	times := make([]time.Time, 0, len(t.seen))
+	for _, v := range t.seen {
+		times = append(times, v)
+	}
+	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
+	cutoff := times[len(times)/2]
+	for p, v := range t.seen {
+		if v.Before(cutoff) {
+			delete(t.seen, p)
+		}
+	}
+}
+
+// LastSeen copies the last-seen map.
+func (t *Telemetry) LastSeen() map[string]time.Time {
+	out := map[string]time.Time{}
+	if t == nil {
+		return out
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for p, v := range t.seen {
+		out[p] = v
+	}
+	return out
 }
 
 // LaneTally is the running cost of lane of traffic.
@@ -86,7 +134,9 @@ func (t *Telemetry) Observe(e Exchange) {
 	if e.Err != nil || e.Status >= 500 {
 		tally.Errors++
 	}
-	t.upBytes += e.Bytes
+	if e.Lane != LaneInbound && e.Lane != LaneDelivery {
+		t.upBytes += e.Bytes
+	}
 }
 
 // ObserveHeaders reads a budget out of an answer's headers.

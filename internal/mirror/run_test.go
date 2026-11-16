@@ -1,10 +1,9 @@
 package mirror
 
-import _ "embed"
-
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"io"
 	"net"
 	"os"
@@ -36,9 +35,7 @@ func writeSpec(t *testing.T, src string) string {
 	return path
 }
 
-// runnableSpec is a whole mirror, events included, so a start-up test exercises the ingest wiring rather than only the serving half.
-//
-//go:embed testdata/runnable-spec.xml
+//go:embed runnable_spec.xml
 var runnableSpec string
 
 // report is what an author reads before running anything. It has to name
@@ -72,7 +69,7 @@ func TestReport_NamesEverythingTheSpecDerives(t *testing.T) {
 }
 
 func TestReport_MarksAListRouteAsAList(t *testing.T) {
-	spec, err := ParseSpec([]byte(testReport_MarksAListRouteAsAListXml))
+	spec, err := ParseSpec([]byte(listRouteReportXML))
 	require.NoError(t, err)
 
 	out, err := os.CreateTemp(t.TempDir(), "report-*")
@@ -86,7 +83,7 @@ func TestReport_MarksAListRouteAsAList(t *testing.T) {
 }
 
 func TestReport_OmitsTheEventSectionWhenNothingIsDeclared(t *testing.T) {
-	spec, err := ParseSpec([]byte(testReport_OmitsTheEventSectionWhenNothingIsDeclaredXml))
+	spec, err := ParseSpec([]byte(noEventsReportXML))
 	require.NoError(t, err)
 
 	out, err := os.CreateTemp(t.TempDir(), "report-*")
@@ -227,9 +224,3 @@ func TestEngineDrain_IsSafeWithNothingInFlight(t *testing.T) {
 	assert.True(t, engine.Drain(drainTimeout),
 		"a shutdown waits for deliveries too; an upstream never sends one twice")
 }
-
-//go:embed testdata/test-report-marks-a-list-route-as-a-list.xml
-var testReport_MarksAListRouteAsAListXml string
-
-//go:embed testdata/test-report-omits-the-event-section-when-nothing-is-declared.xml
-var testReport_OmitsTheEventSectionWhenNothingIsDeclaredXml string

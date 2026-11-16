@@ -205,15 +205,11 @@ func TestNotifierSignsAndTellsSubscribersAfterTheWriteLands(t *testing.T) {
 	t.Cleanup(subscriber.Close)
 
 	e := notifyEngine(t)
-	e.notify.rule.Fields = []Set{{Field: "widget", From: "widget.id"}, {Field: "missing", From: "nope"}}
+	e.notify.rule.Fields = []Set{{Field: "widget", From: "id"}, {Field: "missing", From: "nope"}}
 	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", subscriber.URL, "", nil, nil)
 	require.NoError(t, err)
 
-	e.notify.Fan(context.Background(), &Delivery{
-		ID: "d1", Type: "widget.changed", Subject: "widget:7", UpstreamID: "up-1",
-		Payload: map[string]any{"widget": map[string]any{"id": "7"}},
-		Event:   &Event{Type: "widget.changed", Resource: "widget"},
-	}, DeliveryApplied)
+	e.notify.Fan(context.Background(), widgetDelivery(e, "widget:7"), DeliveryApplied)
 
 	select {
 	case <-done:
@@ -249,9 +245,7 @@ func TestNotifierParksASubscriptionThatKeepsFailing(t *testing.T) {
 	sub, err := e.notify.Subs().Create(context.Background(), "token:abc", dead.URL, "", nil, nil)
 	require.NoError(t, err)
 
-	e.notify.Fan(context.Background(), &Delivery{
-		ID: "d1", Type: "widget.changed", Event: &Event{Type: "widget.changed", Resource: "widget"},
-	}, DeliveryApplied)
+	e.notify.Fan(context.Background(), widgetDelivery(e, ""), DeliveryApplied)
 	require.True(t, e.notify.Drain(10*time.Second))
 
 	all, err := e.notify.Subs().All(context.Background())
@@ -321,8 +315,16 @@ func TestSubscriptionAPICreatesAndReturnsTheSecretOnce(t *testing.T) {
 	assert.Empty(t, listed[0].Secret, "the store never reads a secret back out to a listing")
 }
 
-// notifyEngine is an engine with subscriber notifications declared, backed by a
-// config database in a temp directory.
+// notifyEngine is an engine with subscriber notifications declared, backed by
+// a config database in a temp directory.
+func widgetDelivery(e *Engine, subject string) *Delivery {
+	return &Delivery{
+		ID: "d1", Type: "widget.changed", Subject: subject, UpstreamID: "up-1",
+		Event:   e.spec.Events.List[0],
+		Payload: map[string]any{"id": "7", "title": "renamed"},
+	}
+}
+
 func notifyEngine(t *testing.T) *Engine {
 	t.Helper()
 	dir := t.TempDir()

@@ -122,7 +122,8 @@ func (r *Replayer) Stop() {
 func (r *Replayer) cycle() {
 	ctx, cancel := context.WithTimeout(context.Background(), replayCycleTimeout)
 	defer cancel()
-	ctx = withLane(ctx, LaneReplay, "", "list")
+	// The delivery log belongs to the App, so it is asked as the App.
+	ctx = withAppCall(withLane(ctx, LaneReplay, "", "list"))
 
 	set, err := r.headers()
 	if err != nil {
@@ -240,7 +241,7 @@ func (r *Replayer) ask(ctx context.Context, item any, id string) error {
 	if err != nil {
 		return err
 	}
-	answer, err := r.engine.up.CallWith(withLane(ctx, LaneReplay, "", "redeliver"), method, path, r.engine.vars, nil, set, nil)
+	answer, err := r.engine.up.CallWith(withAppCall(withLane(ctx, LaneReplay, "", "redeliver")), method, path, r.engine.vars, nil, set, nil)
 	if err != nil {
 		return err
 	}

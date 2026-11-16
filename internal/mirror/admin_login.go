@@ -77,7 +77,7 @@ type adminLogin struct {
 // sign-in off, loudly, and the token still gates the dashboard.
 func newAdminLogin(a *Admin, rule *Login) *adminLogin {
 	render := func(what, src string) string {
-		v, err := renderString(src, a.engine.vars)
+		v, err := renderString(src, map[string]any{"env": envMap(), "var": a.engine.vars})
 		if err != nil {
 			logf("<login> %s: %v", what, err)
 		}

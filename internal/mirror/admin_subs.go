@@ -13,6 +13,9 @@ import (
 // maxSubscriptionBody caps a registration. Nothing legitimate here is large.
 const maxSubscriptionBody = 64 << 10
 
+// operatorPrincipal owns the subscriptions made through the dashboard.
+const operatorPrincipal = "operator"
+
 // subscriptionRequest is what a consumer posts to register.
 type subscriptionRequest struct {
 	URL    string   `json:"url"`
@@ -49,6 +52,11 @@ func (a *Admin) createSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this spec declares no <notify>", http.StatusNotImplemented)
 		return
 	}
+	createSubscriptionFor(w, r, subs, operatorPrincipal)
+}
+
+// createSubscriptionFor registers the posted subscription under a principal.
+func createSubscriptionFor(w http.ResponseWriter, r *http.Request, subs *Subscriptions, principal string) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSubscriptionBody))
 	if err != nil {
 		http.Error(w, "unreadable body", http.StatusBadRequest)
@@ -62,10 +70,6 @@ func (a *Admin) createSubscription(w http.ResponseWriter, r *http.Request) {
 	if err := checkCallbackURL(req.URL); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	}
-	principal := tokenPrincipal(r)
-	if principal == "" {
-		principal = "operator"
 	}
 	sub, err := subs.Create(r.Context(), principal, req.URL, "", req.Events, nil)
 	if err != nil {

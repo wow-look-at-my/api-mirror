@@ -42,6 +42,7 @@ type Notifier struct {
 
 	mu        sync.Mutex
 	sent      int
+	gated     int
 	failed    int
 	disabled  int
 	lastSent  time.Time
@@ -134,11 +135,12 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 	if n == nil {
 		return
 	}
-	subs, err := n.subs.Matching(ctx, d.Type)
+	matching, err := n.subs.Matching(ctx, d.Type)
 	if err != nil {
 		logf("notify: list subscriptions: %v", err)
 		return
 	}
+	subs := matching
 	if len(subs) == 0 {
 		return
 	}
@@ -159,6 +161,9 @@ func (n *Notifier) Fan(ctx context.Context, d *Delivery, disp DeliveryDispositio
 			continue
 		}
 		if !n.visible(ctx, s.Principal, d) {
+			n.mu.Lock()
+			n.gated++
+			n.mu.Unlock()
 			continue
 		}
 		n.wg.Add(1)
@@ -403,6 +408,7 @@ type NotifyStats struct {
 	Enabled       bool      `json:"enabled"`
 	Subscriptions int       `json:"subscriptions"`
 	Sent          int       `json:"sent"`
+	Gated         int       `json:"gated"`
 	Failed        int       `json:"failed"`
 	Disabled      int       `json:"disabled"`
 	LastSent      time.Time `json:"last_sent,omitempty"`
@@ -421,6 +427,7 @@ func (n *Notifier) Stats(ctx context.Context) NotifyStats {
 	s := NotifyStats{
 		Enabled:   true,
 		Sent:      n.sent,
+		Gated:     n.gated,
 		Failed:    n.failed,
 		Disabled:  n.disabled,
 		LastSent:  n.lastSent,

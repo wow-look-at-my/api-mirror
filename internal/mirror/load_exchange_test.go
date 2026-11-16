@@ -1,8 +1,7 @@
 package mirror
 
-import _ "embed"
-
 import (
+	_ "embed"
 	"testing"
 	"time"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:embed testdata/credential-spec.xml
+//go:embed exchange_spec.xml
 var credentialSpec string
 
 func TestLoadReadsACredential(t *testing.T) {

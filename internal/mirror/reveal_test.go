@@ -104,7 +104,7 @@ func (f *fixture) grantRows(t *testing.T, principal, key string) int {
 	var n int
 	err := f.store.db.QueryRow(
 		`SELECT COUNT(*) FROM mirror_grant WHERE principal = ? AND resource = ? AND key = ?`,
-		principal, "repo", key).Scan(&n)
+		principal, proofScope, key).Scan(&n)
 	require.NoError(t, err)
 	return n
 }
@@ -151,7 +151,7 @@ func TestLiveGrantAllowsWithoutCall(t *testing.T) {
 	f := newFixture(t, unreachable(t))
 	f.putRow(t, "wow", "secret", "private")
 	require.NoError(t, f.store.RecordGrant(context.Background(), Grant{
-		Principal: "user:1", Resource: "repo", Key: keyString(f.res, repoKey("wow", "secret")),
+		Principal: "user:1", Resource: proofScope, Key: "/repos/wow/secret",
 		Source: grantSourceProbe, ExpiresAt: time.Now().Add(time.Hour),
 	}))
 
@@ -165,7 +165,7 @@ func TestExpiredGrantDoesNotAllow(t *testing.T) {
 	f := newFixture(t, respondWith(http.StatusForbidden))
 	f.putRow(t, "wow", "secret", "private")
 	require.NoError(t, f.store.RecordGrant(context.Background(), Grant{
-		Principal: "user:1", Resource: "repo", Key: keyString(f.res, repoKey("wow", "secret")),
+		Principal: "user:1", Resource: proofScope, Key: "/repos/wow/secret",
 		Source: grantSourceProbe, ExpiresAt: time.Now().Add(-time.Hour),
 	}))
 
@@ -181,7 +181,7 @@ func TestGrantIsPerPrincipal(t *testing.T) {
 	f := newFixture(t, respondWith(http.StatusNotFound))
 	f.putRow(t, "wow", "secret", "private")
 	require.NoError(t, f.store.RecordGrant(context.Background(), Grant{
-		Principal: "user:1", Resource: "repo", Key: keyString(f.res, repoKey("wow", "secret")),
+		Principal: "user:1", Resource: proofScope, Key: "/repos/wow/secret",
 		Source: grantSourceProbe, ExpiresAt: time.Now().Add(time.Hour),
 	}))
 
@@ -194,8 +194,8 @@ func TestGrantIsPerPrincipal(t *testing.T) {
 func TestCachedDenialReplaysWithoutCall(t *testing.T) {
 	f := newFixture(t, unreachable(t))
 	f.putRow(t, "wow", "secret", "private")
-	require.NoError(t, f.store.RecordDenial(context.Background(), "user:1", "repo",
-		keyString(f.res, repoKey("wow", "secret")), http.StatusNotFound, time.Now().Add(time.Minute)))
+	require.NoError(t, f.store.RecordDenial(context.Background(), "user:1", proofScope,
+		"/repos/wow/secret", http.StatusNotFound, time.Now().Add(time.Minute)))
 
 	v, err := f.allow(t, "user:1", repoKey("wow", "secret"))
 	require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestProbe200RecordsGrantAndAllows(t *testing.T) {
 	assert.True(t, v.Allowed)
 	assert.Equal(t, int64(1), f.calls.Load())
 
-	live, err := f.store.HasGrant(context.Background(), "user:1", "repo", keyString(f.res, key), time.Now())
+	live, err := f.store.HasGrant(context.Background(), "user:1", proofScope, "/repos/wow/secret", time.Now())
 	require.NoError(t, err)
 	assert.True(t, live, "a proven probe must be remembered")
 
@@ -242,9 +242,9 @@ func TestProbeForwardsCallerCredential(t *testing.T) {
 func TestProbe404DeniesWithoutRevoking(t *testing.T) {
 	f := newFixture(t, respondWith(http.StatusNotFound))
 	key := repoKey("wow", "secret")
-	k := keyString(f.res, key)
+	k := "/repos/wow/secret"
 	require.NoError(t, f.store.RecordGrant(context.Background(), Grant{
-		Principal: "user:1", Resource: "repo", Key: k,
+		Principal: "user:1", Resource: proofScope, Key: k,
 		Source: grantSourceProbe, ExpiresAt: time.Now().Add(-time.Hour),
 	}))
 
@@ -254,7 +254,7 @@ func TestProbe404DeniesWithoutRevoking(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, v.Status)
 	assert.False(t, v.Cached, "a fresh probe is not a replay")
 
-	status, found, err := f.store.Denial(context.Background(), "user:1", "repo", k, time.Now())
+	status, found, err := f.store.Denial(context.Background(), "user:1", proofScope, k, time.Now())
 	require.NoError(t, err)
 	require.True(t, found, "an authoritative refusal must be remembered")
 	assert.Equal(t, http.StatusNotFound, status)
@@ -266,9 +266,9 @@ func TestProbe404DeniesWithoutRevoking(t *testing.T) {
 func TestProbe403DeniesAndRevokes(t *testing.T) {
 	f := newFixture(t, respondWith(http.StatusForbidden))
 	key := repoKey("wow", "secret")
-	k := keyString(f.res, key)
+	k := "/repos/wow/secret"
 	require.NoError(t, f.store.RecordGrant(context.Background(), Grant{
-		Principal: "user:1", Resource: "repo", Key: k,
+		Principal: "user:1", Resource: proofScope, Key: k,
 		Source: grantSourceProbe, ExpiresAt: time.Now().Add(-time.Hour),
 	}))
 
@@ -277,7 +277,7 @@ func TestProbe403DeniesAndRevokes(t *testing.T) {
 	assert.False(t, v.Allowed)
 	assert.Equal(t, http.StatusForbidden, v.Status)
 
-	_, found, err := f.store.Denial(context.Background(), "user:1", "repo", k, time.Now())
+	_, found, err := f.store.Denial(context.Background(), "user:1", proofScope, k, time.Now())
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.Zero(t, f.grantRows(t, "user:1", k), "a 403 must revoke the proof it contradicts")
@@ -296,7 +296,7 @@ func TestRateLimited403CachesNothing(t *testing.T) {
 	require.Error(t, err, "an undecidable probe must fail the request, not refuse it")
 	assert.False(t, v.Allowed)
 
-	_, found, err := f.store.Denial(context.Background(), "user:1", "repo", keyString(f.res, key), time.Now())
+	_, found, err := f.store.Denial(context.Background(), "user:1", proofScope, "/repos/wow/secret", time.Now())
 	require.NoError(t, err)
 	assert.False(t, found, "a rate-limit refusal says nothing about access")
 }
@@ -309,7 +309,7 @@ func TestProbe500CachesNothing(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, v.Allowed)
 
-	_, found, err := f.store.Denial(context.Background(), "user:1", "repo", keyString(f.res, key), time.Now())
+	_, found, err := f.store.Denial(context.Background(), "user:1", proofScope, "/repos/wow/secret", time.Now())
 	require.NoError(t, err)
 	assert.False(t, found, "an outage must not be remembered as a refusal")
 }
@@ -324,7 +324,7 @@ func TestProbe401CachesNothing(t *testing.T) {
 	assert.False(t, v.Allowed)
 	assert.Equal(t, http.StatusUnauthorized, v.Status, "the caller is told their credential is bad")
 
-	_, found, err := f.store.Denial(context.Background(), "user:1", "repo", keyString(f.res, key), time.Now())
+	_, found, err := f.store.Denial(context.Background(), "user:1", proofScope, "/repos/wow/secret", time.Now())
 	require.NoError(t, err)
 	assert.False(t, found)
 }
@@ -357,11 +357,11 @@ func TestRenewOn2xxKeepsASteadyConsumerProven(t *testing.T) {
 	f := newFixture(t, unreachable(t))
 	ctx := context.Background()
 	key := repoKey("wow", "secret")
-	k := keyString(f.res, key)
+	k := "/repos/wow/secret"
 	f.putRow(t, "wow", "secret", "private")
 
 	f.rv.RenewOn2xx(ctx, "user:1", f.res, key, http.StatusOK)
-	live, err := f.store.HasGrant(ctx, "user:1", "repo", k, time.Now())
+	live, err := f.store.HasGrant(ctx, "user:1", proofScope, k, time.Now())
 	require.NoError(t, err)
 	assert.True(t, live)
 
@@ -376,7 +376,7 @@ func TestRenewOn2xxIgnoresWhatProvesNothing(t *testing.T) {
 	f := newFixture(t, unreachable(t))
 	ctx := context.Background()
 	key := repoKey("wow", "secret")
-	k := keyString(f.res, key)
+	k := "/repos/wow/secret"
 
 	f.rv.RenewOn2xx(ctx, "user:1", f.res, key, http.StatusNotFound)
 	f.rv.RenewOn2xx(ctx, "", f.res, key, http.StatusOK)

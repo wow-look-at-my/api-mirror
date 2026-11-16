@@ -3,7 +3,9 @@
 package mirror
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"slices"
@@ -20,7 +22,10 @@ const (
 	PassQuery      PassReason = "unmodeled-query"
 	PassResponse   PassReason = "unmodeled-response" // the route models the request, not what came back
 	PassNoIdentity PassReason = "unverified-identity"
-	PassRelay      PassReason = "relayed" // a declared forward to a foreign host
+	PassRelay      PassReason = "relayed"     // a declared forward to a foreign host
+	PassBypass     PassReason = "bypass-body" // the body is a write the route declares uncacheable
+	// PassUnobservedBudget is a budget question from a caller the meter has not seen yet.
+	PassUnobservedBudget PassReason = "unobserved-budget"
 )
 
 // match is request resolved against a route.
@@ -79,12 +84,12 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 			if !k.Credential {
 				continue
 			}
-			auth := r.Header.Get("Authorization")
-			if auth == "" {
+			v := credentialValue(k, r)
+			if v == "" {
 				// No credential to key this row by; nothing to serve.
 				return nil, PassNoIdentity, nil
 			}
-			key[k.Name] = fingerprint(auth)
+			key[k.Name] = v
 		}
 		// The body IS the key here, and a consumed body cannot be re-read, so the match carries it for the fetch to replay.
 		var body []byte
@@ -97,7 +102,12 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 				return nil, PassQuery, fmt.Errorf("route %s: the request body is over the %d byte cap", rt.Path, maxBodyBytes)
 			}
 			body = b
-			key[rt.BodyKey] = fingerprint(string(b))
+			// The passthrough needs the body the resolve consumed.
+			r.Body = io.NopCloser(bytes.NewReader(b))
+			if rt.Bypass != nil && rt.Bypass.Match(b) {
+				return nil, PassBypass, nil
+			}
+			key[rt.BodyKey] = bodyFingerprint(b)
 		}
 		return &match{route: rt, key: key, query: query, body: body}, "", nil
 	}
@@ -108,6 +118,20 @@ func (e *Engine) resolve(r *http.Request) (*match, PassReason, error) {
 		return nil, PassMethod, nil
 	}
 	return nil, PassUnrouted, nil
+}
+
+// bodyFingerprint keys a request body. A JSON body is re-marshalled so the
+// same question with its fields in another order finds the same row.
+func bodyFingerprint(b []byte) string {
+	doc, err := decodeJSON(b)
+	if err != nil {
+		return fingerprint(string(b))
+	}
+	canon, err := marshalJSON(doc)
+	if err != nil {
+		return fingerprint(string(b))
+	}
+	return fingerprint(string(canon))
 }
 
 // foldFor applies a key component's declared case folding, so a differently
@@ -131,11 +155,17 @@ func pathParam(seg string) (name string, param, rest bool) {
 	if trimmed, ok := strings.CutSuffix(name, "..."); ok {
 		return trimmed, true, true
 	}
+	// A rest parameter may also be spelled {name*}, the other spelling the
+	// spec accepts for the same thing.
+	if trimmed, ok := strings.CutSuffix(name, "*"); ok {
+		return trimmed, true, true
+	}
 	return name, true, false
 }
 
 // matchPath matches a request path against a route pattern, returning the
-// {name} bindings.
+// {name} bindings. A final {name*} binds every remaining segment, slashes
+// included, because a file path or a ref like heads/feature/x is a single value.
 func matchPath(pattern, path string) (map[string]string, bool) {
 	pseg := strings.Split(strings.Trim(pattern, "/"), "/")
 	rseg := strings.Split(strings.Trim(path, "/"), "/")

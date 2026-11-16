@@ -85,6 +85,14 @@ func (s *Spec) validate() error {
 		}
 		byName[r.Name] = r
 	}
+	for _, r := range s.Resources {
+		if r.Contradiction == nil {
+			continue
+		}
+		if err := r.Contradiction.validate(r, byName); err != nil {
+			return err
+		}
+	}
 	for _, rt := range s.Routes {
 		if err := rt.validate(byName); err != nil {
 			return err
@@ -132,8 +140,8 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		return fmt.Errorf("<dashboard> path %q must start with /", s.Dashboard.Path)
 	}
 	if s.Refresh != nil {
-		if s.Refresh.Interval <= 0 {
-			return fmt.Errorf("<refresh> needs a positive interval")
+		if s.Refresh.Interval < 0 {
+			return fmt.Errorf("<refresh> interval must not be negative; interval=\"0\" turns the sweep off")
 		}
 		kinds := set.New[string]()
 		for _, rt := range s.Routes {
@@ -162,6 +170,17 @@ func (s *Spec) validateOps(byName map[string]*Resource) error {
 		}
 		if err := s.Notify.validate(byName, s.Dashboard.Path); err != nil {
 			return err
+		}
+	}
+	if err := s.Identity.validate(s.Upstream.Forward); err != nil {
+		return err
+	}
+	if err := s.Upstream.App.validate(); err != nil {
+		return err
+	}
+	for _, rt := range s.Routes {
+		if rt.Assert && (s.Identity == nil || s.Identity.Assertion == nil) {
+			return fmt.Errorf("route %s: assert=\"true\" verifies the bearer with <identity><assertion>, which the spec does not declare", rt.Path)
 		}
 	}
 	if s.Health != nil && s.Health.Live == "" && s.Health.PreUpdate == "" {
@@ -218,7 +237,7 @@ func (r *Resource) validate() error {
 		if len(r.Fields) == 0 {
 			return fmt.Errorf("resource %q stores columns but declares no <field>: it would serve an empty answer", r.Name)
 		}
-	case StoreDocument, StoreRedirect, StoreText:
+	case StoreDocument, StoreRaw, StoreRedirect, StoreText:
 		if len(r.Fields) > 0 {
 			return fmt.Errorf("resource %q stores a %s, so its <field> declarations would never be read", r.Name, r.Store)
 		}
@@ -244,6 +263,15 @@ func (r *Resource) validate() error {
 		if (f.From == "") == (f.Expr == "") {
 			return fmt.Errorf("resource %q field %q: give it a source path or an expr, not both and not neither", r.Name, f.Name)
 		}
+		if f.Version && f.Type != FieldTime && f.Type != FieldInt {
+			return fmt.Errorf("resource %q field %q: a version column orders writes, so it must be a time or an int", r.Name, f.Name)
+		}
+	}
+	if r.RevokeOn != "" && r.Store != StoreDocument {
+		return fmt.Errorf("resource %q: revoke-on-refusal names a path in a stored document, and this resource stores %s", r.Name, r.Store)
+	}
+	if len(versionFields(r)) > 1 {
+		return fmt.Errorf("resource %q: more than one version=\"true\" field, and two clocks cannot order a row", r.Name)
 	}
 	if err := r.validateAnswerPaths(); err != nil {
 		return err
@@ -398,7 +426,15 @@ func (rt *Route) validate(resources map[string]*Resource) error {
 	if rt.Complete && !rt.List {
 		return fmt.Errorf("route %s: complete=\"true\" describes a list answer, and this route answers one row", rt.Path)
 	}
-	if !rt.List {
+	if rt.Complete && res.whole() {
+		return fmt.Errorf("route %s: complete=\"true\" replace-syncs rows, and a document resource stores each page whole", rt.Path)
+	}
+	// A document resource stores a single answer per key. A list page included, so every
+	// route onto a single must name the whole key or pages share a row.
+	if res.Store == StoreRaw && (rt.List || len(rt.Accept) == 0) {
+		return fmt.Errorf("route %s: a raw resource answers one body in the media type of its first <accept>, so the route needs one and cannot be a list", rt.Path)
+	}
+	if !rt.List || res.whole() {
 		for _, k := range res.Keys {
 			if k.Credential {
 				// The engine fills this from the request, not a route param.
@@ -586,84 +622,6 @@ func pathParams(path string) []string {
 	return out
 }
 
-func (e *Events) validate(resources map[string]*Resource) error {
-	if e.Path == "" {
-		return fmt.Errorf("<events> needs a path")
-	}
-	if e.Secret == "" {
-		return fmt.Errorf("<events> needs a secret: an unverified delivery is anyone's delivery")
-	}
-	if e.SignatureHeader == "" {
-		return fmt.Errorf("<events> needs a signature header")
-	}
-	if e.TypeHeader == "" {
-		return fmt.Errorf("<events> needs a type header")
-	}
-	// A type is declared per resource it moves.
-	ungated := map[string]bool{}
-	for _, ev := range e.List {
-		if ev.Type == "" {
-			return fmt.Errorf("<event> needs a type")
-		}
-		pair := ev.Type + "\x00" + ev.Resource
-		if prev, ok := ungated[pair]; ok && (prev || ev.When == "") {
-			return fmt.Errorf("event %q declared twice for resource %q; a repeat needs when= on every declaration", ev.Type, ev.Resource)
-		}
-		ungated[pair] = ev.When == ""
-		res, ok := resources[ev.Resource]
-		if !ok {
-			return fmt.Errorf("event %q names resource %q, which is not declared", ev.Type, ev.Resource)
-		}
-		if ev.Subject == "" {
-			return fmt.Errorf("event %q needs a <subject>: without one the engine cannot tell which deliveries order against each other", ev.Type)
-		}
-		if ev.Clock == "" && !ev.Unordered {
-			return fmt.Errorf("event %q needs a <clock>, or must declare unordered=\"true\": a delivery whose moment is unknown can overwrite newer truth silently", ev.Type)
-		}
-		if ev.Clock != "" && ev.Unordered {
-			return fmt.Errorf("event %q declares both a clock and unordered", ev.Type)
-		}
-		if len(ev.Sets) == 0 && ev.Invalidate == nil && ev.Document == "" {
-			return fmt.Errorf("event %q does nothing: give it <set> fields, a <document>, or an <invalidate> with a reason", ev.Type)
-		}
-		if err := validateEventDocument(ev, res); err != nil {
-			return err
-		}
-		if len(ev.Sets) > 0 && ev.Invalidate != nil {
-			return fmt.Errorf("event %q both writes and invalidates; the write already replaced the row", ev.Type)
-		}
-		if ev.Invalidate != nil && strings.TrimSpace(ev.Invalidate.Reason) == "" {
-			return fmt.Errorf("event %q: <invalidate> needs a reason stating why the payload cannot answer -- throwing away a value the upstream just handed us is the bug this asks you to justify", ev.Type)
-		}
-		if res.Store == StoreDocument && len(ev.Sets) > 0 {
-			return fmt.Errorf("event %q writes fields into resource %q, which stores a document", ev.Type, res.Name)
-		}
-		known := set.New[string]()
-		for _, f := range res.Fields {
-			known.Add(f.Name)
-		}
-		for _, k := range res.Keys {
-			known.Add(k.Name)
-		}
-		for _, st := range ev.Sets {
-			if !known.Contains(st.Field) {
-				return fmt.Errorf("event %q sets %q, which resource %q does not declare", ev.Type, st.Field, res.Name)
-			}
-			if (st.From == "") == (st.Expr == "") {
-				return fmt.Errorf("event %q set %q: give it a payload path or an expr, not both and not neither", ev.Type, st.Field)
-			}
-		}
-		if err := validateEventSources(ev); err != nil {
-			return err
-		}
-		if err := validateEventKeys(ev, res); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// That stores one fact twice, and the copies drift apart.
 func validateEventSources(ev *Event) error {
 	return oneOutputPerInput(fmt.Sprintf("event %q", ev.Type), slices.Concat(ev.Keys, ev.Sets))
 }
@@ -706,8 +664,8 @@ func validateEventKeys(ev *Event, res *Resource) error {
 		return slices.ContainsFunc(ev.Keys, match) || slices.ContainsFunc(ev.Sets, match)
 	}
 	if ev.Invalidate != nil {
-		// A partial key is legitimate here and deletes everything beneath it.
-		// Naming none of them deletes the resource, which must be said out loud.
+		// A partial key is legitimate here and deletes everything beneath it,
+		// but naming none of them would delete the resource unless it says so.
 		if inv := ev.Invalidate; (inv.Field == "") != (inv.Differs == "") {
 			return fmt.Errorf("event %q: <invalidate> field= and differs= go together", ev.Type)
 		}
@@ -723,6 +681,12 @@ func validateEventKeys(ev *Event, res *Resource) error {
 				if !named(k.Name) {
 					return fmt.Errorf("event %q: a conditional <invalidate> compares one row, so it needs <key field=%q>", ev.Type, k.Name)
 				}
+			}
+			return nil
+		}
+		if ev.Invalidate.All {
+			if len(ev.Keys) > 0 {
+				return fmt.Errorf("event %q invalidates all of resource %q: a <key> would narrow nothing", ev.Type, res.Name)
 			}
 			return nil
 		}

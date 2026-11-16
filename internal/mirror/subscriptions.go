@@ -1,13 +1,12 @@
-// subscriptions.go holds subscriptionSchema.
+// subscriptions.go holds subscriptionColumns.
 
 package mirror
-
-import _ "embed"
 
 import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,10 +18,14 @@ import (
 
 // The subscription store, in a SEPARATE database file from the cache.
 
-// subscriptionSchema has no fingerprint and nothing nukes it: a change here has to be an existing file survives.
-//
-//go:embed subscription-schema.sql
+//go:embed subscription_schema.sql
 var subscriptionSchema string
+
+//go:embed adopt_subscription.sql
+var adoptSubscriptionSQL string
+
+//go:embed mark_failed.sql
+var markFailedSQL string
 
 // subscriptionColumns are added to a file an older build created. Each
 // is additive with a default, so every existing registration survives.
@@ -220,7 +223,7 @@ func (s *Subscriptions) adopt(ctx context.Context, source, sourceID string, sub 
 		return adoptIDTaken, nil
 	}
 	if _, err := tx.ExecContext(ctx,
-		adoptSql,
+		adoptSubscriptionSQL,
 		sub.ID, sub.Principal, sub.URL, sub.Secret, strings.Join(sub.Events, ","), strings.Join(sub.Scopes, ","),
 		sub.CreatedAt.Unix(), sub.UpdatedAt.Unix(), unixOrNull(sub.LastOK), unixOrNull(sub.LastFailure),
 		sub.Failures, boolInt(sub.Disabled), sub.LastError, sub.DisabledReason); err != nil {
@@ -305,6 +308,18 @@ func (s *Subscriptions) Delete(ctx context.Context, principal, id string) (bool,
 	return n > 0, err
 }
 
+// Reactivate re-enables a parked subscription of a principal's and clears its
+// failure run.
+func (s *Subscriptions) Reactivate(ctx context.Context, principal, id string) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE subscription SET disabled = 0, failures = 0, last_error = '' WHERE id = ? AND principal = ?`, id, principal)
+	if err != nil {
+		return false, fmt.Errorf("reactivate subscription: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // ByPrincipal lists caller's own subscriptions.
 func (s *Subscriptions) ByPrincipal(ctx context.Context, principal string) ([]Subscription, error) {
 	return s.query(ctx, subscriptionSelect+` WHERE principal = ? ORDER BY created_at`, principal)
@@ -358,7 +373,7 @@ func (s *Subscriptions) MarkDelivered(ctx context.Context, id string) error {
 // MarkFailed counts failure and parks the subscription at the limit.
 func (s *Subscriptions) MarkFailed(ctx context.Context, id, cause string, limit int) (int, error) {
 	_, err := s.db.ExecContext(ctx,
-		markFailedSql,
+		markFailedSQL,
 		cause, time.Now().Unix(), limit, limit, id)
 	if err != nil {
 		return 0, err
@@ -434,9 +449,3 @@ func randomHex(n int) string {
 	}
 	return hex.EncodeToString(b)
 }
-
-//go:embed adopt.sql
-var adoptSql string
-
-//go:embed mark-failed.sql
-var markFailedSql string

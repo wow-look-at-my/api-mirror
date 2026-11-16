@@ -1,7 +1,5 @@
 package mirror
 
-import _ "embed"
-
 import (
 	"os"
 	"path/filepath"
@@ -19,7 +17,7 @@ import (
 // opsSpec wraps ops declarations around a minimal working mirror.
 func opsSpec(t *testing.T, body string) *Spec {
 	t.Helper()
-	src := strings.Replace(opsSpecXml, "</mirror>", body+"\n</mirror>", 1)
+	src := strings.Replace(opsSpecDoc, "<!--BODY-->", body, 1)
 	spec, err := ParseSpec([]byte(src))
 	require.NoError(t, err)
 	return spec
@@ -27,7 +25,7 @@ func opsSpec(t *testing.T, body string) *Spec {
 
 func TestLoadDashboardAndItsToken(t *testing.T) {
 	t.Setenv("MIRROR_TOKEN", "from-the-environment")
-	spec := opsSpec(t, testLoadDashboardAndItsTokenXml)
+	spec := opsSpec(t, opsDashboardXML)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, "/_ops", spec.Dashboard.Path)
 	assert.Equal(t, "Ops", spec.Dashboard.Title)
@@ -40,7 +38,7 @@ func TestLoadDashboardAndItsToken(t *testing.T) {
 }
 
 func TestLoadRateLimitHeadersAndDebounce(t *testing.T) {
-	src := testLoadRateLimitHeadersAndDebounceXml
+	src := opsRateLimitXML
 	spec, err := ParseSpec([]byte(src))
 	require.NoError(t, err)
 	require.NoError(t, spec.validate())
@@ -51,7 +49,7 @@ func TestLoadRateLimitHeadersAndDebounce(t *testing.T) {
 }
 
 func TestDebounceLongerThanTheCapFailsAtLoad(t *testing.T) {
-	src := strings.Replace(testDebounceLongerThanTheCapFailsAtLoadXml, "\n", "\n", 1)
+	src := strings.Replace(opsDebounceXML, "\n", "\n", 1)
 	spec, err := ParseSpec([]byte(src))
 	require.NoError(t, err)
 	err = spec.validate()
@@ -60,7 +58,7 @@ func TestDebounceLongerThanTheCapFailsAtLoad(t *testing.T) {
 }
 
 func TestLoadCORS(t *testing.T) {
-	spec := opsSpec(t, testLoadCORSXml)
+	spec := opsSpec(t, opsCORSXML)
 	require.NoError(t, spec.validate())
 	require.NotNil(t, spec.CORS)
 	assert.Equal(t, []string{"https://viewer.example"}, spec.CORS.Origins)
@@ -77,21 +75,21 @@ func TestCORSWithNoOriginIsRejected(t *testing.T) {
 }
 
 func TestLoadRefreshAndItsKinds(t *testing.T) {
-	spec := opsSpec(t, testLoadRefreshAndItsKindsXml)
+	spec := opsSpec(t, opsRefreshXML)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, 6*time.Hour, spec.Refresh.Interval)
 	assert.Equal(t, []string{"thing"}, spec.Refresh.Kinds)
 }
 
 func TestRefreshNamingAKindNoRouteServesIsRejected(t *testing.T) {
-	spec := opsSpec(t, testRefreshNamingAKindNoRouteServesIsRejectedXml)
+	spec := opsSpec(t, opsRefreshUnknownKindXML)
 	err := spec.validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nothing-serves-this")
 }
 
 func TestLoadReplay(t *testing.T) {
-	spec := opsSpec(t, testLoadReplayXml)
+	spec := opsSpec(t, opsReplayXML)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, 5*time.Minute, spec.Replay.Interval)
 	assert.Equal(t, 25, spec.Replay.Max)
@@ -100,14 +98,14 @@ func TestLoadReplay(t *testing.T) {
 }
 
 func TestReplayWithNothingToAskBackIsRejected(t *testing.T) {
-	spec := opsSpec(t, testReplayWithNothingToAskBackIsRejectedXml)
+	spec := opsSpec(t, opsReplayNoRedeliverXML)
 	err := spec.validate()
 	require.Error(t, err, "listing failures it cannot ask back is not recovery")
 	assert.Contains(t, err.Error(), "redeliver")
 }
 
 func TestReplayWithNoIdIsRejected(t *testing.T) {
-	spec := opsSpec(t, testReplayWithNoIdIsRejectedXml)
+	spec := opsSpec(t, opsReplayNoIDXML)
 	err := spec.validate()
 	require.Error(t, err, "without an id, every cycle asks for all of them again")
 	assert.Contains(t, err.Error(), "<id>")
@@ -121,7 +119,7 @@ func TestLoadNotifyNeedsEventsToAnnounce(t *testing.T) {
 }
 
 func TestLoadNotifyAlongsideEvents(t *testing.T) {
-	spec, err := ParseSpec([]byte(testLoadNotifyAlongsideEventsXml))
+	spec, err := ParseSpec([]byte(opsNotifyEventsXML))
 	require.NoError(t, err)
 	require.NoError(t, spec.validate())
 	assert.Equal(t, "subs.db", spec.Notify.DB)
@@ -171,36 +169,3 @@ func TestReportNamesWhatTheSpecLeavesOut(t *testing.T) {
 		"a mirror with no replay is valid; an author who did not realise that was a choice is not")
 	assert.Contains(t, text, "notify       not declared")
 }
-
-//go:embed testdata/ops-spec.xml
-var opsSpecXml string
-
-//go:embed testdata/test-load-dashboard-and-its-token.xml
-var testLoadDashboardAndItsTokenXml string
-
-//go:embed testdata/test-load-rate-limit-headers-and-debounce.xml
-var testLoadRateLimitHeadersAndDebounceXml string
-
-//go:embed testdata/test-debounce-longer-than-the-cap-fails-at-load.xml
-var testDebounceLongerThanTheCapFailsAtLoadXml string
-
-//go:embed testdata/test-load-cors.xml
-var testLoadCORSXml string
-
-//go:embed testdata/test-load-refresh-and-its-kinds.xml
-var testLoadRefreshAndItsKindsXml string
-
-//go:embed testdata/test-refresh-naming-a-kind-no-route-serves-is-rejected.xml
-var testRefreshNamingAKindNoRouteServesIsRejectedXml string
-
-//go:embed testdata/test-load-replay.xml
-var testLoadReplayXml string
-
-//go:embed testdata/test-replay-with-nothing-to-ask-back-is-rejected.xml
-var testReplayWithNothingToAskBackIsRejectedXml string
-
-//go:embed testdata/test-replay-with-no-id-is-rejected.xml
-var testReplayWithNoIdIsRejectedXml string
-
-//go:embed testdata/test-load-notify-alongside-events.xml
-var testLoadNotifyAlongsideEventsXml string

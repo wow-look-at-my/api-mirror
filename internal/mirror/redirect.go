@@ -226,11 +226,11 @@ func (e *Engine) serveHeld(ctx context.Context, w *recorder, m *match, res *Reso
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
-	e.writeHeld(w, res, row, outcome)
+	e.writeHeld(w, res, row, outcome, m)
 }
 
-// writeHeld serves a stored redirect or text row.
-func (e *Engine) writeHeld(w *recorder, res *Resource, row Row, outcome Outcome) {
+// writeHeld serves a stored redirect, text or raw row.
+func (e *Engine) writeHeld(w *recorder, res *Resource, row Row, outcome Outcome, m *match) {
 	w.Header().Set(e.hdr.Cache, string(outcome))
 	switch res.Store {
 	case StoreRedirect:
@@ -241,6 +241,16 @@ func (e *Engine) writeHeld(w *recorder, res *Resource, row Row, outcome Outcome)
 		media, _ := row[colMedia].(string)
 		body, _ := row[colBody].(string)
 		w.Header().Set("Content-Type", media)
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(body)); err != nil {
+			logf("write %s: %v", res.Name, err)
+		}
+	case StoreRaw:
+		// A raw body is answered in the media type its route declared.
+		if m != nil && len(m.route.Accept) > 0 {
+			w.Header().Set("Content-Type", m.route.Accept[0])
+		}
+		body, _ := row["document"].(string)
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte(body)); err != nil {
 			logf("write %s: %v", res.Name, err)

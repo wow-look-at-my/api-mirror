@@ -1,7 +1,5 @@
 package mirror
 
-import _ "embed"
-
 import (
 	"context"
 	"crypto/sha256"
@@ -48,7 +46,7 @@ func gsmFixture(t *testing.T, rows ...gsmRowFixture) string {
 	_, err = db.Exec(string(ddl))
 	require.NoError(t, err)
 	for _, r := range rows {
-		_, err := db.Exec(gsmFixtureSql,
+		_, err := db.Exec(gsmInsertSQL,
 			r.id, r.principal, r.url, r.secret, r.repos, r.events, r.active, r.failures, r.disabledReason,
 			r.created, r.updated, r.lastSuccess, r.lastFailure, r.lastError)
 		require.NoError(t, err)
@@ -314,6 +312,3 @@ func TestGSMImportSourceMustExistWhenNamed(t *testing.T) {
 	require.NoError(t, err, "an empty value names nothing")
 	assert.Nil(t, n.imported)
 }
-
-//go:embed testdata/gsm-fixture.sql
-var gsmFixtureSql string

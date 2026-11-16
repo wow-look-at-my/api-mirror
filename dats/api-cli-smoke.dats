@@ -1,7 +1,7 @@
 # Drives a real api-mirror server with api-cli's own (upstream, not vendored)
 # GitHub sample config, against a deterministic fake upstream. Proves the
 # whole stack end to end: a genuine independent HTTP client gets correctly
-# shaped data on a miss. A second call is byte-identical with zero new
+# shaped data on a miss. Another call is byte-identical with empty new
 # upstream requests.
 #
 # The docker sandbox falls back for us (no bwrap on the CI runner) and runs
@@ -35,30 +35,30 @@ tests:
 		set -e
 		{shared.fakegithub} -listen 127.0.0.1:19931 &
 		FAKE_PID=$!
-		GITHUB_API_URL=http://127.0.0.1:19931 {shared.api-mirror} -spec {shared.mirror-spec.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19930 &
+		GITHUB_API_URL=http://127.0.0.1:19931 REFRESH_INTERVAL=0 WEBHOOK_REPLAY_INTERVAL=0 {shared.api-mirror} -spec {shared.mirror-spec.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19930 &
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19931/_requests && curl -s -o /dev/null http://127.0.0.1:19930/nonexistent && break; sleep 0.1; done
-		echo "=== miss ==="
-		GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
-		curl -s http://127.0.0.1:19931/_requests > {outputs.after-miss.txt}
-		echo "=== hit ==="
-		GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json
-		curl -s http://127.0.0.1:19931/_requests > {outputs.after-hit.txt}
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19931/_requests && curl -s -o /dev/null http://127.0.0.1:19930/.well-known/docker-updater/health && break; sleep 0.1; done
+		calls() { echo "$(curl -s http://127.0.0.1:19931/_requests) $(curl -s http://127.0.0.1:19931/_log)"; }
+		echo "anonymous-status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19930/repos/octo/demo)"
+		echo "after-anonymous=$(calls)"
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json > {outputs.miss.json}
+		echo "after-miss=$(calls)"
+		GITHUB_TOKEN=fake-token GITHUB_API_URL=http://127.0.0.1:19930 GITHUB_RAW=1 {shared.api-cli} --config {shared.github-cli.xml} repo get octo/demo --as=json > {outputs.hit.json}
+		echo "after-hit=$(calls)"
+		echo "hit-matches-miss=$(cmp -s {outputs.miss.json} {outputs.hit.json} && echo yes || echo no)"
 	  outputs:
 		stdout:
-			- "=== miss ==="
-			- '"default": "main"'
-			- '"archived": false'
-			- '"private": false'
-		!stdout:
-			- "error:"
-		# The miss includes one GET /user, which names the token's owner once.
-		# The hit must add nothing at all.
+			0: "^anonymous-status=401$"
+			1: "^after-anonymous=0 "
+			2: "^after-miss=3 GET:/user GET:/repos/octo/demo GET:/repos/octo/demo$"
+			3: "^after-hit=3 "
+			4: "^hit-matches-miss=yes$"
 		files:
-			after-miss.txt:
+			miss.json:
 				match:
-					- "^4$"
-			after-hit.txt:
-				match:
-					- "^4$"
+					- '"default": "main"'
+					- '"archived": false'
+					- '"private": false'
+				notMatch:
+					- "error:"

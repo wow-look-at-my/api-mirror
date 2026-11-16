@@ -29,6 +29,27 @@ func buildDashboard(n *node) (Dashboard, error) {
 				return Dashboard{}, fmt.Errorf("<dashboard><token>: %w", err)
 			}
 			d.Token = t
+		case "sign-in":
+			attrs := []string{"client-id", "client-secret", "authorize", "exchange", "user", "login", "admins", "secret", "base-url"}
+			if err := checkAttrs(child, attrs...); err != nil {
+				return Dashboard{}, err
+			}
+			for _, required := range attrs[:6] {
+				if child.Attr(required) == "" {
+					return Dashboard{}, fmt.Errorf("<dashboard><sign-in> needs %s", required)
+				}
+			}
+			d.SignIn = &SignIn{
+				ClientID:     child.Attr("client-id"),
+				ClientSecret: child.Attr("client-secret"),
+				Authorize:    child.Attr("authorize"),
+				Exchange:     child.Attr("exchange"),
+				User:         child.Attr("user"),
+				Login:        child.Attr("login"),
+				Admins:       child.Attr("admins"),
+				Secret:       child.Attr("secret"),
+				BaseURL:      child.Attr("base-url"),
+			}
 		case "login":
 			l, err := buildLogin(child)
 			if err != nil {
@@ -182,12 +203,23 @@ func buildRefresh(n *node) (*Refresh, error) {
 		return nil, err
 	}
 	r := &Refresh{}
-	if v := n.Attr("interval"); v != "" {
+	if v := strings.TrimSpace(n.Attr("interval")); v != "" {
+		// The attribute may be template source, so resolve it before judging it.
+		resolved, err := loadTimeValue("<refresh> interval", v)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(resolved) == "0" {
+			// Zero is an operator turning the sweep off, the same way it turns <replay> off.
+			return r, nil
+		}
 		d, err := parseDuration("<refresh> interval", v)
 		if err != nil {
 			return nil, err
 		}
 		r.Interval = d
+	} else {
+		return nil, fmt.Errorf(`<refresh> needs an interval, or interval="0" to turn the sweep off`)
 	}
 	for _, child := range n.Children() {
 		if child.Name() != "kind" {
@@ -286,9 +318,6 @@ func buildIdentity(n *node) (*Identity, error) {
 	if err := checkAttrs(n, "header", "method", "path", "send", "scheme", "id", "name", "prefix", "ttl"); err != nil {
 		return nil, err
 	}
-	for _, child := range n.Children() {
-		return nil, fmt.Errorf("<identity>: unexpected child element <%s>", child.Name())
-	}
 	id := &Identity{
 		Header: n.Attr("header"),
 		Method: strings.ToUpper(n.Attr("method")),
@@ -305,6 +334,30 @@ func buildIdentity(n *node) (*Identity, error) {
 			return nil, err
 		}
 		id.TTL = d
+	}
+	for _, child := range n.Children() {
+		if err := checkAttrs(child, "header", "as", "scheme", "path", "principal", "name"); err != nil {
+			return nil, err
+		}
+		rule := &IdentityRule{
+			Header:    child.Attr("header"),
+			As:        child.Attr("as"),
+			Scheme:    child.Attr("scheme"),
+			Path:      child.Attr("path"),
+			Principal: child.Attr("principal"),
+			Name:      child.Attr("name"),
+		}
+		switch child.Name() {
+		case "user":
+			id.User = rule
+		case "assertion":
+			id.Assertion = rule
+		default:
+			return nil, fmt.Errorf("<identity>: unexpected child element <%s>", child.Name())
+		}
+	}
+	if (id.User != nil || id.Assertion != nil) && id.TTL <= 0 {
+		return nil, fmt.Errorf("<identity> needs a positive ttl: an unremembered verdict costs an upstream call on every request")
 	}
 	return id, nil
 }
@@ -333,14 +386,21 @@ func buildWhoami(n *node) (*Whoami, error) {
 }
 
 func buildRateHeaders(n *node) (RateHeaders, error) {
-	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource"); err != nil {
+	if err := checkAttrs(n, "limit", "remaining", "used", "reset", "resource", "refusal", "answer", "poll", "poll-field"); err != nil {
 		return RateHeaders{}, err
 	}
+	if (n.Attr("poll") == "") != (n.Attr("poll-field") == "") {
+		return RateHeaders{}, fmt.Errorf("<ratelimit> poll and poll-field come together")
+	}
 	return RateHeaders{
+		Poll:      n.Attr("poll"),
+		PollField: n.Attr("poll-field"),
 		Limit:     n.Attr("limit"),
 		Remaining: n.Attr("remaining"),
 		Used:      n.Attr("used"),
 		Reset:     n.Attr("reset"),
 		Resource:  n.Attr("resource"),
+		Refusal:   n.Attr("refusal"),
+		Answer:    n.Attr("answer"),
 	}, nil
 }

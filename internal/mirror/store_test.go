@@ -462,3 +462,32 @@ func TestMetaRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test2", v)
 }
+
+func TestForgetDropsEveryAnswerBeneathTheKey(t *testing.T) {
+	ctx := context.Background()
+	res := &Resource{Name: "pull", Keys: []Key{{Name: "owner"}, {Name: "repo"}, {Name: "number"}}}
+	spec := repoSpec()
+	s := openStore(t, dbPath(t), spec)
+	now := time.Now()
+	fresh := func(kind, key string) {
+		require.NoError(t, s.RecordFetched(ctx, Freshness{Kind: kind, Key: key, FetchedAt: now,
+			ChangedAt: now, ExpiresAt: now.Add(time.Hour), State: "fresh"}))
+	}
+	held := func(kind, key string) bool {
+		got, err := s.Freshness(ctx, kind, key)
+		require.NoError(t, err)
+		return got != nil
+	}
+	fresh("pull", "o/r/5")
+	fresh("pull", "o/r/50")
+	fresh("pull:list", "o/r/")
+	fresh("pull:list", "o/r//state=open")
+	fresh("pull:list", "o/r2/")
+
+	require.NoError(t, s.Forget(ctx, res, map[string]string{"owner": "o", "repo": "r", "number": "5"}))
+	assert.False(t, held("pull", "o/r/5"), "the item itself")
+	assert.True(t, held("pull", "o/r/50"), "a sibling whose key only shares a string prefix")
+	assert.False(t, held("pull:list", "o/r/"), "every listing of the item's parent")
+	assert.False(t, held("pull:list", "o/r//state=open"), "filtered listings of the parent too")
+	assert.True(t, held("pull:list", "o/r2/"), "another parent's listing")
+}

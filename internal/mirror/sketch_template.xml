@@ -1,0 +1,14 @@
+<mirror name="TODO">
+	<resource name="TODO" ttl="1h">
+{{- range .Keys }}
+		<key name="{{ . }}" from="TODO"/>
+{{- end }}
+		<field name="TODO" type="text">TODO</field>
+		<reveal>
+			<probe path="TODO"/>
+			<grant ttl="24h"/>
+			<deny ttl="5m"/>
+		</reveal>
+	</resource>
+	<route method="{{ .Method }}" path="{{ .Path }}" resource="TODO"/>
+</mirror>

@@ -2,9 +2,8 @@
 
 package mirror
 
-import _ "embed"
-
 import (
+	_ "embed"
 	"fmt"
 	"slices"
 	"strings"
@@ -61,12 +60,12 @@ func resourceDDL(r *Resource) string {
 		names = append(names, k.Name)
 	}
 	fmt.Fprintf(&b, "\tPRIMARY KEY (%s)\n);\n", strings.Join(names, ", "))
+	// The row cap evicts oldest which this index makes a range read.
+	fmt.Fprintf(&b, "CREATE INDEX %s_written ON %s (mirror_written_at);\n", resourceTable(r.Name), resourceTable(r.Name))
 	return b.String()
 }
 
-// listMemberDDL holds the rows each list answer named, in the upstream's order.
-//
-//go:embed list-member-ddl.sql
+//go:embed list_member.sql
 var listMemberDDL string
 
 // DDL is the whole schema: the engine's fixed tables, then the resources in
@@ -116,7 +115,7 @@ func columnsOf(r *Resource) []string {
 // A column resource has none.
 func heldColumns(r *Resource) []string {
 	switch r.Store {
-	case StoreDocument:
+	case StoreDocument, StoreRaw:
 		return []string{"document"}
 	case StoreRedirect:
 		return []string{colLocation}

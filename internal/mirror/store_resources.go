@@ -15,10 +15,18 @@ import (
 // Row is stored fact: column name to value, as read back from SQLite.
 type Row map[string]any
 
-// Put writes row of a resource, replacing what is there.
+// Put writes row of a resource, replacing what is there. On a versioned
+// resource it returns errStoredIsNewer when the stored row is later.
 func (s *Store) Put(ctx context.Context, r *Resource, row Row, at time.Time) error {
-	if _, err := s.db.ExecContext(ctx, insertStmt(r), rowArgs(r, row, at)...); err != nil {
+	res, err := s.db.ExecContext(ctx, insertStmt(r), rowArgs(r, row, at)...)
+	if err != nil {
 		return fmt.Errorf("store %s: %w", r.Name, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return errStoredIsNewer
+	}
+	if err := s.capRows(ctx, r, 1); err != nil {
+		return err
 	}
 	s.enforceCap(ctx, r)
 	return nil
@@ -45,6 +53,9 @@ func (s *Store) PutMany(ctx context.Context, r *Resource, rows []Row, at time.Ti
 		}
 	}
 	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if err := s.capRows(ctx, r, len(rows)); err != nil {
 		return err
 	}
 	s.enforceCap(ctx, r)
@@ -85,6 +96,9 @@ func (s *Store) ReplaceMany(ctx context.Context, r *Resource, key map[string]str
 		}
 	}
 	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if err := s.capRows(ctx, r, len(rows)); err != nil {
 		return err
 	}
 	s.enforceCap(ctx, r)
@@ -154,18 +168,27 @@ func (s *Store) Delete(ctx context.Context, r *Resource, key map[string]string) 
 	return res.RowsAffected()
 }
 
-// DeleteAll drops every row of a resource. Only an event that declares
-// <invalidate every="true"> reaches it.
+// DeleteAll drops every row of a resource and the freshness of every answer
+// built from it. It serves an invalidation that no delivery can key, such as
+// rows keyed by a credential the payload never names.
 func (s *Store) DeleteAll(ctx context.Context, r *Resource) (int64, error) {
 	res, err := s.db.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, resourceTable(r.Name)))
 	if err != nil {
 		return 0, fmt.Errorf("delete all %s: %w", r.Name, err)
+	}
+	for _, kind := range []string{r.Name, r.Name + ":list"} {
+		if _, err := s.q.DeleteFreshnessKind(ctx, kind); err != nil {
+			return 0, fmt.Errorf("forget all %s: %w", kind, err)
+		}
 	}
 	return res.RowsAffected()
 }
 
 // insertStmt builds the write statement every resource write uses.
 func insertStmt(r *Resource) string {
+	if v := versionColumn(r); v != "" {
+		return upsertStmt(r, v)
+	}
 	cols := columnsOf(r)
 	return fmt.Sprintf(`INSERT OR REPLACE INTO %s (%s, mirror_written_at) VALUES (%s)`,
 		resourceTable(r.Name), strings.Join(cols, ", "), placeholders(len(cols)+1))

@@ -2,14 +2,12 @@
 
 One XML spec in, one caching mirror of an API out. The engine holds every mechanism. The spec holds only the vocabulary of the API being mirrored. `README.md` is the human front page, `docs/design.md` is the grammar and the engine/spec split.
 
-The sibling project `api-cli` turns the same kind of file into a CLI. The spec language itself lives in `wow-look-at-my/api-dsl` and is shared by both. Never fork it locally.
+The sibling project `api-cli` turns the same kind of file into a CLI. Both shares the spec language itself lives in `wow-look-at-my/api-dsl` and. Never fork it locally.
 
 ## File map
 
 The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry point and holds nothing else. Paths below are inside `internal/mirror` unless stated.
 
-- It holds no engine logic.
-- `engine/` at the top of the tree — the public package a host embeds. It wraps this package and holds no engine logic.
 - `run.go` — `Run`: flags, `--check`, the server, the signal, the drain order.
 - `lifecycle.go` — the construction and shutdown that `run.go` and `engine/` both call.
 - `config.go` — the Spec model: Resource, Key, Field, Route, QueryParam, Show, Events, Event, Set. Types only.
@@ -75,7 +73,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
 - **A rebuilt answer is a subset of the upstream's.** Each field, and each key with `from=`, returns to its source path with its upstream type. A folded key serves its as-sent spelling. One source path is declared once. `dats/upstream-shape.dats` checks the answers against the upstream with `api-mirror-delta`.
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
-- **The fingerprint is derived, not declared.** It hashes the schema the spec produces. A resource change therefore always nukes, and by hand nothing is kept in step.
+- **The fingerprint is derived, not declared.** It hashes the schema the spec produces. A resource change therefore always nukes, and hand keeps nothing.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
 - **Every request this service sends is on the chart.** The reporting is in the TRANSPORT (`observedClient`), not at a call site: a call site only covers what somebody remembered to instrument. The passthrough proxy is exactly what gets forgotten. A new outbound client is built through `observedClient` or it is a hole.
 - **The operator surface exists whether or not a spec declares one.** A spec chooses where it lives and what gates it. With no `<token>` the engine mints one per process and logs the URL carrying it: on by default, not open by default.

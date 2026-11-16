@@ -69,6 +69,7 @@ func rateAwareUpstreamer(t *testing.T) *Upstreamer {
 			Limit:     "X-RateLimit-Limit",
 			Remaining: "X-RateLimit-Remaining",
 			Reset:     "X-RateLimit-Reset",
+			Refusal:   "secondary rate limit",
 		},
 	}}
 	up, err := NewUpstreamer(spec, map[string]any{}, nil)
@@ -101,6 +102,31 @@ func TestUpstreamCall_SendsStaticHeadersAndTheCallersOwn(t *testing.T) {
 		"only the headers the spec names are forwarded, so a caller cannot smuggle one upstream")
 	assert.Equal(t, "identity", got.Get("Accept-Encoding"),
 		"the mirror parses and rebuilds the body, so a compressed one would only have to be decoded here")
+}
+
+func TestUpstreamCall_BackgroundHeaderRidesOnlyTheMirrorsOwnCalls(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("Authorization"))
+	}))
+	t.Cleanup(srv.Close)
+	spec := upstreamSpec(srv.URL)
+	spec.Upstream.Headers = append(spec.Upstream.Headers,
+		Header{Name: "Authorization", Value: "Bearer service-token", Background: true})
+	up, err := NewUpstreamer(spec, callVars, nil)
+	require.NoError(t, err)
+
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, nil, nil)
+	require.NoError(t, err)
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, http.Header{}, nil)
+	require.NoError(t, err)
+	caller := http.Header{}
+	caller.Set("Authorization", "Bearer caller-token")
+	_, err = up.Call(context.Background(), http.MethodGet, "/x", callVars, caller, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"Bearer service-token", "", "Bearer caller-token"}, got,
+		"only a call with no caller at all may use the service credential")
 }
 
 func TestUpstreamCall_MissingForwardedHeaderIsNotSentEmpty(t *testing.T) {
@@ -294,6 +320,19 @@ func TestRateLimited_TellsARefusalToWaitFromARefusalToRead(t *testing.T) {
 				Header: http.Header{"X-Ratelimit-Remaining": {"4999"}}},
 			want: false,
 		},
+		{
+			name: "a 403 naming the secondary limit in its body, budget left",
+			answer: &Answer{Status: http.StatusForbidden,
+				Header: http.Header{"X-Ratelimit-Remaining": {"4999"}},
+				Body:   []byte(`{"message":"You have exceeded a Secondary Rate Limit. Please wait."}`)},
+			want: true,
+		},
+		{
+			name: "a 200 whose body happens to say it",
+			answer: &Answer{Status: http.StatusOK, Header: http.Header{},
+				Body: []byte(`{"title":"docs on secondary rate limit"}`)},
+			want: false,
+		},
 		{name: "a plain 403", answer: &Answer{Status: http.StatusForbidden, Header: http.Header{}}, want: false},
 		{name: "a 404", answer: &Answer{Status: http.StatusNotFound, Header: http.Header{}}, want: false},
 		{name: "a 200", answer: &Answer{Status: http.StatusOK, Header: http.Header{}}, want: false},
@@ -360,4 +399,40 @@ func TestUpstreamCall_UsesTheSwappedClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, time.Second, up.client.Timeout,
 		"an upstreamer captures the package client at construction, so a swap must happen first")
+}
+
+func TestRateAnswer_ServesTheCallersObservedBudgetWithoutAskingUpstream(t *testing.T) {
+	var calls int
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("X-RateLimit-Limit", "5000")
+		w.Header().Set("X-RateLimit-Remaining", "4990")
+		w.Header().Set("X-RateLimit-Resource", "core")
+		w.Header().Set("X-RateLimit-Reset", "4102444800")
+		w.Write([]byte(`{"id":"7","title":"hello"}`))
+	}), func(s *Spec) {
+		s.Upstream.Forward = append(s.Upstream.Forward, "Authorization")
+		s.Upstream.Rate = RateHeaders{Limit: "X-RateLimit-Limit", Remaining: "X-RateLimit-Remaining",
+			Resource: "X-RateLimit-Resource", Reset: "X-RateLimit-Reset", Answer: "/rate_limit"}
+	})
+	getAs := func(path, auth string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", auth)
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	first := getAs("/rate_limit", "token a")
+	assert.Equal(t, "passthrough", first.Header().Get("X-Mirror-Cache"), "a caller never observed is forwarded")
+	getAs("/widgets/7", "token a")
+	before := calls
+
+	rec := getAs("/rate_limit", "token a")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.JSONEq(t, `{"resources":{"core":{"limit":5000,"remaining":4990,"used":0,"resource":"core","reset":4102444800}},
+		"rate":{"limit":5000,"remaining":4990,"used":0,"resource":"core","reset":4102444800}}`, rec.Body.String())
+	assert.Equal(t, before, calls, "a budget answered from the meter spends nothing")
+	assert.Equal(t, "passthrough", getAs("/rate_limit", "token b").Header().Get("X-Mirror-Cache"),
+		"one caller's standing is never answered to another")
 }

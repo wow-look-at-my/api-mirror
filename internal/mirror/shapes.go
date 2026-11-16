@@ -2,9 +2,8 @@
 
 package mirror
 
-import _ "embed"
-
 import (
+	_ "embed"
 	"html/template"
 	"sort"
 	"strconv"
@@ -110,6 +109,9 @@ type BriefItem struct {
 	Bytes   int            `json:"bytes"`
 	// Samples are real paths, so an author can check the guess the shape made.
 	Samples []string `json:"samples,omitempty"`
+	// Statuses and Callers say what the upstream answered and who asked.
+	Statuses map[int]int    `json:"statuses,omitempty"`
+	Callers  map[string]int `json:"callers,omitempty"`
 	// Sketch is a starting <route>, not a finished declaration.
 	Sketch string `json:"sketch"`
 }
@@ -125,12 +127,14 @@ func (e *Engine) Brief() []BriefItem {
 			continue
 		}
 		item := BriefItem{
-			Method:  g.Method,
-			Shape:   g.Shape,
-			Count:   g.Dispositions[DispPassthrough],
-			Reasons: g.Reasons,
-			Bytes:   g.Bytes,
-			Samples: g.Samples,
+			Method:   g.Method,
+			Shape:    g.Shape,
+			Count:    g.Dispositions[DispPassthrough],
+			Reasons:  g.Reasons,
+			Bytes:    g.Bytes,
+			Samples:  g.Samples,
+			Statuses: g.Statuses,
+			Callers:  g.Callers,
 		}
 		item.Sketch = sketchRoute(g.Method, g.Shape)
 		out = append(out, item)
@@ -139,10 +143,11 @@ func (e *Engine) Brief() []BriefItem {
 	return out
 }
 
-// sketchTemplate is the declaration an author starts from. It is a template because it is a DOCUMENT. Each file holds one root element, so each
-// is well-formed XML.
-var sketchTemplate = template.Must(template.New("sketch").Parse(
-	strings.TrimSpace(sketchTemplateXml) + "\n" + strings.TrimSpace(sketchRouteTemplateXml)))
+// sketchTemplate is the declaration an author starts from. It is a template because it is a DOCUMENT.
+var sketchTemplate = template.Must(template.New("sketch").Parse(sketchTemplateDoc))
+
+//go:embed sketch_template.xml
+var sketchTemplateDoc string
 
 // sketchRoute writes the declaration an author would start from.
 func sketchRoute(method, shape string) string {
@@ -193,9 +198,3 @@ func singular(s string) string {
 	}
 	return s
 }
-
-//go:embed sketch-template.xml
-var sketchTemplateXml string
-
-//go:embed sketch-route-template.xml
-var sketchRouteTemplateXml string

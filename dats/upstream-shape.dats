@@ -25,16 +25,16 @@ tests:
 	- desc: every cached column route answers a subset of the upstream, on a miss and on a hit
 	  timeout: 60s
 	  cmd: |
-		{shared.fakegithub} -listen 127.0.0.1:19961 &
+		{shared.fakegithub} -listen 127.0.0.1:19991 &
 		FAKE_PID=$!
-		GITHUB_API_URL=http://127.0.0.1:19961 {shared.api-mirror} -spec {shared.github.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19960 &
+		GITHUB_API_URL=http://127.0.0.1:19991 REFRESH_INTERVAL=0 WEBHOOK_REPLAY_INTERVAL=0 {shared.api-mirror} -spec {shared.github.xml} -db {outputs.mirror.db} -listen 127.0.0.1:19990 &
 		MIRROR_PID=$!
 		trap "kill $FAKE_PID $MIRROR_PID 2>/dev/null" EXIT
-		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19961/_requests && curl -s -o /dev/null http://127.0.0.1:19960/.well-known/docker-updater/health && break; sleep 0.1; done
+		for i in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:19991/_requests && curl -s -o /dev/null http://127.0.0.1:19990/.well-known/docker-updater/health && break; sleep 0.1; done
 		for round in miss hit; do
 			echo "=== $round ==="
 			{shared.api-mirror-delta} compare -c {shared.upstream-shape.yaml} \
-				--truth http://127.0.0.1:19961 --mirror api-mirror=http://127.0.0.1:19960 \
+				--truth http://127.0.0.1:19991 --mirror api-mirror=http://127.0.0.1:19990 \
 				-H 'Authorization: token fake' \
 				/repos/Octo/Demo \
 				/repos/Octo/Demo/pulls \

@@ -1,8 +1,7 @@
 package mirror
 
-import _ "embed"
-
 import (
+	_ "embed"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,9 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// wholeSpec exercises every element and attribute the loader understands, in file.
-//
-//go:embed testdata/whole-spec.xml
+//go:embed whole_spec.xml
 var wholeSpec string
 
 func mustParse(t *testing.T, src string) *Spec {
@@ -99,7 +96,7 @@ func TestParseSpec_ReadsTheRevealLadder(t *testing.T) {
 }
 
 func TestParseSpec_ProbeDefaultsToGET(t *testing.T) {
-	spec := mustParse(t, testParseSpec_ProbeDefaultsToGETXml)
+	spec := mustParse(t, probeDefaultsXML)
 	assert.Equal(t, "GET", resourceNamed(t, spec, "r").Reveal.Probe.Method,
 		"a probe only ever reads, so the method a spec leaves out is GET")
 }
@@ -220,7 +217,7 @@ func TestLoad_ParseErrorAndValidationErrorAreToldApart(t *testing.T) {
 	assert.Contains(t, err.Error(), "parse spec", "a shape error is reported as a parse failure")
 
 	meaningless := dir + "/meaningless.xml"
-	require.NoError(t, os.WriteFile(meaningless, []byte(testLoad_ParseErrorAndValidationErrorAreToldApartXml), 0o600))
+	require.NoError(t, os.WriteFile(meaningless, []byte(meaninglessSpecXML), 0o600))
 	_, err = Load(meaningless)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "validate spec",
@@ -367,9 +364,3 @@ func TestParseSpec_Rejects(t *testing.T) {
 		})
 	}
 }
-
-//go:embed testdata/test-parse-spec-probe-defaults-to-get.xml
-var testParseSpec_ProbeDefaultsToGETXml string
-
-//go:embed testdata/test-load-parse-error-and-validation-error-are-told-apart.xml
-var testLoad_ParseErrorAndValidationErrorAreToldApartXml string

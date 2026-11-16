@@ -1,7 +1,5 @@
 package mirror
 
-import _ "embed"
-
 import (
 	"context"
 	"encoding/json"
@@ -81,6 +79,26 @@ func TestCredentialResource_NoCredentialIsPassthrough(t *testing.T) {
 	rec := get(t, e, "/user")
 	assert.Equal(t, "passthrough", rec.Header().Get("X-Mirror-Cache"))
 	assert.Equal(t, string(PassNoIdentity), rec.Header().Get("X-Mirror-Passthrough-Reason"))
+}
+
+func TestRequiredCredential_RefusesATokenlessCallerBeforeAnyUpstreamCall(t *testing.T) {
+	var calls atomic.Int32
+	e, _ := newTestEngine(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+	}), func(s *Spec) {
+		s.Upstream.Forward = append(s.Upstream.Forward, "Authorization")
+		s.Upstream.Require = append(s.Upstream.Require, "Authorization")
+		s.Upstream.Headers = append(s.Upstream.Headers,
+			Header{Name: "Authorization", Value: "Bearer service-token", Background: true})
+	})
+
+	for _, path := range []string{"/widgets/7", "/not/declared"} {
+		rec := get(t, e, path)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, path)
+		assert.JSONEq(t, `{"message":"missing required header Authorization"}`, rec.Body.String(), path)
+	}
+	assert.Zero(t, calls.Load(),
+		"a tokenless caller must never reach the upstream, where the service credential could answer for them")
 }
 
 func TestAllow_CredentialResourceNeverProbes(t *testing.T) {
@@ -237,6 +255,12 @@ func TestPurge_OneWriteDropsEveryAnswerItChanged(t *testing.T) {
 	assert.False(t, stored(widget, map[string]string{"id": "7"}), "the item the write changed")
 	assert.False(t, stored(pages, map[string]string{"id": "7", "page": "1"}), "the listing it appears in")
 	assert.False(t, stored(pages, map[string]string{"id": "7", "page": "2"}), "every page of that listing")
+
+	for _, path := range []string{"/widgets/7", "/widgets/7/pages?page=2"} {
+		rec := get(t, e, path)
+		assert.Equal(t, http.StatusOK, rec.Code, path)
+		assert.Equal(t, string(OutcomeMiss), rec.Header().Get("X-Mirror-Cache"), path)
+	}
 }
 
 func mustResource(t *testing.T, e *Engine, name string) *Resource {
@@ -332,7 +356,7 @@ func TestValidate_PostRouteNeedsCredentialGate(t *testing.T) {
 }
 
 func TestLoad_CredentialXML(t *testing.T) {
-	xml := testLoad_CredentialXMLXml
+	xml := credentialTestSpecXML
 	spec, err := ParseSpec([]byte(xml))
 	require.NoError(t, err)
 	require.NoError(t, spec.validate())
@@ -347,6 +371,3 @@ func TestLoad_CredentialXML(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { store.Close() })
 }
-
-//go:embed testdata/test-load-credential-xml.xml
-var testLoad_CredentialXMLXml string
