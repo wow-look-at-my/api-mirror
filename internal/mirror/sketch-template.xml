@@ -9,4 +9,3 @@
 		<deny ttl="5m"/>
 	</reveal>
 </resource>
-<route method="{{ .Method }}" path="{{ .Path }}" resource="TODO"/>
