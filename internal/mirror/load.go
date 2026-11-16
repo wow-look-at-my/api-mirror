@@ -1,3 +1,5 @@
+// load.go holds Load.
+
 package mirror
 
 import (
@@ -11,23 +13,12 @@ import (
 )
 
 // Load reads a mirror spec from disk.
-//
-// Parsing and validation are separate steps on purpose. A builder checks the
-// SHAPE of the file (an unknown element, a missing attribute), and validate
-// checks what the shape MEANS (a route pointing at nothing, a resource nobody
 func Load(path string) (*Spec, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open spec %q: %w", path, err)
 	}
-	spec, err := ParseSpec(raw)
-	if err != nil {
-		return nil, fmt.Errorf("parse spec %q: %w", path, err)
-	}
-	if err := spec.validate(); err != nil {
-		return nil, fmt.Errorf("validate spec %q: %w", path, err)
-	}
-	return spec, nil
+	return LoadSource(path, raw)
 }
 
 // ParseSpec builds a Spec from XML source.

@@ -1,3 +1,5 @@
+// contradict.go holds Contradiction.
+
 package mirror
 
 import (

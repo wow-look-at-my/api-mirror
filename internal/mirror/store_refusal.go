@@ -1,3 +1,5 @@
+// store_refusal.go holds SetRefusalBody.
+
 package mirror
 
 import (

@@ -1,3 +1,5 @@
+// admin_check.go holds streamCheck.
+
 package mirror
 
 import (

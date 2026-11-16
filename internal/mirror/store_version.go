@@ -1,3 +1,5 @@
+// store_version.go holds errStoredIsNewer.
+
 package mirror
 
 import (

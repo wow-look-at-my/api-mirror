@@ -1,3 +1,5 @@
+// subscribed.go holds Subscribed.
+
 package mirror
 
 import (

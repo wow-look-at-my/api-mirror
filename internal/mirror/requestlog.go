@@ -1,3 +1,5 @@
+// requestlog.go holds requestLogMax.
+
 package mirror
 
 import (

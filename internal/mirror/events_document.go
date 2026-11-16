@@ -1,3 +1,5 @@
+// events_document.go holds validateEventDocument.
+
 package mirror
 
 import (

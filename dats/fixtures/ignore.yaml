@@ -1,0 +1,7 @@
+ignore:
+  - path: $..*_url
+    kinds: [missing]
+    reason: the mirror drops URL fields
+  - path: $.stargazers_count
+    route: ^/repos/
+    reason: a star count moves between the two fetches

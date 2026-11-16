@@ -1,3 +1,5 @@
+// plan.go holds planFor.
+
 package mirror
 
 import (

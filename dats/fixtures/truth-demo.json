@@ -1,0 +1,7 @@
+{
+	"name": "demo",
+	"url": "{self}/repos/o/demo",
+	"html_url": "https://github.com/o/demo",
+	"stargazers_count": 5,
+	"owner": {"login": "o", "avatar_url": "https://avatars.example/o"}
+}

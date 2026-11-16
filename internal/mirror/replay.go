@@ -1,3 +1,5 @@
+// replay.go holds Replayer.
+
 package mirror
 
 import (

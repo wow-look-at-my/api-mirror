@@ -1,3 +1,5 @@
+// stale.go holds OutcomeStale.
+
 package mirror
 
 import (

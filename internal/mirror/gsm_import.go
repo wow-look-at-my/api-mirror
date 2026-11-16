@@ -1,3 +1,5 @@
+// gsm_import.go holds gsmImportSource.
+
 package mirror
 
 import (

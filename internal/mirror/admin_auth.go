@@ -1,3 +1,5 @@
+// admin_auth.go holds SignIn.
+
 package mirror
 
 import (

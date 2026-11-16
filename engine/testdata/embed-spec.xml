@@ -1,0 +1,25 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<mirror name="embedded">
+	<upstream base="UPSTREAM"/>
+	<resource name="tags_list" store="document" ttl="1h">
+		<key name="owner" fold="true"/>
+		<key name="repo" fold="true"/>
+		<key name="page"/>
+		<reveal>
+			<public>true</public>
+		</reveal>
+	</resource>
+	<route method="GET" path="/repos/{owner}/{repo}/tags" resource="tags_list" list="true">
+		<param name="page" type="int" default="1" min="1" max="100" key="true"/>
+	</route>
+	<events path="/webhook" signature-header="X-Hub-Signature-256" type-header="X-GitHub-Event">
+		<secret><value name="env.EMBED_TEST_SECRET"/></secret>
+		<event type="create" resource="tags_list" clock="repository.pushed_at"
+			when='{{ eq .payload.ref_type "tag" }}'>
+			<subject>tags:<value name="payload.repository.full_name"/></subject>
+			<key field="owner">repository.owner.login</key>
+			<key field="repo">repository.name</key>
+			<invalidate reason="the payload names one tag, not the page it sits on"/>
+		</event>
+	</events>
+</mirror>

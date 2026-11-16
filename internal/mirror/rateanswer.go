@@ -1,3 +1,5 @@
+// rateanswer.go holds answerRate.
+
 package mirror
 
 import "net/http"

@@ -1,3 +1,5 @@
+// timeline.go holds timelineWindow.
+
 package mirror
 
 import (

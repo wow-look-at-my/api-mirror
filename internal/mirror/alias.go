@@ -1,3 +1,5 @@
+// alias.go holds HeaderAlias.
+
 package mirror
 
 import "net/http"

@@ -1,3 +1,5 @@
+// headers.go holds defaultHeaderPrefix.
+
 package mirror
 
 import "cmp"

@@ -1,3 +1,5 @@
+// dsl.go holds renderString.
+
 package mirror
 
 import (

@@ -1,3 +1,5 @@
+// absorb.go holds absorb.
+
 package mirror
 
 import (

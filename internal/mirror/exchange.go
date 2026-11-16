@@ -1,3 +1,5 @@
+// exchange.go holds defaultCredentialMargin.
+
 package mirror
 
 import (

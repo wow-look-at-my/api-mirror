@@ -78,7 +78,13 @@ func TestDashboardSignInIssuesASessionToAnAdmin(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code, "the session opens the dashboard")
 
 	forged := httptest.NewRequest(http.MethodGet, "/_mirror/api/overview", nil)
-	forged.AddCookie(&http.Cookie{Name: loginSessionCookie, Value: strings.Replace(done.Result().Cookies()[0].Value, "a", "b", 1)})
+	// The last signature digit always changes. A replace of one letter is a no-op when the value lacks it.
+	value := done.Result().Cookies()[0].Value
+	digit := "0"
+	if strings.HasSuffix(value, "0") {
+		digit = "1"
+	}
+	forged.AddCookie(&http.Cookie{Name: loginSessionCookie, Value: value[:len(value)-1] + digit})
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, forged)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code, "a tampered session is refused")

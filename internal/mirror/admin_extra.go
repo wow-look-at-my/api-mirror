@@ -1,3 +1,5 @@
+// admin_extra.go holds compressible.
+
 package mirror
 
 import (

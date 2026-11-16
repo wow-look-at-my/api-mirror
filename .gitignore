@@ -1,5 +1,7 @@
-# Compiled binary
+# Compiled binaries
 /api-mirror
+/api-mirror-delta
+/fixtureserver
 
 # Runtime config (an operator's own spec stays private)
 /mirror.xml

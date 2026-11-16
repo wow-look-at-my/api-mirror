@@ -1,3 +1,5 @@
+// spread.go holds Spread.
+
 package mirror
 
 import (

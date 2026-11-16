@@ -1,3 +1,5 @@
+// raw.go holds rawDoc.
+
 package mirror
 
 import "context"
