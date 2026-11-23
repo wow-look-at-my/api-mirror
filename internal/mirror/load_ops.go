@@ -1,3 +1,5 @@
+// load_ops.go holds buildPathOrExpr.
+
 package mirror
 
 import (

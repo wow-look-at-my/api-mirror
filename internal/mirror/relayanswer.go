@@ -1,3 +1,5 @@
+// relayanswer.go holds relayedHeaders.
+
 package mirror
 
 import "net/http"

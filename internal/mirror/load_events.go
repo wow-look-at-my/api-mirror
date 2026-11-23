@@ -1,3 +1,5 @@
+// load_events.go holds buildEvents.
+
 package mirror
 
 import (
@@ -118,7 +120,10 @@ func buildEvent(n *node) (*Event, error) {
 			}
 			ev.Subject = strings.TrimSpace(s)
 		case "apply":
-			sets, err := buildSets(child, ev.Type)
+			if err := checkAttrs(child); err != nil {
+				return nil, err
+			}
+			sets, err := buildSets(child, ev.Type, "apply")
 			if err != nil {
 				return nil, err
 			}
@@ -145,6 +150,17 @@ func buildEvent(n *node) (*Event, error) {
 				return nil, err
 			}
 			ev.Document = strings.TrimSpace(path)
+		case "patch":
+			if err := checkAttrs(child, "match", "from", "expr"); err != nil {
+				return nil, err
+			}
+			p := &Patch{Match: child.Attr("match"), From: child.Attr("from"), Expr: child.Attr("expr")}
+			sets, err := buildSets(child, ev.Type, "patch")
+			if err != nil {
+				return nil, err
+			}
+			p.Sets = sets
+			ev.Patch = p
 		case "invalidate":
 			if err := checkAttrs(child, "reason", "all", "every", "field", "differs"); err != nil {
 				return nil, err
@@ -163,14 +179,13 @@ func buildEvent(n *node) (*Event, error) {
 	return ev, nil
 }
 
-func buildSets(n *node, eventType string) ([]Set, error) {
-	if err := checkAttrs(n); err != nil {
-		return nil, err
-	}
+// buildSets reads the <set> children of an <apply> or a <patch>. The caller
+// checks the parent's own attributes.
+func buildSets(n *node, eventType, parent string) ([]Set, error) {
 	var out []Set
 	for _, child := range n.Children() {
 		if child.Name() != "set" {
-			return nil, fmt.Errorf("event %q: <apply> holds <set> elements, not <%s>", eventType, child.Name())
+			return nil, fmt.Errorf("event %q: <%s> holds <set> elements, not <%s>", eventType, parent, child.Name())
 		}
 		if err := checkAttrs(child, "field", "expr", "null"); err != nil {
 			return nil, err

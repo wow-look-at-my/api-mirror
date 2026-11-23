@@ -1,3 +1,5 @@
+// debounce.go holds maxDebounceWindow.
+
 package mirror
 
 import (

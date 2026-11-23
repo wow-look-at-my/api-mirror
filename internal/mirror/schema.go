@@ -1,3 +1,5 @@
+// schema.go holds enginePrefix.
+
 package mirror
 
 import (

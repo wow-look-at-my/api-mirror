@@ -1,3 +1,5 @@
+// admin_subs.go holds maxSubscriptionBody.
+
 package mirror
 
 import (

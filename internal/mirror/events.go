@@ -1,3 +1,5 @@
+// events.go holds maxDeliveryBytes.
+
 package mirror
 
 import (
@@ -354,6 +356,14 @@ func (i *Ingest) apply(ctx context.Context, d *Delivery) (DeliveryDisposition, e
 		i.prune(ctx)
 		return DeliveryInvalidated, nil
 	}
+	if ev.Patch != nil {
+		disp, err := i.patchPages(ctx, res, ev, key, d.Payload)
+		if err != nil {
+			return DeliveryFailed, err
+		}
+		i.prune(ctx)
+		return disp, nil
+	}
 	write := i.merge
 	if ev.Document != "" {
 		write = i.putDocument
@@ -409,7 +419,7 @@ func ingestKey(res *Resource, ev *Event, payload any) (key, sent map[string]stri
 			return nil, nil, fmt.Errorf("resource %q: key %q: %w", res.Name, k.Name, err)
 		}
 		if from == "" {
-			if ev.Invalidate != nil {
+			if ev.Invalidate != nil || ev.Patch != nil {
 				continue
 			}
 			return nil, nil, fmt.Errorf("resource %q: this event says nowhere the delivery carries key %q", res.Name, k.Name)

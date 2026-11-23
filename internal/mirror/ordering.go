@@ -1,3 +1,5 @@
+// ordering.go holds Delivery.
+
 package mirror
 
 import (

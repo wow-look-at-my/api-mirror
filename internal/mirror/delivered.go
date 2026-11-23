@@ -1,3 +1,5 @@
+// delivered.go holds recordDelivered.
+
 package mirror
 
 import (

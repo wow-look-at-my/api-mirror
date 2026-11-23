@@ -1,3 +1,5 @@
+// app.go holds fakeApp.
+
 package main
 
 import (

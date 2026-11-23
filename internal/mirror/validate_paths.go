@@ -1,3 +1,5 @@
+// validate_paths.go holds validatePath.
+
 package mirror
 
 import (

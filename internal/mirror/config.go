@@ -1,3 +1,5 @@
+// config.go holds Spec.
+
 package mirror
 
 import (
@@ -553,8 +555,22 @@ type Event struct {
 	Sets []Set
 	// Document is the payload path whose object becomes a document resource's stored answer.
 	Document string
+	// Patch rewrites one item inside every stored page of a document list.
+	Patch *Patch
 	// Invalidate is the last resort: the payload does not carry the new value
 	Invalidate *Invalidate
+}
+
+// Patch finds an array item by one field and writes the fields the delivery
+// states into it, in every stored page under the event's key.
+type Patch struct {
+	// Match is the item path compared with the payload value.
+	Match string
+	// From is the payload path of the value. Expr is template source instead.
+	From string
+	Expr string
+	// Sets name item paths, not columns.
+	Sets []Set
 }
 
 // Set writes column from the delivery payload. A write touches only the

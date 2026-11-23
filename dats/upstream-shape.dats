@@ -10,15 +10,12 @@ sandbox:
 shared:
 	copy:
 		api-mirror: ../build/api-mirror
+		api-mirror-delta: ../build/api-mirror-delta
 		fakegithub: ../build/fakegithub
 		github.xml: ../samples/github/github.xml
 		upstream-shape.yaml: upstream-shape.yaml
 
-# The same CA-bundle workaround as api-cli-smoke.dats: the sandbox mounts only
-# the system trust store.
 setup:
-	- cmd: env -u CURL_CA_BUNDLE -u SSL_CERT_FILE -u REQUESTS_CA_BUNDLE curl -fL --compressed "https://dl.pazer.build/api-mirror-delta?os=linux&arch=amd64" -o {shared.api-mirror-delta}
-	  timeout: 120s
 	- chmod +x {shared.api-mirror-delta} {shared.api-mirror} {shared.fakegithub}
 
 tests:

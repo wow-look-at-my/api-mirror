@@ -1,3 +1,5 @@
+// cors.go holds answerPreflight.
+
 package mirror
 
 import (

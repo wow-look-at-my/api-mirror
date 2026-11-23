@@ -1,3 +1,5 @@
+// delivery_log.go holds deliveryLogSize.
+
 package mirror
 
 import (

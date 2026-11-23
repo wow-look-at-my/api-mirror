@@ -17,6 +17,39 @@ api-mirror --spec mirror.xml --db mirror.db --listen :8080
 api-mirror --spec mirror.xml --check     # print the derived schema and routes, then exit
 ```
 
+## Embedding
+
+The `engine` package runs the same engine inside another Go program. The host sends the engine only the routes the spec declares and the deliveries at its events path, and keeps every other path itself.
+
+```go
+e, err := engine.New(ctx, "mirror.xml", specBytes, engine.Options{DB: "mirror.db"})
+if err != nil {
+	return err
+}
+e.Start()
+mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	if e.Declares(r.Method, r.URL.EscapedPath()) || r.URL.Path == e.EventsPath() {
+		e.ServeHTTP(w, r)
+		return
+	}
+	own.ServeHTTP(w, r)
+})
+// On shutdown: e.Drain(30 * time.Second), then e.Close().
+```
+
+A host that already authenticated the caller passes its principal with `engine.WithPrincipal(r.Context(), "user:42")`. The engine then keys grants by it and makes no identity call of its own.
+
+## Compare a mirror with its upstream
+
+`api-mirror-delta` sends one request to the real API and to a mirror, and reports how the mirror's answer differs.
+
+```sh
+api-mirror-delta compare --truth https://api.github.com --mirror local=http://127.0.0.1:8080 /repos/o/r
+api-mirror-delta serve -c samples/github/delta.yaml   # a proxy that compares every read
+```
+
+[`docs/delta.md`](docs/delta.md) is the config and report reference.
+
 ## The spec, in one screen
 
 ```xml

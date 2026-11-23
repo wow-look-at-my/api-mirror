@@ -1,3 +1,5 @@
+// reveal.go holds grantSourceProbe.
+
 package mirror
 
 import (
@@ -64,6 +66,13 @@ func (rv *Revealer) Allow(ctx context.Context, principal string, res *Resource, 
 	if res.Reveal.Credential {
 		// A row keyed by the caller's own credential proves itself.
 		return Verdict{Allowed: true}, nil
+	}
+
+	// Ahead of every rung: the upstream refused this credential this key.
+	if status, found, err := rv.fetchDenied(ctx, principal, res, key, forward); err != nil {
+		return refuse(http.StatusBadGateway), err
+	} else if found {
+		return Verdict{Status: status, Cached: true, Reason: DenyCached}, nil
 	}
 
 	public, err := rv.public(ctx, res, key)

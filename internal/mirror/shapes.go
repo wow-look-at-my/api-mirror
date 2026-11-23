@@ -1,3 +1,5 @@
+// shapes.go holds generalize.
+
 package mirror
 
 import (

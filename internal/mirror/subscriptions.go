@@ -1,3 +1,5 @@
+// subscriptions.go holds subscriptionColumns.
+
 package mirror
 
 import (

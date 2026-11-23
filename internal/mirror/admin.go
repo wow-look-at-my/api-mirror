@@ -1,3 +1,5 @@
+// admin.go holds defaultDashboardPath.
+
 package mirror
 
 import (

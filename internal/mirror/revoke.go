@@ -1,3 +1,5 @@
+// revoke.go holds revokeRefused.
+
 package mirror
 
 import (

@@ -1,3 +1,5 @@
+// store_browse.go holds browseLimit.
+
 package mirror
 
 import (

@@ -1,0 +1,39 @@
+# A starting point for holding a local api-mirror against GitHub.
+# Run: api-mirror-delta serve -c samples/github/delta.yaml
+listen: 127.0.0.1:8090
+
+truth:
+  url: https://api.github.com
+
+mirrors:
+  - name: local
+    url: http://127.0.0.1:8080
+
+# The client gets this target's answer. "truth" keeps the client correct
+# while the mirror is under development; a mirror name exercises the mirror.
+serve: truth
+
+# GraphQL queries are POSTs that read; every other POST stays unfanned.
+compare:
+  - method: GET
+  - method: HEAD
+  - method: POST
+    route: ^/graphql$
+
+headers: [Content-Type, Link, Location]
+
+report: delta.ndjson
+
+ignore:
+  - path: $..*_url
+    kinds: [missing]
+    reason: api-mirror drops URL fields from rebuilt answers
+  - path: $..url
+    kinds: [missing]
+    reason: api-mirror drops URL fields from rebuilt answers
+  - route: ^/rate_limit$
+    path: $.resources
+    reason: the budget moves between the two requests
+  - path: $.rate
+    route: ^/rate_limit$
+    reason: the budget moves between the two requests

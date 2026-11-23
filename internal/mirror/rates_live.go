@@ -1,3 +1,5 @@
+// rates_live.go holds LiveRate.
+
 package mirror
 
 import (

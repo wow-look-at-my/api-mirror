@@ -1,3 +1,5 @@
+// fingerprint.go holds Fingerprint.
+
 package database
 
 import (

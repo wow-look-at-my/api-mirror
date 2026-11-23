@@ -1,3 +1,5 @@
+// ratemeter.go holds rateMeterMax.
+
 package mirror
 
 import (

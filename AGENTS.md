@@ -6,9 +6,10 @@ The sibling project `api-cli` turns the same kind of file into a CLI. Both share
 
 ## File map
 
-The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry point and holds nothing else. Paths below are inside `internal/mirror` unless stated.
+The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry point and holds no engine logic. Paths below are inside `internal/mirror` unless stated.
 
 - `run.go` — `Run`: flags, `--check`, the server, the signal, the drain order.
+- `lifecycle.go` — the construction and shutdown that `run.go` and `engine/` both call.
 - `config.go` — the Spec model: Resource, Key, Field, Route, QueryParam, Show, Events, Event, Set. Types only.
 - `validate.go` — what a spec must mean before it is served. Every check here exists because its absence is a silent runtime failure.
 - `load.go` / `load_events.go` — XML to Spec. Builders check SHAPE. `validate` checks MEANING.
@@ -18,11 +19,13 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `internal/database/` — `schema.sql`, `queries/*.sql`, and sqlc's generated `dbgen/`.
 - `freshness.go` — the TTL state machine, detached fetches, per-key singleflight, the shutdown drain.
 - `router.go` — route matching, the Accept and query guards, the passthrough reason vocabulary. `<accept>` under `<mirror>` names the default representation for every JSON route.
-- `unstored.go` — an upstream answer the route does not keep: relayed to the caller whose credential earned it, a 403 or 404 recorded as their denial.
+- `unstored.go` — an upstream answer the route does not keep: relayed to the caller whose credential earned it.
+- `reveal_fetch.go` — what a refused fetch denies. The probe is asked again. A refused probe denies the proof. A passing probe keeps it. The refusal is that credential's for that key.
 - `invalidate.go` — an invalidation drops the freshness under its key too. A stored refusal goes with the rows.
 - `store_refusal.go` — the refusal document kept with a stored refusal, and prefix deletes, in plain SQL.
 - `redirect.go` — `store="redirect"` (a Location kept until its signed URL expires) and `store="text"` (a non-JSON body with its media type).
 - `events_document.go` — an event's `<document>`: the payload object written whole as a document resource's answer.
+- `events_patch.go` — an event's `<patch>`: one item rewritten in every stored page of a document list. A failure drops the pages instead.
 - `project.go` — `<param empties=>`: a bool flag that serves one answer path as an empty array, off one stored answer.
 - `validate_paths.go` — `{name...}` rest parameters and `<match>` shape constraints on path parameters.
 - `<rewrite>` — a client's own spelling of a path, canonicalised in `dispatch` before any gate sees it. `gh` needs one, because it puts REST under `/api/v3` on a non-github.com host. It grants nothing.
@@ -32,6 +35,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `absorb.go` — document to columns and back, the drop patterns, the JSON marshaller.
 - `reveal.go` — the authorization ladder: public, grant, cached denial, probe. `AllowStored` is the probe-free half, for a decision with no caller credential.
 - `identity.go` — who asks: `<identity>` (a verified assertion header, as `prefix:id`), `<whoami>` (a credential's owner), else the credential fingerprint. A refused assertion is a 401, not a fallback.
+- `host_principal.go` — the principal an embedding host names for a request it authenticated. It replaces the spec's identity rules for that request.
 - `spread.go` — `<spread>` on a route: each item of a fetched listing is a grant for its caller, and optionally truth.
 - `notify_api.go` — the public subscription API at `<notify path=>`, under the caller's own principal, and `<notify>` validation.
 - `gsm_import.go` — `<notify import=>`: adopts a github-state-mirror subscription file once per row, translating each owner to the principal it resolves to here.
@@ -42,8 +46,6 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `subscribed.go` — the report of declared types the provider does not send. `admin_login.go` — the dashboard's OAuth sign-in.
 - `ordering.go` / `events.go` — webhook ingest: subject and clock, the reorder window, the watermark, the apply.
 - `upstream.go` — the outbound client, reporting every request.
-- `load_ops.go` / the ops half of `validate.go` — `<dashboard>`, `<cors>`, `<notify>`, `<refresh>`, `<replay>`, `<health>`, `<ratelimit>`.
-- `observe.go` — `Lane`, `Exchange`, `Observer`, and the transport every outbound client is built through.
 - `telemetry.go` / `timeline.go` / `requestlog.go` / `ratemeter.go` — the four in-memory stores behind the page. Bounded, lazily swept, reset on start.
 - `recorder.go` — the inbound wrapper that records what the caller actually received.
 - `shapes.go` — a path to a route shape, and the `<route>` sketch that will stop it leaking.
@@ -51,6 +53,7 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - `check.go` — the consistency check: re-ask the upstream about every stored key of one kind, and optionally write back what drifted.
 - `refresh.go` / `replay.go` / `notify.go` / `subscriptions.go` / `debounce.go` — the background half.
 - `mirror.schema.xsd` — the reference grammar. Not enforced at load. A test walks the shipped specs against it.
+- `cmd/api-mirror-delta` + `internal/delta` — the comparison proxy. It sends each request to the truth API and to every mirror, and diffs each mirror answer against the truth's. `dats/upstream-shape.dats` runs it, and `dats/delta.dats` tests it against `cmd/fixtureserver`. docs/delta.md.
 - `mirror.example.xml` — a runnable small spec. `samples/github/github.xml` — the full worked example. Both at the top of the tree, reached from a test through `repoRoot`.
 
 ## Invariants
@@ -68,11 +71,13 @@ The engine is `internal/mirror`, one package. `cmd/api-mirror` is the entry poin
 - **A list only deletes when it says it is complete.** `complete="true"` replace-syncs the set under the parent key. Without it an item that vanished upstream keeps being served, because one page of a paginated list is not the set.
 - **Only authoritative answers are stored.** A 2xx always, a 4xx the route names. A 5xx or a rate-limit refusal relays and is forgotten.
 - **An answer the route does not store belongs to the caller.** It is relayed to them and earns no backoff that another caller reads.
+- **A refused fetch denies one endpoint, not the proof.** Resources share a probe. An endpoint can need a permission the probe does not prove. Only a refused probe revokes the proof.
 - **A fresh answer with no row is refetched.** A delivery dropped it, and serving it as absent will invent a 404.
 - **A push may not change a generated file.** A new engine table is plain SQL in Go, beside `mirror_list_member`.
 - **Fail closed.** Unknown visibility is private, a store or render error denies, and a resource with no `<reveal>` cannot be served.
 - **Hit and miss share one path.** An answer is rebuilt from stored state either way, so a route's shape never changes with cache state.
 - **A rebuilt answer is a subset of the upstream's.** Each field, and each key with `from=`, returns to its source path with its upstream type. A folded key serves its as-sent spelling. One source path is declared once. `dats/upstream-shape.dats` checks the answers against the upstream with `api-mirror-delta`.
+- **The comparison proxy fans out reads only.** A write sent to the truth and to a mirror reaches the upstream twice. An ignore rule names what it hides, and the summary counts every rule's matches. A target that does not answer is a difference, not a skip.
 - **A passthrough is unfinished work.** It is forwarded with a stated reason from a closed vocabulary. There is no "correctly uncached".
 - **The fingerprint is derived, not declared.** It hashes the schema the spec produces. A resource change therefore always nukes, and hand keeps nothing.
 - **A fetch outlives its request.** Detached context plus a safety timeout, drained before the database closes.
